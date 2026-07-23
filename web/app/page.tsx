@@ -1,10 +1,32 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 
 const SKY_SEED_KEY = "obs_sky_seed";
+const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
+const ANON_USER_ID_KEY = "obs_anon_user_id";
+const SESSION_ANSWERED_KEY = "obs_session_answered";
+const SESSION_CORRECT_KEY = "obs_session_correct";
+const RECOMMENDATION_RETEST_WAIT_MS = 20 * 60 * 1000;
+
+function isAnonymousSession(session: { user?: { email?: string | null } } | null) {
+  return Boolean(session?.user && !session.user.email);
+}
+
+function clearAssessmentBrowserStorage() {
+  localStorage.removeItem("obs_answered");
+  localStorage.removeItem("obs_correct");
+  localStorage.removeItem("obs_attempt_id");
+  localStorage.removeItem("obs_user_id");
+  localStorage.removeItem(ANON_USER_ID_KEY);
+  sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);
+  sessionStorage.removeItem(ANON_USER_ID_KEY);
+  sessionStorage.removeItem(SESSION_ANSWERED_KEY);
+  sessionStorage.removeItem(SESSION_CORRECT_KEY);
+}
+
 function createSeededRandom(seed: number) {
   let value = seed >>> 0;
   return () => {
@@ -53,16 +75,289 @@ const SECTION_RECOMMENDATIONS = [
   { name: "Latter Prophets", books: "Isaiah - Malachi", focus: "Connect prophetic messages to covenant failure, exile, restoration hope, and the coming kingdom.", priority: "Prophets make the most sense once the historical timeline is stable." },
   { name: "Writings", books: "Psalms, Proverbs, Job...", focus: "Deepen wisdom, worship, lament, poetry, and post-exilic reflection.", priority: "This strengthens texture and theology after the main chronology is clearer." },
 ];
+const BOOK_FOCUS_RANGES: Record<string, { label: string; range: string; start: number; end: number; focus: string }> = {
+  GEN: { label: "Genesis", range: "Genesis 12-50", start: 12, end: 50, focus: "Focus on Abraham, Isaac, Jacob, Joseph, covenant promises, and the family line that frames the rest of the Old Testament." },
+  EXO: { label: "Exodus", range: "Exodus 1-20", start: 1, end: 20, focus: "Focus on Israel in Egypt, Moses, the plagues, the exodus, Sinai, and the Ten Commandments." },
+  LEV: { label: "Leviticus", range: "Leviticus 1-16", start: 1, end: 16, focus: "Focus on sacrifice, priesthood, purity, holiness, and the Day of Atonement." },
+  NUM: { label: "Numbers", range: "Numbers 10-25", start: 10, end: 25, focus: "Focus on the wilderness journey, rebellion, intercession, Balaam, and covenant failure before the land." },
+  DEU: { label: "Deuteronomy", range: "Deuteronomy 5-30", start: 5, end: 30, focus: "Focus on covenant renewal, law, blessing and curse, and Moses' final instruction before entry into the land." },
+  JOS: { label: "Joshua", range: "Joshua 1-12", start: 1, end: 12, focus: "Focus on crossing the Jordan, conquest narratives, covenant faithfulness, and Israel entering the land." },
+  JDG: { label: "Judges", range: "Judges 2-16", start: 2, end: 16, focus: "Focus on Israel's cycle of decline, deliverance, and the major judges." },
+  RUT: { label: "Ruth", range: "Ruth 1-4", start: 1, end: 4, focus: "Focus on covenant loyalty, providence, redemption, and Ruth's place in David's line." },
+  "1SA": { label: "1 Samuel", range: "1 Samuel 8-31", start: 8, end: 31, focus: "Focus on Samuel, Saul, David's rise, kingship, and the transition into monarchy." },
+  "2SA": { label: "2 Samuel", range: "2 Samuel 5-12", start: 5, end: 12, focus: "Focus on David's reign, Jerusalem, covenant promise, sin, and royal consequences." },
+  "1KI": { label: "1 Kings", range: "1 Kings 1-19", start: 1, end: 19, focus: "Focus on Solomon, the divided kingdom, temple, idolatry, Elijah, and covenant decline." },
+  "2KI": { label: "2 Kings", range: "2 Kings 17-25", start: 17, end: 25, focus: "Focus on Israel and Judah's fall, exile, and the covenant meaning of the kingdoms' collapse." },
+  ISA: { label: "Isaiah", range: "Isaiah 1-12", start: 1, end: 12, focus: "Focus on judgment, holiness, remnant hope, and the promised king." },
+  JER: { label: "Jeremiah", range: "Jeremiah 1-31", start: 1, end: 31, focus: "Focus on covenant indictment, exile warnings, and new covenant hope." },
+  EZE: { label: "Ezekiel", range: "Ezekiel 1-37", start: 1, end: 37, focus: "Focus on exile, God's glory, judgment, restoration, and the valley of dry bones." },
+  DAN: { label: "Daniel", range: "Daniel 1-7", start: 1, end: 7, focus: "Focus on exile faithfulness, kingdoms, visions, and God's rule over history." },
+  PSA: { label: "Psalms", range: "Psalms 1-41", start: 1, end: 41, focus: "Focus on wisdom, lament, kingship, trust, and worship in Book 1 of Psalms." },
+  PRO: { label: "Proverbs", range: "Proverbs 1-9", start: 1, end: 9, focus: "Focus on wisdom, fear of the LORD, instruction, folly, and moral formation." },
+  JOB: { label: "Job", range: "Job 1-14", start: 1, end: 14, focus: "Focus on suffering, righteousness, lament, and the opening dispute over God's justice." },
+};
 
 type SectionScoreMap = Record<string, {pct: number, total: number, weighted_pct: number}>;
+type BreakdownTab = "sections" | "books" | "domains";
+type ScopeKind = "canon" | "section" | "book" | "domain";
+type ScopeScore = {
+  key: string;
+  label: string;
+  subtitle: string;
+  kind: ScopeKind;
+  className: string;
+  rawScore: number | null;
+  displayScore: number | null;
+  answered: number;
+  correct: number;
+  confidence: "none" | "low" | "moderate" | "high";
+};
+type BankRow = {
+  generated_question_id: string;
+  question_type: string;
+  dimension_key?: string | null;
+  payload: Record<string, unknown> | null;
+  book_code: string | null;
+  routing_score: number | null;
+  importance_conceptual: number | null;
+  importance_context: number | null;
+};
+type AnswerRow = {
+  generated_question_id: string | null;
+  is_correct: boolean;
+  is_idk?: boolean | null;
+};
+type BackendRecommendation = {
+  unit_key: string;
+  label: string;
+  section: string;
+  book_code: string;
+  start_chapter: number;
+  end_chapter: number;
+  answered: number;
+  display_score: number | null;
+  retest_question_target: number;
+  focus_text: string;
+  reason: string;
+};
+type NtPilotSummary = {
+  answered: number;
+  correct: number;
+  accuracy: number;
+  scope: string;
+  booksAttempted: number;
+  updatedAt: string;
+};
 
-function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: boolean) {
+const BOOK_ORDER = [
+  "GEN", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA", "1KI", "2KI",
+  "1CH", "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO", "ECC", "SNG", "ISA", "JER",
+  "LAM", "EZE", "DAN", "HOS", "JOL", "AMO", "OBA", "JON", "MIC", "NAM", "HAB", "ZEP",
+  "HAG", "ZEC", "MAL",
+];
+const BOOK_NAMES: Record<string, string> = {
+  GEN: "Genesis", EXO: "Exodus", LEV: "Leviticus", NUM: "Numbers", DEU: "Deuteronomy",
+  JOS: "Joshua", JDG: "Judges", RUT: "Ruth", "1SA": "1 Samuel", "2SA": "2 Samuel",
+  "1KI": "1 Kings", "2KI": "2 Kings", "1CH": "1 Chronicles", "2CH": "2 Chronicles",
+  EZR: "Ezra", NEH: "Nehemiah", EST: "Esther", JOB: "Job", PSA: "Psalms",
+  PRO: "Proverbs", ECC: "Ecclesiastes", SNG: "Song of Songs", ISA: "Isaiah",
+  JER: "Jeremiah", LAM: "Lamentations", EZE: "Ezekiel", DAN: "Daniel",
+  HOS: "Hosea", JOL: "Joel", AMO: "Amos", OBA: "Obadiah", JON: "Jonah",
+  MIC: "Micah", NAM: "Nahum", HAB: "Habakkuk", ZEP: "Zephaniah", HAG: "Haggai",
+  ZEC: "Zechariah", MAL: "Malachi",
+};
+const SECTION_BOOKS: Record<string, string[]> = {
+  Torah: ["GEN", "EXO", "LEV", "NUM", "DEU"],
+  "Former Prophets": ["JOS", "JDG", "RUT", "1SA", "2SA", "1KI", "2KI"],
+  "Latter Prophets": ["ISA", "JER", "LAM", "EZE", "DAN", "HOS", "JOL", "AMO", "OBA", "JON", "MIC", "NAM", "HAB", "ZEP", "HAG", "ZEC", "MAL"],
+  Writings: ["1CH", "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO", "ECC", "SNG"],
+};
+const SECTION_META = [
+  { key: "ot", label: "Old Testament", subtitle: "Genesis - Malachi", kind: "canon" as const, className: "ot", books: BOOK_ORDER },
+  { key: "torah", label: "Torah", subtitle: "Genesis - Deuteronomy", kind: "section" as const, className: "torah", books: SECTION_BOOKS.Torah },
+  { key: "prophets", label: "Prophets", subtitle: "Former + Latter Prophets", kind: "section" as const, className: "prophets", books: [...SECTION_BOOKS["Former Prophets"], ...SECTION_BOOKS["Latter Prophets"]] },
+  { key: "former", label: "Former Prophets", subtitle: "Joshua - Kings", kind: "section" as const, className: "former", books: SECTION_BOOKS["Former Prophets"] },
+  { key: "latter", label: "Latter Prophets", subtitle: "Isaiah - Malachi", kind: "section" as const, className: "latter", books: SECTION_BOOKS["Latter Prophets"] },
+  { key: "writings", label: "Writings", subtitle: "Psalms, Proverbs, Job...", kind: "section" as const, className: "writings", books: SECTION_BOOKS.Writings },
+];
+const DOMAIN_META = [
+  { key: "characters", backendKey: "characters_lineage", label: "Characters & Lineage", match: (type: string) => type.includes("relationship") || type.includes("people") || type.includes("lineage") || type.includes("genealogy") },
+  { key: "events", backendKey: "events_timeline", label: "Events & Timeline", match: (type: string) => type.includes("primary") || type.includes("chronology") || type.includes("sequence") || type.includes("numeric") },
+  { key: "geography", backendKey: "geography_nations", label: "Geography & Nations", match: (type: string) => type.includes("geography") || type.includes("location") || type.includes("nation") || type.includes("empire") },
+  { key: "law", backendKey: "law_commands", label: "Law & Commands", match: (type: string) => type.includes("command") || type.includes("law") || type.includes("covenant_curse") },
+  { key: "speech", backendKey: "promise_prophecy", label: "Promise & Prophecy", match: (type: string) => type.includes("speech") || type.includes("promise") || type.includes("prophecy") || type.includes("prophetic") },
+  { key: "significance", backendKey: "theological_reasoning", label: "Theological Reasoning", match: (type: string) => type.includes("significance") || type.includes("concept") || type.includes("wisdom") || type.includes("theological") },
+  { key: "scripture_connections", backendKey: "structure_cross_ref", label: "Cross Ref", match: (type: string) => type.includes("scripture_connection") || type.includes("cross_ref") || type.includes("intertextual") },
+];
+
+async function loadDimensionAwareQuestionBank() {
+  const dimensionResult = await supabase
+    .from("obs_question_bank_with_dimensions")
+    .select("generated_question_id,question_type,dimension_key,payload,book_code,routing_score,importance_conceptual,importance_context");
+
+  if (!dimensionResult.error) return dimensionResult.data ?? [];
+
+  const fallbackResult = await supabase
+    .from("v_question_bank")
+    .select("generated_question_id,question_type,payload,book_code,routing_score,importance_conceptual,importance_context");
+
+  return fallbackResult.data ?? [];
+}
+
+function sectionNameForBook(bookCode: string) {
+  return Object.entries(SECTION_BOOKS).find(([, books]) => books.includes(bookCode))?.[0] ?? "Old Testament";
+}
+
+function classNameForSection(sectionName: string) {
+  if (sectionName === "Torah") return "torah";
+  if (sectionName === "Former Prophets") return "former";
+  if (sectionName === "Latter Prophets") return "latter";
+  if (sectionName === "Writings") return "writings";
+  return "ot";
+}
+
+function confidenceForAnswers(answered: number): ScopeScore["confidence"] {
+  if (answered >= 20) return "high";
+  if (answered >= 8) return "moderate";
+  if (answered >= 3) return "low";
+  return "none";
+}
+
+function scoreEvidence(rows: { isCorrect: boolean; weight: number }[]) {
+  const possible = rows.reduce((sum, row) => sum + row.weight, 0);
+  const earned = rows.reduce((sum, row) => {
+    return sum + row.weight * (row.isCorrect ? 1 : 0);
+  }, 0);
+  if (possible <= 0) return null;
+  const observed = earned / possible;
+  const guessAdjusted = Math.max(0, Math.min(1, (observed - 0.25) / 0.75));
+  return guessAdjusted * 100;
+}
+
+function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
+  const bankById = new Map(bankRows.map(row => [row.generated_question_id, row]));
+  const evidence = answerRows
+    .filter(answer => answer.generated_question_id && !answer.is_idk)
+    .map(answer => {
+      const bank = bankById.get(answer.generated_question_id!);
+      if (!bank || !bank.book_code) return null;
+      const weight = Math.max(1, Number(bank.routing_score ?? bank.importance_conceptual ?? bank.importance_context ?? 50));
+      return {
+        bookCode: bank.book_code,
+        section: sectionNameForBook(bank.book_code),
+        questionType: bank.question_type ?? "",
+        dimensionKey: bank.dimension_key ?? null,
+        isCorrect: Boolean(answer.is_correct),
+        weight,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  const makeScore = (
+    key: string,
+    label: string,
+    subtitle: string,
+    kind: ScopeKind,
+    className: string,
+    rows: typeof evidence,
+  ): ScopeScore => {
+    const rawScore = scoreEvidence(rows);
+    return {
+      key,
+      label,
+      subtitle,
+      kind,
+      className,
+      rawScore,
+      displayScore: rawScore === null ? null : toDisplayScore(rawScore),
+      answered: rows.length,
+      correct: rows.filter(row => row.isCorrect).length,
+      confidence: confidenceForAnswers(rows.length),
+    };
+  };
+
+  const sections = SECTION_META.map(scope => makeScore(
+    scope.key,
+    scope.label,
+    scope.subtitle,
+    scope.kind,
+    scope.className,
+    evidence.filter(row => scope.books.includes(row.bookCode)),
+  ));
+
+  const books = BOOK_ORDER.map(bookCode => makeScore(
+    `book:${bookCode}`,
+    BOOK_NAMES[bookCode] ?? bookCode,
+    sectionNameForBook(bookCode),
+    "book",
+    classNameForSection(sectionNameForBook(bookCode)),
+    evidence.filter(row => row.bookCode === bookCode),
+  ));
+
+  const domains = DOMAIN_META.map(domain => makeScore(
+    `domain:${domain.key}`,
+    domain.label,
+    "Question dimension",
+    "domain",
+    `domain-${domain.key}`,
+    evidence.filter(row => row.dimensionKey === domain.backendKey || (!row.dimensionKey && domain.match(row.questionType))),
+  ));
+
+  return { sections, books, domains };
+}
+
+function evidenceLabel(score: ScopeScore) {
+  if (score.confidence === "high") return "High evidence";
+  if (score.confidence === "moderate") return "Moderate evidence";
+  if (score.confidence === "low") return "Low evidence";
+  return "Needs more evidence";
+}
+
+function hasBaselineEvidence(score: ScopeScore | undefined) {
+  if (!score || score.rawScore === null) return false;
+  return score.answered >= 3 && (score.displayScore ?? 200) >= 585;
+}
+
+function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: boolean, bookScores: ScopeScore[]) {
   if (!hasAssessment) {
     return {
-      label: "Begin with Torah",
-      books: "Genesis - Deuteronomy",
-      focus: "Start with the major Old Testament narrative spine: creation, covenant, exodus, Sinai, and wilderness.",
-      priority: "Once you answer a few questions, this will adjust to your weakest important area.",
+      label: "Take your first assessment",
+      books: "Personalized recommendation pending",
+      focus: "Answer a short set of questions first. Then Open Bible Assessment can identify the earliest major gap in your Old Testament knowledge and recommend a natural place to begin.",
+      priority: "Your reading recommendation will become more specific after your first BLI snapshot.",
+      actionHref: "/assess",
+      actionLabel: "Start assessment",
+    };
+  }
+
+  const bookTarget = BOOK_ORDER
+    .map(bookCode => {
+      const focus = BOOK_FOCUS_RANGES[bookCode];
+      const score = bookScores.find(item => item.key === `book:${bookCode}`);
+      return focus ? { bookCode, focus, score } : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .find(item => !item.score || item.score.answered < 3 || (item.score.displayScore ?? 200) < 585);
+
+  if (bookTarget) {
+    const score = bookTarget.score;
+    const params = new URLSearchParams({
+      mode: "focus",
+      book: bookTarget.bookCode,
+      start: String(bookTarget.focus.start),
+      end: String(bookTarget.focus.end),
+      label: bookTarget.focus.range,
+      target: "15",
+    });
+    return {
+      label: bookTarget.focus.range,
+      books: bookTarget.focus.label,
+      focus: bookTarget.focus.focus,
+      priority: score && score.answered > 0
+        ? `${score.displayScore ?? "--"} BLI across ${score.answered} answered questions here. Reread this range, then retest it.`
+        : "Not enough evidence here yet. Reread this range, then take a focused retest.",
+      actionHref: `/assess?${params.toString()}`,
+      actionLabel: "I reread this - retest me",
     };
   }
 
@@ -81,6 +376,8 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
     priority: score
       ? `${score.pct}% across ${score.total} answered questions. ${target.priority}`
       : `Not enough answers here yet. ${target.priority}`,
+    actionHref: "/assess",
+    actionLabel: "Continue assessment",
   };
 }
 
@@ -88,29 +385,115 @@ export default function HomePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [assessmentData, setAssessmentData] = useState<{answered: number, correct: number, bli?: number} | null>(null);
   const [sectionScores, setSectionScores] = useState<Record<string, {pct: number, total: number, weighted_pct: number}>>({});
+  const [scopeScores, setScopeScores] = useState<{sections: ScopeScore[]; books: ScopeScore[]; domains: ScopeScore[]}>(() => buildScopeScores([], []));
+  const [activeBreakdownTab, setActiveBreakdownTab] = useState<BreakdownTab>("sections");
   const [bliLevel, setBliLevel] = useState<string | null>(null);
   const [showBliTooltip, setShowBliTooltip] = useState(false);
   const [expandedConeLayer, setExpandedConeLayer] = useState<string | null>(null);
   const [isAssessmentCharging, setIsAssessmentCharging] = useState(false);
-  const [waterMotion, setWaterMotion] = useState<"idle" | "active" | "settling">("idle");
   const [activeDashboardTab, setActiveDashboardTab] = useState<"bli" | "church-history" | "biblical-languages">("bli");
+  const [isAnonymousDashboard, setIsAnonymousDashboard] = useState(false);
+  const [backendRecommendation, setBackendRecommendation] = useState<BackendRecommendation | null>(null);
+  const [ntPilotSummary, setNtPilotSummary] = useState<NtPilotSummary | null>(null);
+  const [pendingRetestHref, setPendingRetestHref] = useState<string | null>(null);
   const tooltipCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assessmentHoldDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assessmentHoldRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const waterSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const coneRef = useRef<HTMLDivElement>(null);
+  const sloshRef = useRef({
+    x1: 0, v1: 0, x2: 0, v2: 0,
+    lastPointerX: null as number | null,
+    lastPointerT: 0,
+    raf: 0,
+    running: false,
+    lastFrameT: 0,
+  });
   const currentDisplayScore = assessmentData
     ? toDisplayScore(assessmentData.bli ?? Math.round((assessmentData.correct / assessmentData.answered) * 100))
     : 200;
   const currentDisplayLevel = levelForScore(currentDisplayScore);
   const waterFillPercent = assessmentData ? 100 - coneMarkerPercent(currentDisplayScore) : 0;
   const confidenceScore = assessmentData
-    ? Math.max(0, Math.min(99, Math.round(100 - (1.96 * Math.sqrt(0.25 / Math.max(assessmentData.answered, 1)) * 100))))
+    ? Math.round(99 * assessmentData.answered / (assessmentData.answered + 20))
     : 0;
-  const confidenceLabel = confidenceScore >= 90 ? "Very high"
-    : confidenceScore >= 86 ? "High"
-    : confidenceScore >= 80 ? "Moderate"
+  const confidenceLabel = confidenceScore >= 85 ? "Very high"
+    : confidenceScore >= 70 ? "High"
+    : confidenceScore >= 50 ? "Moderate"
     : "Low";
-  const recommendedStudy = getRecommendedStudy(sectionScores, !!assessmentData);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("oba_nt_pilot_summary");
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as Partial<NtPilotSummary>;
+      if (
+        typeof parsed.answered === "number" &&
+        typeof parsed.correct === "number" &&
+        typeof parsed.accuracy === "number" &&
+        typeof parsed.scope === "string" &&
+        typeof parsed.booksAttempted === "number" &&
+        typeof parsed.updatedAt === "string"
+      ) {
+        setNtPilotSummary(parsed as NtPilotSummary);
+      }
+    } catch {
+      setNtPilotSummary(null);
+    }
+  }, []);
+
+  const recommendedStudy = backendRecommendation ? (() => {
+    const params = new URLSearchParams({
+      mode: "focus",
+      unit: backendRecommendation.unit_key,
+      book: backendRecommendation.book_code,
+      start: String(backendRecommendation.start_chapter),
+      end: String(backendRecommendation.end_chapter),
+      label: backendRecommendation.label,
+      target: String(backendRecommendation.retest_question_target),
+    });
+    return {
+      label: backendRecommendation.label,
+      books: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}`,
+      focus: backendRecommendation.focus_text,
+      priority: backendRecommendation.display_score
+        ? `${backendRecommendation.display_score} BLI across ${backendRecommendation.answered} answered questions here. ${backendRecommendation.reason}.`
+        : `${backendRecommendation.reason}. Reread this range, then take a focused retest.`,
+      actionHref: `/assess?${params.toString()}`,
+      actionLabel: "I reread this - retest me",
+    };
+  })() : getRecommendedStudy(sectionScores, !!assessmentData, scopeScores.books);
+  const visibleBreakdownScores = useMemo(() => {
+    if (activeBreakdownTab === "sections") return scopeScores.sections;
+    if (activeBreakdownTab === "domains") return scopeScores.domains;
+    return scopeScores.books;
+  }, [activeBreakdownTab, scopeScores]);
+  const scriptureConnectionsUnlocked = useMemo(() => {
+    const torah = scopeScores.sections.find(score => score.label === "Torah");
+    const former = scopeScores.sections.find(score => score.label === "Former Prophets");
+    return hasBaselineEvidence(torah) && hasBaselineEvidence(former);
+  }, [scopeScores.sections]);
+
+  useEffect(() => {
+    if (!recommendedStudy.actionHref.startsWith("/assess?")) return;
+    const key = `obs_recommendation_seen:${recommendedStudy.actionHref}`;
+    if (!localStorage.getItem(key)) localStorage.setItem(key, String(Date.now()));
+  }, [recommendedStudy.actionHref]);
+
+  const handleRecommendedAction = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!recommendedStudy.actionHref.startsWith("/assess?")) return;
+    const key = `obs_recommendation_seen:${recommendedStudy.actionHref}`;
+    const firstSeen = Number(localStorage.getItem(key) || Date.now());
+    const isFresh = Date.now() - firstSeen < RECOMMENDATION_RETEST_WAIT_MS;
+    if (isFresh) {
+      event.preventDefault();
+      setPendingRetestHref(recommendedStudy.actionHref);
+    }
+  };
+
+  const continuePendingRetest = () => {
+    if (!pendingRetestHref) return;
+    window.location.href = pendingRetestHref;
+  };
 
   const openBliTooltip = () => {
     if (tooltipCloseRef.current) clearTimeout(tooltipCloseRef.current);
@@ -121,15 +504,19 @@ export default function HomePage() {
     tooltipCloseRef.current = setTimeout(() => setShowBliTooltip(false), 220);
   };
 
+  // Press-and-hold to charge into the assessment. Triggered by pointerdown
+  // (never hover), with a short grace period so a normal click doesn't flash
+  // the charging state. Releasing or leaving cancels; a plain click still
+  // navigates instantly via the link.
   const startAssessmentHold = () => {
     if (assessmentHoldDelayRef.current) clearTimeout(assessmentHoldDelayRef.current);
     if (assessmentHoldRef.current) clearTimeout(assessmentHoldRef.current);
     assessmentHoldDelayRef.current = setTimeout(() => {
       setIsAssessmentCharging(true);
       assessmentHoldRef.current = setTimeout(() => {
-        window.location.href = "/assess";
+        window.location.href = assessmentData ? "/assess" : "/assess?choose=1";
       }, 2000);
-    }, 1000);
+    }, 150);
   };
 
   const cancelAssessmentHold = () => {
@@ -140,50 +527,156 @@ export default function HomePage() {
     setIsAssessmentCharging(false);
   };
 
-  const startWaterMotion = () => {
-    if (waterMotion === "active") return;
-    if (waterSettleRef.current) clearTimeout(waterSettleRef.current);
-    setWaterMotion("active");
-    waterSettleRef.current = setTimeout(() => {
-      setWaterMotion("settling");
-      waterSettleRef.current = setTimeout(() => {
-        setWaterMotion("idle");
-        waterSettleRef.current = null;
-      }, 3600);
-    }, 1150);
+  // Water slosh physics: two damped harmonic oscillators (fundamental sloshing
+  // mode ~1.05 Hz + a faster, more damped second mode). Pointer movement
+  // injects energy proportional to swipe distance and speed, so the water
+  // responds to *how* you move, keeps ringing after the pointer leaves, and
+  // settles naturally as the oscillators decay. Values are written to CSS
+  // custom properties on the cone; no React re-renders per frame.
+  const runSloshLoop = () => {
+    const slosh = sloshRef.current;
+    if (slosh.running) return;
+    slosh.running = true;
+    slosh.lastFrameT = performance.now();
+    const step = (now: number) => {
+      const cone = coneRef.current;
+      if (!cone) {
+        slosh.running = false;
+        return;
+      }
+      const dt = Math.min((now - slosh.lastFrameT) / 1000, 0.05);
+      slosh.lastFrameT = now;
+      const w1 = 2 * Math.PI * 1.05;
+      const z1 = 0.055;
+      const w2 = 2 * Math.PI * 2.0;
+      const z2 = 0.12;
+      slosh.v1 += (-w1 * w1 * slosh.x1 - 2 * z1 * w1 * slosh.v1) * dt;
+      slosh.x1 += slosh.v1 * dt;
+      slosh.v2 += (-w2 * w2 * slosh.x2 - 2 * z2 * w2 * slosh.v2) * dt;
+      slosh.x2 += slosh.v2 * dt;
+      const amp = Math.min(1, Math.abs(slosh.x1) * 1.1 + Math.abs(slosh.x2) * 0.6);
+      cone.style.setProperty("--slosh-x", slosh.x1.toFixed(4));
+      cone.style.setProperty("--slosh-x2", slosh.x2.toFixed(4));
+      cone.style.setProperty("--slosh-amp", amp.toFixed(4));
+      const energy = Math.abs(slosh.x1) + Math.abs(slosh.v1) / w1 + Math.abs(slosh.x2) + Math.abs(slosh.v2) / w2;
+      if (energy > 0.003) {
+        slosh.raf = requestAnimationFrame(step);
+      } else {
+        slosh.running = false;
+        slosh.x1 = 0; slosh.v1 = 0; slosh.x2 = 0; slosh.v2 = 0;
+        cone.style.setProperty("--slosh-x", "0");
+        cone.style.setProperty("--slosh-x2", "0");
+        cone.style.setProperty("--slosh-amp", "0");
+      }
+    };
+    slosh.raf = requestAnimationFrame(step);
   };
 
-  const settleWaterMotion = () => {
-    if (waterMotion === "idle") return;
-    if (waterSettleRef.current) clearTimeout(waterSettleRef.current);
-    setWaterMotion("settling");
-    waterSettleRef.current = setTimeout(() => {
-      setWaterMotion("idle");
-      waterSettleRef.current = null;
-    }, 3600);
+  const injectSloshImpulse = (kick: number) => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const slosh = sloshRef.current;
+    const clamped = Math.max(-2.4, Math.min(2.4, kick));
+    slosh.v1 += clamped * 2.4;
+    slosh.v2 += clamped * 4.6;
+    // Clamp stored energy so frantic scrubbing can't blow up the surface
+    slosh.v1 = Math.max(-8, Math.min(8, slosh.v1));
+    slosh.v2 = Math.max(-15, Math.min(15, slosh.v2));
+    runSloshLoop();
+  };
+
+  const handleConePointerEnter = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const slosh = sloshRef.current;
+    slosh.lastPointerX = event.clientX;
+    slosh.lastPointerT = performance.now();
+    injectSloshImpulse(0.5);
+  };
+
+  const handleConePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const slosh = sloshRef.current;
+    const now = performance.now();
+    if (slosh.lastPointerX !== null) {
+      const dx = event.clientX - slosh.lastPointerX;
+      const dtMs = Math.max(now - slosh.lastPointerT, 8);
+      if (Math.abs(dx) >= 1) {
+        const speed = Math.min(Math.abs(dx) / dtMs, 2);
+        injectSloshImpulse(dx * 0.004 * (0.6 + speed));
+      }
+    }
+    slosh.lastPointerX = event.clientX;
+    slosh.lastPointerT = now;
+  };
+
+  const handleConePointerLeave = () => {
+    sloshRef.current.lastPointerX = null;
   };
 
   const handleSignIn = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const anonId = isAnonymousSession(session) ? session?.user?.id : null;
+    if (anonId) {
+      localStorage.setItem(ANON_USER_ID_KEY, anonId);
+      sessionStorage.setItem(ANON_USER_ID_KEY, anonId);
+    }
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + "/auth/callback" },
+      options: { redirectTo: window.location.origin + "/auth/callback" + (anonId ? "?anon=" + anonId : "") },
     });
   };
 
   useEffect(() => {
     return () => {
-      if (waterSettleRef.current) clearTimeout(waterSettleRef.current);
+      cancelAnimationFrame(sloshRef.current.raf);
     };
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user?.email) setUserEmail(session.user.email);
+    supabase.auth.getSession().then(async ({ data }) => {
+      let session = data.session;
+      if (isAnonymousSession(session) && !sessionStorage.getItem(ANON_SESSION_ACTIVE_KEY)) {
+        await supabase.auth.signOut();
+        clearAssessmentBrowserStorage();
+        session = null;
+      }
+      setIsAnonymousDashboard(isAnonymousSession(session));
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+        setIsAnonymousDashboard(false);
+        sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);
+        sessionStorage.removeItem(ANON_USER_ID_KEY);
+        sessionStorage.removeItem(SESSION_ANSWERED_KEY);
+        sessionStorage.removeItem(SESSION_CORRECT_KEY);
+      }
       if (session?.user?.id) {
-        // Use compute_bli for all scoring
-        const { data: bliData } = await supabase.rpc("compute_bli", {
-          p_user_id: session.user.id
-        });
+        const [
+          { data: bliData },
+          bankData,
+          { data: answerData },
+          { data: recommendationData },
+        ] = await Promise.all([
+          supabase.rpc("compute_bli", { p_user_id: session.user.id }),
+          loadDimensionAwareQuestionBank(),
+          supabase
+            .from("assessment_answers")
+            .select("generated_question_id,is_correct,is_idk")
+            .eq("user_id", session.user.id),
+          supabase.rpc("obs_get_user_recommendation", { p_user_id: session.user.id }),
+        ]);
+        setBackendRecommendation(((recommendationData ?? [])[0] as BackendRecommendation | undefined) ?? null);
+
+        const scoped = buildScopeScores((bankData ?? []) as BankRow[], (answerData ?? []) as AnswerRow[]);
+        setScopeScores(scoped);
+        const sectionMap: Record<string, {pct: number, total: number, weighted_pct: number}> = {};
+        scoped.sections
+          .filter(score => ["Torah", "Former Prophets", "Latter Prophets", "Writings"].includes(score.label) && score.rawScore !== null)
+          .forEach(score => {
+            sectionMap[score.label] = {
+              pct: Math.round(score.rawScore ?? 0),
+              total: score.answered,
+              weighted_pct: Math.round(score.rawScore ?? 0),
+            };
+          });
+        setSectionScores(sectionMap);
+
         if (bliData && bliData.length > 0) {
           const b = bliData[0];
           if (b.questions_answered > 0) {
@@ -193,26 +686,38 @@ export default function HomePage() {
               bli: parseFloat(b.bli_score)
             });
             setBliLevel(b.bli_level);
-            // Parse section scores
-            if (b.section_scores) {
-              const scores: Record<string, {pct: number, total: number, weighted_pct: number}> = {};
-              Object.entries(b.section_scores).forEach(([section, data]: [string, unknown]) => {
-                const d = data as {pct: number, total: number, weighted_pct: number};
-                scores[section] = { pct: d.pct, total: d.total, weighted_pct: d.weighted_pct };
-              });
-              setSectionScores(scores);
-            }
           }
         }
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email || null);
+      setIsAnonymousDashboard(isAnonymousSession(session));
     });
     return () => subscription.unsubscribe();
   }, []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef(0);
+  // Domain constellation: when the Domains tab is active, a few sky stars fly
+  // into a polygon whose vertex radii correspond exactly to domain scores.
+  const constellationRef = useRef<{ active: boolean; t: number; points: { angle: number; pct: number }[]; lastTargets?: { x: number; y: number }[] }>({ active: false, t: 0, points: [] });
+  const radarSvgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    const constellation = constellationRef.current;
+    if (activeBreakdownTab !== "domains") {
+      constellation.active = false;
+      return;
+    }
+    const domains = scopeScores.domains;
+    constellation.points = domains.map((score, index) => {
+      const isLockedConnection = score.key === "domain:scripture_connections" && !scriptureConnectionsUnlocked;
+      const pct = isLockedConnection || score.rawScore === null || score.answered === 0 ? 0 : Math.max(0, Math.min(100, score.rawScore));
+      const angle = -Math.PI / 2 + (index / Math.max(domains.length, 1)) * Math.PI * 2;
+      return { angle, pct };
+    });
+    constellation.active = true;
+  }, [activeBreakdownTab, scopeScores.domains, scriptureConnectionsUnlocked]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -223,6 +728,7 @@ export default function HomePage() {
     let animId: number;
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
     const SKY_OVERSCAN = 2.35;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const random = createSeededRandom(getOrCreateSkySeed());
     const isArrivingFromAssessment = sessionStorage.getItem("obs_dashboard_arriving") === "1";
     const initialRotation = isArrivingFromAssessment
@@ -319,8 +825,43 @@ export default function HomePage() {
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      // Draw stars with twinkle
-      stars.forEach(star => {
+      // Advance domain-constellation activation (eased 0..1)
+      const constellation = constellationRef.current;
+      constellation.t += ((constellation.active ? 1 : 0) - constellation.t) * 0.05;
+      if (constellation.t < 0.005) constellation.t = constellation.active ? constellation.t : 0;
+      // Map radar-chart SVG coordinates into sky-canvas pixels so the
+      // constellation overlays the radar exactly (accounts for canvas
+      // centering, overscan, DPR, and initial rotation).
+      let constellationTargets: { x: number; y: number }[] | null = null;
+      const radarRect = radarSvgRef.current?.getBoundingClientRect();
+      if (radarRect && radarRect.width > 0) {
+        const theta = (initialRotation * Math.PI) / 180;
+        const cosT = Math.cos(-theta);
+        const sinT = Math.sin(-theta);
+        const viewportCx = window.innerWidth / 2;
+        const viewportCy = window.innerHeight / 2;
+        constellationTargets = constellation.points.map(point => {
+          const svgX = 160 + Math.cos(point.angle) * 104 * (point.pct / 100);
+          const svgY = 160 + Math.sin(point.angle) * 104 * (point.pct / 100);
+          const px = radarRect.left + (svgX / 320) * radarRect.width;
+          const py = radarRect.top + (svgY / 320) * radarRect.height;
+          const dx = px - viewportCx;
+          const dy = py - viewportCy;
+          return {
+            x: w / 2 + (dx * cosT - dy * sinT) * DPR,
+            y: h / 2 + (dx * sinT + dy * cosT) * DPR,
+          };
+        });
+        constellation.lastTargets = constellationTargets;
+      } else if (constellation.lastTargets && constellation.lastTargets.length === constellation.points.length) {
+        constellationTargets = constellation.lastTargets;
+      }
+      const memberCount = constellation.t > 0.01 && constellationTargets ? constellation.points.length : 0;
+      const constellationEase = constellation.t * constellation.t * (3 - 2 * constellation.t);
+
+      // Draw stars with twinkle (constellation members are drawn separately below)
+      stars.forEach((star, index) => {
+        if (index < memberCount) return;
         const twinkle = Math.sin(frame * star.twinkleSpeed + star.twinkleOffset);
         const opacity = star.opacity * (0.6 + 0.4 * twinkle);
         const x = ((star.x * w + skyOffsetX) % (w + 40) + w + 40) % (w + 40) - 20;
@@ -330,6 +871,53 @@ export default function HomePage() {
         ctx.fillStyle = `rgba(255,255,255,${opacity})`;
         ctx.fill();
       });
+
+      // Domain constellation: repositioned, brightened, connected stars.
+      // Vertex distance from center is exactly proportional to each domain score.
+      if (memberCount > 0) {
+        const targets = constellationTargets as { x: number; y: number }[];
+        const memberPoints = constellation.points.map((_point, index) => {
+          const star = stars[index];
+          const homeX = ((star.x * w + skyOffsetX) % (w + 40) + w + 40) % (w + 40) - 20;
+          const homeY = ((star.y * h + skyOffsetY - scrollRef.current * 0.15 * DPR) % (h + 40) + h + 40) % (h + 40) - 20;
+          const target = targets[index];
+          return {
+            x: homeX + (target.x - homeX) * constellationEase,
+            y: homeY + (target.y - homeY) * constellationEase,
+            star,
+          };
+        });
+
+        const lineAlpha = Math.max(0, (constellationEase - 0.55) / 0.45);
+        if (lineAlpha > 0) {
+          ctx.save();
+          ctx.strokeStyle = `rgba(173,232,255,${0.55 * lineAlpha})`;
+          ctx.lineWidth = 1.1 * DPR;
+          ctx.shadowColor = `rgba(10,163,163,${0.5 * lineAlpha})`;
+          ctx.shadowBlur = 8 * DPR;
+          ctx.beginPath();
+          memberPoints.forEach((point, index) => {
+            if (index === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+          });
+          ctx.closePath();
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        memberPoints.forEach(point => {
+          const twinkle = Math.sin(frame * point.star.twinkleSpeed * 2 + point.star.twinkleOffset);
+          const brightRadius = point.star.r * (1 + 2.4 * constellationEase) + 0.4 * twinkle * DPR * constellationEase;
+          ctx.save();
+          ctx.shadowColor = `rgba(173,232,255,${0.9 * constellationEase})`;
+          ctx.shadowBlur = 14 * DPR * constellationEase;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, Math.max(brightRadius, 0.4), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${0.55 + 0.45 * constellationEase})`;
+          ctx.fill();
+          ctx.restore();
+        });
+      }
 
       shootingStars.forEach(star => {
         const progress = (frame - star.startFrame) / star.duration;
@@ -372,7 +960,7 @@ export default function HomePage() {
       ctx.fillRect(0, 0, w, h);
 
       frame++;
-      animId = requestAnimationFrame(draw);
+      if (!reduceMotion) animId = requestAnimationFrame(draw);
     }
 
     draw();
@@ -423,6 +1011,37 @@ export default function HomePage() {
           font-weight: 600; font-size: 18px;
           color: #fff; text-decoration: none; letter-spacing: .01em;
         }
+        .brand-wrap { display: inline-flex; align-items: center; gap: 8px; }
+        .beta-badge {
+          position: relative;
+          display: inline-flex; align-items: center;
+          padding: 2px 8px; border-radius: 999px;
+          font-family: system-ui, sans-serif;
+          font-size: 10px; font-weight: 800; letter-spacing: .10em;
+          text-transform: uppercase;
+          color: rgba(255,255,255,.82);
+          background: rgba(255,255,255,.08);
+          border: 1px solid rgba(255,255,255,.16);
+          cursor: help; outline: none;
+        }
+        .beta-tooltip {
+          position: absolute; top: calc(100% + 10px); left: 0;
+          width: 260px; padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(14,18,38,.98);
+          border: 1px solid rgba(255,255,255,.14);
+          box-shadow: 0 12px 34px rgba(0,0,0,.5);
+          font-family: system-ui, sans-serif;
+          font-size: 12px; font-weight: 500; letter-spacing: 0;
+          text-transform: none; line-height: 1.45;
+          color: rgba(255,255,255,.86);
+          opacity: 0; visibility: hidden; transform: translateY(-4px);
+          transition: opacity .16s ease, transform .16s ease, visibility .16s;
+          z-index: 50; pointer-events: none;
+        }
+        .beta-badge:hover .beta-tooltip,
+        .beta-badge:focus .beta-tooltip { opacity: 1; visibility: visible; transform: translateY(0); }
+
         .nav-right { display: flex; align-items: center; gap: 10px; }
         .nav-btn {
           display: flex; align-items: center; gap: 7px;
@@ -486,6 +1105,62 @@ export default function HomePage() {
           box-shadow: 0 10px 24px rgba(0,0,0,.2);
         }
         .dashboard-tab.is-active span { color: var(--muted); }
+        .save-results-card {
+          position: relative; overflow: hidden;
+          background:
+            radial-gradient(circle at 16% 18%, rgba(10,163,163,.22), transparent 34%),
+            radial-gradient(circle at 88% 76%, rgba(212,160,23,.18), transparent 36%),
+            linear-gradient(135deg, rgba(255,255,255,.96), rgba(236,253,245,.90));
+          border: 1px solid var(--accent-line); border-radius: 20px;
+          box-shadow: var(--shadow), inset 0 0 48px rgba(10,163,163,.10);
+          backdrop-filter: blur(16px);
+          padding: 26px 30px; margin-bottom: 28px;
+          display: grid; grid-template-columns: minmax(0, 1fr) auto;
+          gap: 22px; align-items: center;
+        }
+        .save-results-card::before {
+          content: ""; position: absolute; inset: -46%;
+          background: conic-gradient(from 120deg, transparent, rgba(10,163,163,.16), transparent 30%, rgba(212,160,23,.14), transparent 62%);
+          animation: saveResultsGlow 15s linear infinite;
+          pointer-events: none;
+        }
+        .save-results-content,
+        .save-results-actions { position: relative; z-index: 1; }
+        .save-results-kicker {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 5px 11px; border-radius: 999px;
+          background: var(--accent-dim); border: 1px solid var(--accent-line);
+          color: #0a6e6e; font-size: 11px; font-weight: 850;
+          letter-spacing: .11em; text-transform: uppercase;
+          margin-bottom: 10px;
+        }
+        .save-results-title {
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: 30px; font-weight: 650; line-height: 1.05;
+          color: var(--navy); margin-bottom: 7px;
+        }
+        .save-results-copy {
+          color: var(--muted); font-size: 14px; line-height: 1.55;
+          max-width: 560px;
+        }
+        .save-results-actions {
+          display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+        }
+        .save-results-btn {
+          display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+          border: none; border-radius: 999px; padding: 15px 24px;
+          background: linear-gradient(135deg, var(--navy), #253566 58%, #0a6e6e);
+          color: #fff; font-family: inherit; font-size: 15px; font-weight: 850;
+          cursor: pointer; box-shadow: 0 16px 34px rgba(27,36,66,.34), 0 0 28px rgba(10,163,163,.20);
+          transition: transform .13s ease, box-shadow .15s ease;
+          white-space: nowrap;
+        }
+        .save-results-btn:hover { transform: translateY(-2px); box-shadow: 0 20px 42px rgba(27,36,66,.38), 0 0 34px rgba(10,163,163,.26); }
+        .save-results-note {
+          font-size: 12px; color: rgba(86,96,112,.82); font-weight: 650;
+          text-align: right;
+        }
+        @keyframes saveResultsGlow { to { transform: rotate(1turn); } }
         .placeholder-dashboard {
           background: var(--card); border: 1px solid var(--border); border-radius: 20px;
           box-shadow: var(--shadow); backdrop-filter: blur(16px);
@@ -691,6 +1366,8 @@ export default function HomePage() {
             0 0 0 1px rgba(255,255,255,.22);
           animation: waterRise 6.4s cubic-bezier(.18,.76,.12,1) both;
           transform-origin: bottom;
+          transform: skewX(calc(var(--slosh-x, 0) * -2.6deg)) translateX(calc(var(--slosh-x, 0) * -1.8%));
+          will-change: transform;
           z-index: 3;
         }
         .water-fill::before {
@@ -701,7 +1378,11 @@ export default function HomePage() {
             radial-gradient(ellipse, rgba(217,251,255,.96), rgba(82,205,224,.68) 56%, rgba(82,205,224,0) 75%);
           filter: blur(.12px);
           transform-origin: 50% 50%;
-          animation: waterSurface 6.4s cubic-bezier(.18,.76,.12,1) both, waterSlosh 5.2s ease-in-out infinite;
+          translate: calc(var(--slosh-x, 0) * -7%) calc(var(--slosh-x2, 0) * 5px);
+          rotate: calc(var(--slosh-x, 0) * -6.5deg + var(--slosh-x2, 0) * -1.6deg);
+          scale: calc(1 + var(--slosh-amp, 0) * .09) calc(1 - var(--slosh-amp, 0) * .11);
+          will-change: translate, rotate, scale;
+          animation: waterSurface 6.4s cubic-bezier(.18,.76,.12,1) both, surfaceMorph 5.2s ease-in-out infinite;
         }
         .water-fill::after {
           content: ""; position: absolute; inset: 0;
@@ -731,74 +1412,16 @@ export default function HomePage() {
           animation: liquidRoll var(--wave-speed, 8s) linear infinite, liquidBob 5.4s ease-in-out infinite;
           filter: blur(.08px);
         }
-        .water-wave-a { --wave-size: 245px; --wave-top: -105px; --wave-speed: 8.8s; opacity: .62; }
-        .water-wave-b { --wave-size: 205px; --wave-top: -82px; --wave-speed: 7.1s; top: -11px; opacity: .42; transform: scaleX(1.06); }
+        .water-wave-a { --wave-size: 245px; --wave-top: -105px; --wave-speed: 8.8s; opacity: calc(.62 + var(--slosh-amp, 0) * .22); translate: calc(var(--slosh-x, 0) * 3.6%) calc(var(--slosh-x2, 0) * -3px); }
+        .water-wave-b { --wave-size: 205px; --wave-top: -82px; --wave-speed: 7.1s; top: -11px; opacity: calc(.42 + var(--slosh-amp, 0) * .22); transform: scaleX(1.06); translate: calc(var(--slosh-x, 0) * -2.4% + var(--slosh-x2, 0) * 2.8%) calc(var(--slosh-x2, 0) * 3px); }
         .water-wave-b::before { animation-direction: reverse, normal; background: linear-gradient(135deg, rgba(189,248,255,.54), rgba(10,163,163,.26) 55%, rgba(18,123,154,.14)); }
-        .water-wave-c { --wave-size: 270px; --wave-top: -128px; --wave-speed: 11s; top: -23px; opacity: .25; transform: scaleX(.96); }
+        .water-wave-c { --wave-size: 270px; --wave-top: -128px; --wave-speed: 11s; top: -23px; opacity: calc(.25 + var(--slosh-amp, 0) * .18); transform: scaleX(.96); translate: calc(var(--slosh-x2, 0) * -3.2%) 0; }
         .water-wave-c::before { background: linear-gradient(135deg, rgba(255,255,255,.44), rgba(189,248,255,.16) 58%, transparent); }
         @keyframes waterRise { from { height: 0; } to { height: var(--water-level); } }
         @keyframes waterSurface { 0% { opacity: .10; transform: scaleX(.48); } 22% { opacity: .92; transform: scaleX(.76); } 100% { opacity: 1; transform: scaleX(1); } }
-        .knowledge-cone.is-water-active .water-fill {
-          height: var(--water-level);
-          animation: waterBodyImpulse 1.15s cubic-bezier(.2,.78,.28,1) both;
-        }
-        .knowledge-cone.is-water-active .water-fill::before {
-          animation: waterSurfaceImpulse 1.15s cubic-bezier(.2,.78,.28,1) both;
-        }
-        .knowledge-cone.is-water-active .water-fill::after {
-          animation: internalSheen 1.15s ease-in-out both;
-          opacity: .66;
-        }
-        .knowledge-cone.is-water-active .water-wave-a { animation: liquidBandImpulseA 1.15s cubic-bezier(.2,.78,.28,1) both; opacity: .78; }
-        .knowledge-cone.is-water-active .water-wave-b { animation: liquidBandImpulseB 1.15s cubic-bezier(.2,.78,.28,1) both; opacity: .60; }
-        .knowledge-cone.is-water-active .water-wave-c { animation: liquidBandImpulseC 1.15s cubic-bezier(.2,.78,.28,1) both; opacity: .38; }
-        .knowledge-cone.is-water-active .water-wave::before { animation-duration: 1.7s, 1.15s; }
-        .knowledge-cone.is-water-settling .water-fill {
-          height: var(--water-level);
-          animation: waterBodySettle 3.6s cubic-bezier(.18,.76,.12,1) both;
-        }
-        .knowledge-cone.is-water-settling .water-fill::before {
-          animation: waterSurfaceSettle 3.6s cubic-bezier(.18,.76,.12,1) both;
-        }
-        .knowledge-cone.is-water-settling .water-fill::after {
-          animation: internalSheen 3.6s ease-out both;
-        }
-        .knowledge-cone.is-water-settling .water-wave-a { animation: liquidBandSettleA 3.6s cubic-bezier(.18,.76,.12,1) both; }
-        .knowledge-cone.is-water-settling .water-wave-b { animation: liquidBandSettleB 3.6s cubic-bezier(.18,.76,.12,1) both; }
-        .knowledge-cone.is-water-settling .water-wave-c { animation: liquidBandSettleC 3.6s cubic-bezier(.18,.76,.12,1) both; }
-        @keyframes waterSlosh {
-          0%, 100% { translate: -2.4% -1px; rotate: -2deg; scale: 1.02 .92; border-radius: 42% 58% 52% 48% / 53% 60% 40% 47%; }
-          50% { translate: 2.4% 3px; rotate: 2deg; scale: 1.06 1.02; border-radius: 60% 40% 47% 53% / 60% 52% 48% 40%; }
-        }
-        @keyframes waterSurfaceImpulse {
-          0% { translate: 0 0; rotate: 0deg; scale: 1 .96; border-radius: 50% 50% 50% 50% / 56% 56% 44% 44%; }
-          22% { translate: -8% -3px; rotate: -5deg; scale: 1.14 .84; border-radius: 35% 65% 58% 42% / 46% 69% 31% 54%; }
-          48% { translate: 7% 5px; rotate: 4.6deg; scale: 1.16 1.08; border-radius: 66% 34% 41% 59% / 68% 43% 57% 32%; }
-          74% { translate: -4% 1px; rotate: -2.2deg; scale: 1.07 .95; border-radius: 43% 57% 54% 46% / 52% 62% 38% 48%; }
-          100% { translate: 2.4% 2px; rotate: 1.4deg; scale: 1.04 1; border-radius: 56% 44% 48% 52% / 58% 50% 50% 42%; }
-        }
-        @keyframes waterBodyImpulse {
-          0% { transform: skewX(0deg) translateX(0); }
-          22% { transform: skewX(-2.4deg) translateX(-2%); }
-          48% { transform: skewX(2.1deg) translateX(1.8%); }
-          74% { transform: skewX(-1deg) translateX(-.8%); }
-          100% { transform: skewX(.6deg) translateX(.5%); }
-        }
-        @keyframes waterBodySettle {
-          0% { transform: skewX(.6deg) translateX(.5%); }
-          18% { transform: skewX(-1.25deg) translateX(-1%); }
-          38% { transform: skewX(.75deg) translateX(.6%); }
-          62% { transform: skewX(-.35deg) translateX(-.25%); }
-          82% { transform: skewX(.14deg) translateX(.1%); }
-          100% { transform: skewX(0deg) translateX(0); }
-        }
-        @keyframes waterSurfaceSettle {
-          0% { translate: 2.4% 2px; rotate: 1.4deg; scale: 1.04 1; border-radius: 56% 44% 48% 52% / 58% 50% 50% 42%; }
-          18% { translate: -4.8% -2px; rotate: -3deg; scale: 1.09 .91; border-radius: 39% 61% 55% 45% / 49% 63% 37% 51%; }
-          38% { translate: 2.8% 3px; rotate: 1.8deg; scale: 1.06 1.02; border-radius: 59% 41% 47% 53% / 60% 51% 49% 40%; }
-          62% { translate: -1.4% 0; rotate: -.9deg; scale: 1.03 .97; border-radius: 47% 53% 52% 48% / 54% 57% 43% 46%; }
-          82% { translate: .55% 1px; rotate: .35deg; scale: 1.015 .99; border-radius: 52% 48% 49% 51% / 55% 53% 47% 45%; }
-          100% { translate: -2.4% -1px; rotate: -2deg; scale: 1.02 .92; border-radius: 42% 58% 52% 48% / 53% 60% 40% 47%; }
+        @keyframes surfaceMorph {
+          0%, 100% { border-radius: 42% 58% 52% 48% / 53% 60% 40% 47%; }
+          50% { border-radius: 60% 40% 47% 53% / 60% 52% 48% 40%; }
         }
         @keyframes liquidRoll {
           to { transform: translateX(-50%) rotate(1turn); }
@@ -806,46 +1429,6 @@ export default function HomePage() {
         @keyframes liquidBob {
           0%, 100% { top: var(--wave-top); border-radius: 43% 57% 46% 54% / 56% 44% 56% 44%; }
           50% { top: calc(var(--wave-top) + 7px); border-radius: 55% 45% 58% 42% / 44% 57% 43% 56%; }
-        }
-        @keyframes liquidBandImpulseA {
-          0% { transform: translateX(0) translateY(0) rotate(0deg) scaleY(1); }
-          24% { transform: translateX(-7%) translateY(-8px) rotate(-4deg) scaleY(1.22); }
-          52% { transform: translateX(6%) translateY(6px) rotate(3deg) scaleY(.92); }
-          78% { transform: translateX(-3%) translateY(-2px) rotate(-1.2deg) scaleY(1.07); }
-          100% { transform: translateX(1.8%) translateY(1px) rotate(.5deg) scaleY(1); }
-        }
-        @keyframes liquidBandImpulseB {
-          0% { transform: scaleX(1.06) translateX(0) translateY(0) rotate(0deg) scaleY(1); }
-          22% { transform: scaleX(1.06) translateX(6%) translateY(5px) rotate(3deg) scaleY(.88); }
-          50% { transform: scaleX(1.06) translateX(-7%) translateY(-7px) rotate(-3.4deg) scaleY(1.18); }
-          76% { transform: scaleX(1.06) translateX(3%) translateY(2px) rotate(1.1deg) scaleY(.98); }
-          100% { transform: scaleX(1.06) translateX(-1.4%) translateY(0) rotate(-.4deg) scaleY(1); }
-        }
-        @keyframes liquidBandImpulseC {
-          0% { transform: scaleX(.96) translateX(0) translateY(0) scaleY(1); }
-          30% { transform: scaleX(.96) translateX(-4%) translateY(-4px) scaleY(1.16); }
-          60% { transform: scaleX(.96) translateX(4%) translateY(3px) scaleY(.94); }
-          100% { transform: scaleX(.96) translateX(.8%) translateY(0) scaleY(1); }
-        }
-        @keyframes liquidBandSettleA {
-          0% { transform: translateX(1.8%) translateY(1px) rotate(.5deg) scaleY(1); opacity: .70; }
-          22% { transform: translateX(-4%) translateY(-5px) rotate(-2deg) scaleY(1.14); opacity: .66; }
-          45% { transform: translateX(2.6%) translateY(3px) rotate(1.1deg) scaleY(.97); opacity: .58; }
-          72% { transform: translateX(-1.2%) translateY(-1px) rotate(-.5deg) scaleY(1.03); opacity: .52; }
-          100% { transform: translateX(0) translateY(0) rotate(0deg) scaleY(1); opacity: .48; }
-        }
-        @keyframes liquidBandSettleB {
-          0% { transform: scaleX(1.06) translateX(-1.4%) translateY(0) rotate(-.4deg) scaleY(1); opacity: .54; }
-          24% { transform: scaleX(1.06) translateX(3.2%) translateY(3px) rotate(1.3deg) scaleY(.93); opacity: .56; }
-          48% { transform: scaleX(1.06) translateX(-2%) translateY(-2px) rotate(-.8deg) scaleY(1.07); opacity: .48; }
-          76% { transform: scaleX(1.06) translateX(.8%) translateY(0) rotate(.25deg) scaleY(.99); opacity: .42; }
-          100% { transform: scaleX(1.06) translateX(0) translateY(0) rotate(0deg) scaleY(1); opacity: .38; }
-        }
-        @keyframes liquidBandSettleC {
-          0% { transform: scaleX(.96) translateX(.8%) translateY(0) scaleY(1); opacity: .34; }
-          35% { transform: scaleX(.96) translateX(-1.7%) translateY(-2px) scaleY(1.08); opacity: .32; }
-          70% { transform: scaleX(.96) translateX(.9%) translateY(0) scaleY(.98); opacity: .28; }
-          100% { transform: scaleX(.96) translateX(0) translateY(0) scaleY(1); opacity: .24; }
         }
         @keyframes internalSheen { 0%, 100% { transform: translateX(-16%) skewX(-7deg); opacity: .30; } 48% { transform: translateX(16%) skewX(-7deg); opacity: .64; } }
         .cone-tier {
@@ -939,6 +1522,43 @@ export default function HomePage() {
           background: var(--accent-dim); border: 1px solid var(--accent-line);
           color: #0a6e6e; font-size: 12px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase;
         }
+        .assessment-suite {
+          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px; margin-bottom: 28px;
+        }
+        .assessment-suite-card {
+          background: var(--card); border: 1px solid var(--border);
+          border-radius: 18px; padding: 20px 22px;
+          box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
+          display: flex; flex-direction: column; gap: 12px;
+        }
+        .assessment-suite-top {
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        }
+        .assessment-suite-title {
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: 24px; font-weight: 700; color: var(--navy); line-height: 1;
+        }
+        .assessment-suite-badge {
+          display: inline-flex; align-items: center; border-radius: 999px;
+          padding: 5px 9px; font-size: 10.5px; font-weight: 850;
+          letter-spacing: .08em; text-transform: uppercase;
+          background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+        }
+        .assessment-suite-copy { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+        .assessment-suite-stats {
+          display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted);
+        }
+        .assessment-suite-stats span {
+          display: inline-flex; border-radius: 999px; padding: 5px 9px;
+          background: rgba(27,36,66,.055); border: 1px solid rgba(27,36,66,.08);
+          font-weight: 700;
+        }
+        .assessment-suite-link {
+          display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+          color: var(--navy); text-decoration: none; font-size: 13.5px; font-weight: 800;
+        }
+        .assessment-suite-link:hover { color: #0a6e6e; }
         .start-hero {
           background: var(--card); border: 1px solid var(--border);
           border-radius: 20px; padding: 48px 40px;
@@ -1039,37 +1659,251 @@ export default function HomePage() {
         .recommended-priority { font-size: 12.5px; line-height: 1.45; color: var(--muted); max-width: 260px; }
         .recommended-action { display: flex; align-items: center; gap: 8px; justify-self: end; margin-top: 12px; color: var(--navy); font-size: 13px; font-weight: 800; text-decoration: none; }
         .recommended-action svg { width: 16px; height: 16px; }
+        .retest-modal-backdrop {
+          position: fixed; inset: 0; z-index: 90;
+          background: rgba(7,12,28,.66); backdrop-filter: blur(8px);
+          display: grid; place-items: center; padding: 24px;
+        }
+        .retest-modal {
+          width: min(100%, 480px); border-radius: 20px;
+          background: rgba(255,255,255,.96); border: 1px solid var(--border);
+          box-shadow: var(--shadow); padding: 28px 30px;
+          position: relative; overflow: hidden;
+        }
+        .retest-modal::before {
+          content: ""; position: absolute; inset: 0 auto 0 0; width: 5px;
+          background: linear-gradient(180deg, var(--accent), #d4a017);
+        }
+        .retest-modal-kicker {
+          color: #0a6e6e; font-size: 11px; font-weight: 850;
+          letter-spacing: .11em; text-transform: uppercase; margin-bottom: 10px;
+        }
+        .retest-modal-title {
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: 28px; line-height: 1.08; font-weight: 650;
+          color: var(--navy); margin-bottom: 10px;
+        }
+        .retest-modal-copy {
+          color: var(--muted); font-size: 14px; line-height: 1.6;
+          margin-bottom: 18px;
+        }
+        .retest-modal-actions {
+          display: flex; align-items: center; justify-content: flex-end;
+          gap: 10px; flex-wrap: wrap;
+        }
+        .retest-modal-primary,
+        .retest-modal-secondary {
+          border-radius: 999px; padding: 11px 18px;
+          font-family: inherit; font-size: 13.5px; font-weight: 800;
+          cursor: pointer;
+        }
+        .retest-modal-primary {
+          border: none; color: #fff; background: var(--navy);
+          box-shadow: 0 10px 24px rgba(27,36,66,.28);
+        }
+        .retest-modal-secondary {
+          border: 1px solid var(--border); color: var(--muted);
+          background: rgba(255,255,255,.70);
+        }
         .section-eyebrow {
           font-size: 11px; font-weight: 700; letter-spacing: .10em;
           text-transform: uppercase; color: rgba(255,255,255,.45);
           margin-bottom: 14px; margin-top: 32px;
         }
+        .breakdown-head {
+          display: flex; justify-content: space-between; align-items: center;
+          gap: 14px; margin-top: 32px; margin-bottom: 14px;
+        }
+        .breakdown-head .section-eyebrow { margin: 0; }
+        .breakdown-tabs {
+          display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px;
+          background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.12);
+          backdrop-filter: blur(10px);
+        }
+        .breakdown-tab {
+          border: none; border-radius: 999px; padding: 7px 12px;
+          background: transparent; color: rgba(255,255,255,.62);
+          font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
+        }
+        .breakdown-tab.is-active { background: rgba(255,255,255,.92); color: var(--navy); }
+        .breakdown-note {
+          margin: -4px 0 14px; color: rgba(255,255,255,.52);
+          font-size: 12.5px; line-height: 1.45;
+        }
         .sections-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .sections-grid.books { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .sections-grid.domains { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .domain-radar-card {
+          position: relative; overflow: hidden;
+          background:
+            radial-gradient(circle at 18% 20%, rgba(10,163,163,.14), transparent 32%),
+            radial-gradient(circle at 82% 78%, rgba(212,160,23,.10), transparent 34%),
+            rgba(7,12,28,.38);
+          border: 1px solid rgba(255,255,255,.14);
+          border-radius: 18px; padding: 26px 28px;
+          box-shadow: 0 24px 60px rgba(0,0,0,.34), inset 0 0 0 1px rgba(255,255,255,.06);
+          backdrop-filter: blur(8px);
+          display: grid; grid-template-columns: minmax(300px, 1fr) minmax(250px, .85fr);
+          gap: 28px; align-items: center;
+        }
+        .domain-radar-card::before {
+          content: ""; position: absolute; inset: 0; pointer-events: none;
+          background:
+            radial-gradient(circle at 50% 48%, rgba(10,163,163,.18), transparent 32%),
+            radial-gradient(circle at 50% 48%, rgba(255,255,255,.08), transparent 54%);
+          opacity: .55;
+        }
+        .domain-radar-card::after {
+          content: ""; position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(115deg, transparent 0 42%, rgba(255,255,255,.09) 50%, transparent 58% 100%);
+          opacity: .34;
+        }
+        .domain-radar-wrap {
+          position: relative; z-index: 1; min-height: 390px;
+          display: grid; place-items: center;
+        }
+        .domain-radar-svg {
+          width: min(100%, 430px); height: auto; display: block;
+          overflow: visible;
+        }
+        .radar-ring {
+          fill: none; stroke: rgba(255,255,255,.08); stroke-width: .9;
+        }
+        .radar-axis {
+          stroke: rgba(255,255,255,.09); stroke-width: .8;
+        }
+        .radar-shape {
+          fill: rgba(10,163,163,.08);
+          stroke: rgba(173,232,255,.82); stroke-width: 1.8;
+          filter: drop-shadow(0 0 12px rgba(103,232,249,.42));
+          animation: constellationPulse 4.8s ease-in-out infinite;
+        }
+        .radar-point {
+          fill: #fff; stroke: rgba(173,232,255,.96); stroke-width: 2.5;
+          stroke-linejoin: round;
+          filter: drop-shadow(0 0 8px rgba(255,255,255,.85)) drop-shadow(0 0 16px rgba(103,232,249,.75));
+          animation: constellationStar 3.8s ease-in-out infinite;
+        }
+        .radar-point-glow {
+          fill: rgba(103,232,249,.18);
+          stroke: rgba(173,232,255,.20);
+          stroke-width: 1;
+          animation: constellationStar 3.8s ease-in-out infinite;
+        }
+        @keyframes constellationPulse {
+          0%, 100% { opacity: .82; }
+          50% { opacity: 1; }
+        }
+        @keyframes constellationStar {
+          0%, 100% { opacity: .86; }
+          50% { opacity: 1; }
+        }
+        .radar-label {
+          fill: rgba(255,255,255,.90); font-size: 10.5px; font-weight: 850;
+          letter-spacing: .06em; text-transform: uppercase;
+        }
+        .radar-score-label {
+          fill: rgba(255,255,255,.82); font-size: 14px; font-weight: 800;
+        }
+        .domain-radar-side {
+          position: relative; z-index: 1;
+          display: flex; flex-direction: column; gap: 12px;
+        }
+        .domain-radar-title {
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: 26px; line-height: 1.08; color: #fff;
+          font-weight: 650; margin-bottom: 2px;
+        }
+        .domain-radar-copy {
+          color: rgba(255,255,255,.70); font-size: 13.5px; line-height: 1.55;
+          margin-bottom: 8px;
+        }
+        .domain-radar-list {
+          display: grid; gap: 8px;
+        }
+        .domain-radar-row {
+          display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px;
+          align-items: center; padding: 9px 11px; border-radius: 12px;
+          background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.13);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+        }
+        .domain-radar-row.is-locked {
+          background: rgba(255,255,255,.06);
+          border-style: dashed;
+          opacity: .72;
+        }
+        .domain-radar-name {
+          color: rgba(255,255,255,.92); font-size: 13px; font-weight: 760;
+        }
+        .domain-radar-meta {
+          color: rgba(255,255,255,.55); font-size: 11.5px; font-weight: 650;
+        }
+        .domain-radar-score {
+          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          font-size: 20px; font-weight: 700;
+        }
+        .domain-radar-score.is-locked {
+          font-family: "Inter", system-ui, sans-serif;
+          font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
+          color: rgba(255,255,255,.56);
+        }
         .section-card {
           background: var(--card); border: 1px solid var(--border);
           border-radius: 16px; padding: 20px 22px;
           box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
           position: relative; overflow: hidden; opacity: .75;
         }
+        .section-card.has-score { opacity: 1; }
+        .section-card.low-evidence { opacity: .82; }
         .section-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+        .section-card.ot::before { background: linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed); }
         .section-card.torah::before   { background: var(--torah-bar); }
         .section-card.former::before  { background: var(--former-bar); }
         .section-card.latter::before  { background: var(--latter-bar); }
+        .section-card.prophets::before { background: linear-gradient(90deg,#0e8c6a,#2563c4); }
         .section-card.writings::before { background: var(--writings-bar); }
+        .section-card.domain-events::before { background: linear-gradient(90deg,#d4a017,#f5c842); }
+        .section-card.domain-characters::before { background: linear-gradient(90deg,#0e8c6a,#34d399); }
+        .section-card.domain-geography::before { background: linear-gradient(90deg,#0aa3a3,#67e8f9); }
+        .section-card.domain-significance::before { background: linear-gradient(90deg,#2563c4,#60a5fa); }
+        .section-card.domain-speech::before { background: linear-gradient(90deg,#7c3aed,#a78bfa); }
+        .section-card.domain-law::before { background: linear-gradient(90deg,#b45309,#f59e0b); }
+        .section-card.domain-numbers::before { background: linear-gradient(90deg,#566070,#9aa3b2); }
         .sc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
         .sc-name { font-size: 15px; font-weight: 650; color: var(--navy); }
         .sc-books { font-size: 12px; color: var(--muted); margin-top: 2px; }
         .sc-pct-empty { font-family: "Crimson Pro",Georgia,serif; font-size: 24px; font-weight: 700; color: rgba(27,36,66,.18); line-height: 1; }
         .sc-bar-track { height: 6px; border-radius: 999px; background: rgba(27,36,66,.07); margin-bottom: 12px; }
+        .sc-chip-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .sc-chip-empty { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: rgba(27,36,66,.05); border: 1px solid var(--border); color: var(--muted); }
+        .sc-chip-empty.evidence-high,
+        .sc-chip-empty.evidence-moderate { background: var(--accent-dim); border-color: var(--accent-line); color: #0a6e6e; }
+        .sc-chip-empty.evidence-low { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+        .sc-chip-empty.evidence-none { background: rgba(27,36,66,.05); border-color: var(--border); color: var(--muted); }
         @media (max-width: 640px) {
           .score-strip { grid-template-columns: 1fr; }
           .score-block { border-right: none; border-bottom: 1px solid var(--border); }
           .conf-block { border-left: none; border-top: 1px solid var(--border); align-items: center; text-align: center; }
-          .sections-grid { grid-template-columns: 1fr; }
+          .breakdown-head { flex-direction: column; align-items: flex-start; }
+          .breakdown-tabs { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+          .breakdown-tab { padding-inline: 8px; }
+          .sections-grid,
+          .sections-grid.books,
+          .sections-grid.domains { grid-template-columns: 1fr; }
+          .domain-radar-card { grid-template-columns: 1fr; padding: 22px 18px; }
+          .domain-radar-wrap { min-height: 330px; }
+          .domain-radar-svg { width: min(100%, 340px); }
           .recommended-card { grid-template-columns: 1fr; }
           .recommended-priority { max-width: none; }
           .recommended-action { justify-self: start; }
+          .retest-modal { padding: 24px 22px; }
+          .retest-modal-actions { align-items: stretch; flex-direction: column-reverse; }
+          .retest-modal-primary,
+          .retest-modal-secondary { width: 100%; }
+          .save-results-card { grid-template-columns: 1fr; padding: 24px 20px; }
+          .save-results-actions { align-items: stretch; }
+          .save-results-btn { width: 100%; }
+          .save-results-note { text-align: center; }
           .knowledge-cone-card { padding: 24px 18px; }
           .knowledge-cone-head { align-items: flex-start; flex-direction: column; }
           .knowledge-cone-score { align-items: flex-start; }
@@ -1090,11 +1924,21 @@ export default function HomePage() {
           .assessment-cta-wrap { padding: 28px 18px; }
           .start-hero.compact.is-charging .assessment-cta-wrap { padding: 0; }
           .start-hero.compact .start-btn { width: min(100%, 330px); min-width: min(100%, 330px); justify-content: center; padding: 17px 24px; }
+          .assessment-suite { grid-template-columns: 1fr; }
           .dashboard-tabs { grid-template-columns: 1fr; margin-top: -8px; }
           .placeholder-dashboard { grid-template-columns: 1fr; padding: 30px 24px; min-height: 360px; }
           .placeholder-orbit { width: min(210px, 70vw); margin: 0 auto; }
           .nav { padding: 13px 16px; }
           .page { padding: 28px 16px 72px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .water-fill, .water-fill::before, .water-fill::after,
+          .water-wave, .water-wave::before,
+          .assessment-cta-wrap::before, .assessment-cta-wrap::after,
+          .start-hero.compact .start-btn::before,
+          .placeholder-orbit, .placeholder-orbit::before, .placeholder-orbit::after {
+            animation: none !important;
+          }
         }
       `}</style>
       <script
@@ -1106,7 +1950,15 @@ export default function HomePage() {
       <canvas ref={canvasRef} className="stars" aria-hidden="true" />
 
       <nav className="nav">
-        <Link className="nav-brand" href="/">Open Bible School</Link>
+        <span className="brand-wrap">
+          <Link className="nav-brand" href="/">Open Bible Assessment</Link>
+          <span className="beta-badge" tabIndex={0}>
+            Beta
+            <span className="beta-tooltip" role="tooltip">
+              Open Bible Assessment is still in active development. Scores and questions are being refined, so your results may shift as the platform matures.
+            </span>
+          </span>
+        </span>
         <div className="nav-right">
           <Link className="nav-btn" href="/knowledge-map">Knowledge Map</Link>
           <Link className="nav-btn" href="/about">About</Link>
@@ -1119,9 +1971,12 @@ export default function HomePage() {
               <button
                 onClick={async () => {
                   await supabase.auth.signOut();
+                  clearAssessmentBrowserStorage();
                   setUserEmail(null);
                   setAssessmentData(null);
                   setSectionScores({});
+                  setScopeScores(buildScopeScores([], []));
+                  setBackendRecommendation(null);
                   setBliLevel(null);
                 }}
                 style={{fontSize:12,color:"var(--muted)",padding:"6px 12px",borderRadius:999,border:"1px solid var(--border)",background:"rgba(255,255,255,.5)",cursor:"pointer",fontFamily:"inherit",transition:"color .14s"}}
@@ -1166,7 +2021,7 @@ export default function HomePage() {
             onClick={() => setActiveDashboardTab("church-history")}
           >
             <strong>Church History</strong>
-            <span>Temporary dashboard</span>
+            <span>Coming soon</span>
           </button>
           <button
             type="button"
@@ -1176,12 +2031,61 @@ export default function HomePage() {
             onClick={() => setActiveDashboardTab("biblical-languages")}
           >
             <strong>Biblical Languages</strong>
-            <span>Temporary dashboard</span>
+            <span>Coming soon</span>
           </button>
         </div>
 
         {activeDashboardTab === "bli" ? (
           <>
+        {isAnonymousDashboard && assessmentData && (
+          <section className="save-results-card" aria-label="Save assessment results">
+            <div className="save-results-content">
+              <span className="save-results-kicker">Browser-only results</span>
+              <h2 className="save-results-title">Save your results by creating an account.</h2>
+              <p className="save-results-copy">
+                Your BLI is available in this browser session. Create a free account to keep your score, preserve your answer history, and continue refining your dashboard across devices.
+              </p>
+            </div>
+            <div className="save-results-actions">
+              <button className="save-results-btn" type="button" onClick={handleSignIn}>
+                Save results
+                <span aria-hidden="true">→</span>
+              </button>
+              <span className="save-results-note">After you sign in, this message will disappear.</span>
+            </div>
+          </section>
+        )}
+
+        <section className="assessment-suite" aria-label="Assessment dashboards">
+          <div className="assessment-suite-card">
+            <div className="assessment-suite-top">
+              <h2 className="assessment-suite-title">Old Testament</h2>
+            </div>
+            <p className="assessment-suite-copy">Full adaptive assessment across the Old Testament. This is the verified BLI track.</p>
+            <div className="assessment-suite-stats">
+              <span>{assessmentData ? `${assessmentData.answered} answered` : "Not yet assessed"}</span>
+              <span>{assessmentData ? `BLI ${currentDisplayScore}` : "Credential track"}</span>
+            </div>
+            <Link className="assessment-suite-link" href="/assess?choose=1">
+              {assessmentData ? "Continue OT assessment" : "Start OT assessment"} →
+            </Link>
+          </div>
+          <div className="assessment-suite-card">
+            <div className="assessment-suite-top">
+              <h2 className="assessment-suite-title">New Testament Pilot</h2>
+              <span className="assessment-suite-badge">Pilot</span>
+            </div>
+            <p className="assessment-suite-copy">Preview questions across all 27 New Testament books. Results are developmental and not credential-grade.</p>
+            <div className="assessment-suite-stats">
+              <span>{ntPilotSummary ? `${ntPilotSummary.accuracy}% latest` : "No pilot attempt yet"}</span>
+              <span>{ntPilotSummary ? `${ntPilotSummary.booksAttempted} books attempted` : "Separate from BLI"}</span>
+            </div>
+            <Link className="assessment-suite-link" href="/assess?testament=NT">
+              Explore NT pilot →
+            </Link>
+          </div>
+        </section>
+
         <div className="score-strip">
           <div className="score-block">
             {assessmentData ? (
@@ -1263,10 +2167,13 @@ export default function HomePage() {
                   {bliLevel}
                 </div>
                 <p className="level-desc-empty">
+                  {bliLevel === "Scholar" && "You command the Old Testament at the highest level this index measures — text, structure, theology, and the connections between them."}
+                  {bliLevel === "Learned" && "Your knowledge extends well beyond the narratives into fine textual detail and theological architecture. You read the OT the way its careful students do."}
                   {bliLevel === "Studied" && "You engage with the OT at a scholarly level — aware of intertextual connections, textual detail, and theological structure."}
                   {bliLevel === "Literate" && "You know both the stories and the text. You can navigate the OT with confidence and are ready to go deeper into its theological architecture."}
                   {bliLevel === "Familiar" && "You know the major stories and characters well. The next step is moving deeper into textual detail — specific words, names, and connections between events."}
                   {bliLevel === "Acquainted" && "You have some exposure to the OT but significant narrative gaps remain. Start with Genesis, Exodus, and 1-2 Samuel."}
+                  {bliLevel === "Unfamiliar" && "You're at the very beginning — and that's a fine place to start. Begin with Genesis and Exodus; the rest of the Old Testament builds on them."}
                 </p>
               </>
             ) : (
@@ -1293,6 +2200,25 @@ export default function HomePage() {
           </div>
         </div>
 
+        <div className={`start-hero compact ${isAssessmentCharging ? "is-charging" : ""}`}>
+          <div className="assessment-cta-wrap">
+            <Link
+              className="start-btn"
+              href={assessmentData ? "/assess" : "/assess?choose=1"}
+              onPointerDown={startAssessmentHold}
+              onPointerUp={cancelAssessmentHold}
+              onPointerLeave={cancelAssessmentHold}
+              onPointerCancel={cancelAssessmentHold}
+              onClick={cancelAssessmentHold}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12h13"/><path d="M11 5l7 7-7 7"/>
+              </svg>
+              <span className="start-btn-label">{assessmentData ? "Continue assessment" : "Start assessment"}</span>
+            </Link>
+          </div>
+        </div>
+
         <section className="knowledge-cone-card" aria-label="BLI knowledge cone">
           <div className="knowledge-cone-head">
             <div>
@@ -1306,9 +2232,11 @@ export default function HomePage() {
           </div>
           <div className="knowledge-cone-wrap">
             <div
-              className={`knowledge-cone ${waterMotion === "active" ? "is-water-active" : ""} ${waterMotion === "settling" ? "is-water-settling" : ""}`}
-              onPointerEnter={startWaterMotion}
-              onPointerLeave={settleWaterMotion}
+              ref={coneRef}
+              className="knowledge-cone"
+              onPointerEnter={handleConePointerEnter}
+              onPointerMove={handleConePointerMove}
+              onPointerLeave={handleConePointerLeave}
               style={{"--marker-y": `${coneMarkerPercent(currentDisplayScore)}`} as { [key: string]: string }}
             >
               <div className="glass-vessel" aria-hidden="true">
@@ -1373,21 +2301,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        <div className={`start-hero compact ${isAssessmentCharging ? "is-charging" : ""}`}>
-          <div
-            className="assessment-cta-wrap"
-            onMouseEnter={startAssessmentHold}
-            onMouseLeave={cancelAssessmentHold}
-          >
-            <Link className="start-btn" href="/assess" onClick={cancelAssessmentHold}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12h13"/><path d="M11 5l7 7-7 7"/>
-              </svg>
-              <span className="start-btn-label">{assessmentData ? "Continue assessment" : "Start assessment"}</span>
-            </Link>
-          </div>
-        </div>
-
         <section className="recommended-card" aria-label="Recommended reading">
           <div>
             <p className="recommended-eyebrow">Recommended next</p>
@@ -1397,8 +2310,8 @@ export default function HomePage() {
           </div>
           <div>
             <p className="recommended-priority">{recommendedStudy.priority}</p>
-            <Link className="recommended-action" href="/knowledge-map">
-              Open knowledge map
+            <Link className="recommended-action" href={recommendedStudy.actionHref} onClick={handleRecommendedAction}>
+              {recommendedStudy.actionLabel}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
               </svg>
@@ -1406,47 +2319,176 @@ export default function HomePage() {
           </div>
         </section>
 
-        <p className="section-eyebrow">Breakdown by section</p>
-        <div className="sections-grid">
-          {[
-            { cls: "torah",    name: "Torah",           books: "Genesis - Deuteronomy" },
-            { cls: "former",   name: "Former Prophets", books: "Joshua - Kings" },
-            { cls: "latter",   name: "Latter Prophets", books: "Isaiah - Malachi" },
-            { cls: "writings", name: "Writings",        books: "Psalms, Proverbs, Job..." },
-          ].map(s => {
-            const score = sectionScores[s.name];
-            return (
-              <div key={s.cls} className={"section-card " + s.cls} style={{opacity: score ? 1 : 0.55}}>
-                <div className="sc-top">
-                  <div>
-                    <div className="sc-name">{s.name}</div>
-                    <div className="sc-books">{s.books}</div>
-                  </div>
-                  <div className="sc-pct-empty" style={{color: score ? "#1b2442" : undefined}}>
-                    {score ? score.pct + "%" : "-"}
-                  </div>
-                </div>
-                <div className="sc-bar-track">
-                  {score && (
-                    <div className="sc-bar-fill" style={{
-                      width: score.pct + "%",
-                      background: s.cls === "torah" ? "linear-gradient(90deg,#d4a017,#f5c842)"
-                        : s.cls === "former" ? "linear-gradient(90deg,#0e8c6a,#34d399)"
-                        : s.cls === "latter" ? "linear-gradient(90deg,#2563c4,#60a5fa)"
-                        : "linear-gradient(90deg,#7c3aed,#a78bfa)",
-                      height: "100%", borderRadius: 999, transition: "width 1s ease"
-                    }} />
-                  )}
-                </div>
-                <span className="sc-chip-empty" style={score ? {
-                  background: "var(--accent-dim)", borderColor: "var(--accent-line)", color: "#0a6e6e"
-                } : {}}>
-                  {score ? score.total + " questions answered" : "Not yet assessed"}
-                </span>
-              </div>
-            );
-          })}
+        <div className="breakdown-head">
+          <p className="section-eyebrow">BLI profile</p>
+          <div className="breakdown-tabs" role="tablist" aria-label="BLI profile breakdown">
+            {[
+              { key: "sections", label: "Sections" },
+              { key: "books", label: "Books" },
+              { key: "domains", label: "Domains" },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={activeBreakdownTab === tab.key}
+                className={`breakdown-tab ${activeBreakdownTab === tab.key ? "is-active" : ""}`}
+                onClick={() => setActiveBreakdownTab(tab.key as BreakdownTab)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
+        <p className="breakdown-note">
+          {activeBreakdownTab === "sections" && "Scoped BLI uses the same guess-discounted evidence as the main score, grouped by canon and OT section."}
+          {activeBreakdownTab === "books" && "Book scores are useful once there are several answered questions in that book; low-evidence cards are intentionally muted."}
+          {activeBreakdownTab === "domains" && "Dimensions show the kind of knowledge being tested. Cross Ref unlocks after baseline competence in Torah and Former Prophets."}
+        </p>
+        {activeBreakdownTab === "domains" ? (() => {
+          const center = 160;
+          const radius = 104;
+          const labelRadius = 152;
+          const scores = scopeScores.domains;
+          const pointFor = (index: number, valueRadius: number) => {
+            const angle = -Math.PI / 2 + (index / Math.max(scores.length, 1)) * Math.PI * 2;
+            return {
+              x: center + Math.cos(angle) * valueRadius,
+              y: center + Math.sin(angle) * valueRadius,
+            };
+          };
+          const polygonFor = (valueRadius: number) => scores
+            .map((_, index) => {
+              const point = pointFor(index, valueRadius);
+              return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+            })
+            .join(" ");
+
+          return (
+            <section className="domain-radar-card" aria-label="BLI dimension radar chart">
+              <div className="domain-radar-wrap">
+                <svg ref={radarSvgRef} className="domain-radar-svg" viewBox="0 0 320 320" role="img" aria-label="Dimension scores radar chart">
+                  {[0.2, 0.4, 0.6, 0.8, 1].map(level => (
+                    <polygon key={level} className="radar-ring" points={polygonFor(radius * level)} />
+                  ))}
+                  {scores.map((score, index) => {
+                    const end = pointFor(index, radius);
+                    const label = pointFor(index, labelRadius);
+                    const isLockedConnection = score.key === "domain:scripture_connections" && !scriptureConnectionsUnlocked;
+                    return (
+                      <g key={score.key}>
+                        <line className="radar-axis" x1={center} y1={center} x2={end.x} y2={end.y} />
+                        <text className="radar-label" x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle">
+                          {(() => {
+                            const words = score.label.split(" ");
+                            const forceSplit = score.label === "Theological Reasoning";
+                            // Split into two lines at the & or midpoint
+                            const ampIdx = words.indexOf("&");
+                            const splitAt = ampIdx > 0 ? ampIdx + 1 : Math.ceil(words.length / 2);
+                            if (words.length <= 2 && !forceSplit) {
+                              return <tspan>{score.label}</tspan>;
+                            }
+                            const line1 = words.slice(0, splitAt).join(" ");
+                            const line2 = words.slice(splitAt).join(" ");
+                            return (
+                              <>
+                                <tspan x={label.x} dy="-6">{line1}</tspan>
+                                <tspan x={label.x} dy="12">{line2}</tspan>
+                              </>
+                            );
+                          })()}
+                        </text>
+                        {!isLockedConnection && (
+                          <text
+                            className="radar-score-label"
+                            x={label.x}
+                            y={label.y + (score.label === "Theological Reasoning" ? 26 : score.label.split(" ").length > 2 ? 20 : 13)}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                          >
+                            {score.displayScore ?? "--"}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+              <div className="domain-radar-side">
+                <div>
+                  <h3 className="domain-radar-title">Knowledge by Dimension</h3>
+                  <p className="domain-radar-copy">
+                    This profile shows the kinds of Old Testament knowledge being tested. Cross Ref stays locked until the earlier foundation is stable enough for cross-reference questions.
+                  </p>
+                </div>
+                <div className="domain-radar-list">
+                  {scores.map(score => {
+                    const isLockedConnection = score.key === "domain:scripture_connections" && !scriptureConnectionsUnlocked;
+                    return (
+                      <div className={`domain-radar-row ${isLockedConnection ? "is-locked" : ""}`} key={score.key}>
+                        <div>
+                          <div className="domain-radar-name">{score.label}</div>
+                          <div className="domain-radar-meta">
+                            {isLockedConnection
+                              ? "Locked until Torah and Former Prophets reach baseline"
+                              : score.answered > 0 ? `${score.answered} answered · ${evidenceLabel(score)}` : "Untested"}
+                          </div>
+                        </div>
+                        <div className={`domain-radar-score ${isLockedConnection ? "is-locked" : ""}`}>
+                          {isLockedConnection ? "Locked" : score.displayScore ?? "--"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          );
+        })() : (
+          <div className={`sections-grid ${activeBreakdownTab}`}>
+            {visibleBreakdownScores.map(s => {
+              const hasScore = s.rawScore !== null && s.answered > 0;
+              const fillColor = s.className === "torah" ? "linear-gradient(90deg,#d4a017,#f5c842)"
+                : s.className === "former" ? "linear-gradient(90deg,#0e8c6a,#34d399)"
+                : s.className === "latter" ? "linear-gradient(90deg,#2563c4,#60a5fa)"
+                : s.className === "writings" ? "linear-gradient(90deg,#7c3aed,#a78bfa)"
+                : s.className === "prophets" ? "linear-gradient(90deg,#0e8c6a,#2563c4)"
+                : s.className === "ot" ? "linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed)"
+                : "linear-gradient(90deg,#0aa3a3,#67e8f9)";
+              return (
+                <div
+                  key={s.key}
+                  className={`section-card ${s.className} ${hasScore ? "has-score" : ""} ${s.confidence === "low" || s.confidence === "none" ? "low-evidence" : ""}`}
+                >
+                  <div className="sc-top">
+                    <div>
+                      <div className="sc-name">{s.label}</div>
+                      <div className="sc-books">{s.subtitle}</div>
+                    </div>
+                    <div className="sc-pct-empty" style={{color: hasScore ? "#1b2442" : undefined}}>
+                      {hasScore ? s.displayScore : "--"}
+                    </div>
+                  </div>
+                  <div className="sc-bar-track">
+                    {hasScore && (
+                      <div className="sc-bar-fill" style={{
+                        width: `${Math.max(3, Math.min(100, s.rawScore ?? 0))}%`,
+                        background: fillColor,
+                        height: "100%", borderRadius: 999, transition: "width 1s ease"
+                      }} />
+                    )}
+                  </div>
+                  <div className="sc-chip-row">
+                    <span className={`sc-chip-empty evidence-${s.confidence}`}>
+                      {hasScore ? `${s.answered} answered` : "Not yet assessed"}
+                    </span>
+                    {hasScore && <span className={`sc-chip-empty evidence-${s.confidence}`}>{evidenceLabel(s)}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
           </>
         ) : (
           <section className="placeholder-dashboard" aria-label={`${activeDashboardTab === "church-history" ? "Church History" : "Biblical Languages"} dashboard placeholder`}>
@@ -1470,6 +2512,25 @@ export default function HomePage() {
           </section>
         )}
       </main>
+      {pendingRetestHref && (
+        <div className="retest-modal-backdrop" role="presentation" onClick={() => setPendingRetestHref(null)}>
+          <div className="retest-modal" role="dialog" aria-modal="true" aria-labelledby="retest-modal-title" onClick={event => event.stopPropagation()}>
+            <p className="retest-modal-kicker">Focused retest</p>
+            <h2 className="retest-modal-title" id="retest-modal-title">Have you reread this section?</h2>
+            <p className="retest-modal-copy">
+              This retest is meant to measure learning after review. Retesting immediately may mostly measure short-term recall, so your BLI is more meaningful if you have actually reread the recommended passage.
+            </p>
+            <div className="retest-modal-actions">
+              <button className="retest-modal-secondary" type="button" onClick={() => setPendingRetestHref(null)}>
+                Not yet
+              </button>
+              <button className="retest-modal-primary" type="button" onClick={continuePendingRetest}>
+                I reread it - continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

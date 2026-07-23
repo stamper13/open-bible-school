@@ -22,6 +22,9 @@ function getOrCreateSkySeed() {
 }
 
 type Choice = { id: string; text: string };
+type Testament = "OT" | "NT";
+type AssessmentMode = Testament | "select";
+type NtSectionKey = "GOSPELS_ACTS" | "PAULINE" | "GENERAL" | "APOCALYPSE";
 type Question = {
   out_generated_question_id: string;
   prompt: string;
@@ -34,6 +37,39 @@ type Question = {
 };
 type Phase = "starting" | "question" | "feedback" | "complete" | "error";
 type ReportCategory = "wrong_answer" | "inaccurate" | "poorly_worded" | "other";
+type NtBookMetadata = {
+  book_code: string;
+  canon_order: number;
+  name: string;
+  nt_division: NtSectionKey;
+};
+type NtScopeOption = {
+  kind: "all" | "section" | "book";
+  value: string;
+  rpcValue?: string;
+  label: string;
+  description: string;
+};
+type NtPilotQuestion = Question & {
+  book_name: string;
+  nt_division: NtSectionKey;
+};
+type NtPilotQuestionRow = {
+  out_generated_question_id: string | null;
+  prompt: string | null;
+  question_type: string | null;
+  choices: unknown;
+  book_code: string | null;
+  book_name: string | null;
+  nt_division: string | null;
+};
+type NtPilotAnswer = {
+  questionId: string;
+  bookCode: string;
+  bookName: string;
+  section: NtSectionKey;
+  isCorrect: boolean;
+};
 
 const IDK_CHOICE_ID = "__IDK__";
 const IDK_CHOICE: Choice = { id: IDK_CHOICE_ID, text: "I don't know - skip" };
@@ -64,6 +100,45 @@ const BOOK_NAMES: Record<string, string> = {
 };
 
 const TOTAL_INITIAL = 20;
+const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
+const ANON_USER_ID_KEY = "obs_anon_user_id";
+const SESSION_ANSWERED_KEY = "obs_session_answered";
+const SESSION_CORRECT_KEY = "obs_session_correct";
+const NT_PILOT_TARGET = 20;
+const NT_PILOT_ENABLED = process.env.NEXT_PUBLIC_NT_PILOT_ENABLED !== "false";
+const NT_SECTION_LABELS: Record<NtSectionKey, string> = {
+  GOSPELS_ACTS: "Gospels and Acts",
+  PAULINE: "Pauline Epistles",
+  GENERAL: "General Epistles",
+  APOCALYPSE: "Revelation",
+};
+const NT_SECTION_RPC_VALUES: Record<NtSectionKey, string> = {
+  GOSPELS_ACTS: "Gospels_Acts",
+  PAULINE: "Pauline",
+  GENERAL: "General",
+  APOCALYPSE: "Apocalypse",
+};
+
+function normalizeNtSection(value: string | null | undefined): NtSectionKey | null {
+  const normalized = (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  if (normalized === "GOSPELS_ACTS" || normalized === "GOSPELS_AND_ACTS") return "GOSPELS_ACTS";
+  if (normalized === "PAULINE" || normalized === "PAULINE_EPISTLES") return "PAULINE";
+  if (normalized === "GENERAL" || normalized === "GENERAL_EPISTLES") return "GENERAL";
+  if (normalized === "APOCALYPSE" || normalized === "REVELATION") return "APOCALYPSE";
+  return null;
+}
+
+function clearAssessmentBrowserStorage() {
+  localStorage.removeItem("obs_answered");
+  localStorage.removeItem("obs_correct");
+  localStorage.removeItem("obs_attempt_id");
+  localStorage.removeItem("obs_user_id");
+  localStorage.removeItem(ANON_USER_ID_KEY);
+  sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);
+  sessionStorage.removeItem(ANON_USER_ID_KEY);
+  sessionStorage.removeItem(SESSION_ANSWERED_KEY);
+  sessionStorage.removeItem(SESSION_CORRECT_KEY);
+}
 
 export default function AssessPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -71,7 +146,14 @@ export default function AssessPage() {
   const skyFrameRef = useRef(0);
   const offsetRef = useRef({ x: 0, y: 0 });
   const targetOffsetRef = useRef({ x: 0, y: 0 });
+  const travelersRef = useRef<Array<{ sx: number; sy: number; cx: number; cy: number; t: number; dur: number }>>([]);
+  const nebulaPulseRef = useRef(-999);
+  const answeredCountRef = useRef(0);
+  const pendingSpawnRef = useRef<{ x: number; y: number } | null>(null);
+  const transitioningRef = useRef(false);
 
+  const [assessmentMode, setAssessmentMode] = useState<AssessmentMode>("OT");
+  const [modeReady, setModeReady] = useState(false);
   const [phase, setPhase] = useState<Phase>("starting");
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -79,6 +161,9 @@ export default function AssessPage() {
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [correctChoiceId, setCorrectChoiceId] = useState<string | null>(null);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
+  const isSubmittingAnswerRef = useRef(false);
+  const activeQuestionIdRef = useRef<string | null>(null);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
@@ -95,6 +180,48 @@ export default function AssessPage() {
   const [reportStatus, setReportStatus] = useState<"idle" | "sent">("idle");
   const [reportError, setReportError] = useState("");
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [ntBooks, setNtBooks] = useState<NtBookMetadata[]>([]);
+  const [ntScope, setNtScope] = useState<NtScopeOption>({ kind: "all", value: "ALL", label: "All New Testament", description: "Preview questions across all 27 New Testament books." });
+  const [ntQuestions, setNtQuestions] = useState<NtPilotQuestion[]>([]);
+  const [ntQuestionIndex, setNtQuestionIndex] = useState(0);
+  const [ntAnswers, setNtAnswers] = useState<NtPilotAnswer[]>([]);
+  const [ntLoading, setNtLoading] = useState(false);
+  const [ntMetadataLoaded, setNtMetadataLoaded] = useState(false);
+  const [ntError, setNtError] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("choose") === "1") {
+      setAssessmentMode("select");
+      setPhase("starting");
+    } else if (params.get("testament") === "NT") {
+      setAssessmentMode(NT_PILOT_ENABLED ? "NT" : "select");
+      setPhase("starting");
+    } else {
+      setAssessmentMode("OT");
+      setPhase("starting");
+    }
+    setModeReady(true);
+  }, []);
+
+  useEffect(() => { answeredCountRef.current = answeredCount; }, [answeredCount]);
+  useEffect(() => { transitioningRef.current = isDashboardTransitioning; }, [isDashboardTransitioning]);
+
+  const spawnTraveler = useCallback(() => {
+    const p = pendingSpawnRef.current;
+    if (!p) return;
+    const tx = window.innerWidth - 110;
+    const ty = window.innerHeight - 130;
+    travelersRef.current.push({
+      sx: p.x,
+      sy: p.y,
+      cx: (p.x + tx) / 2 + (Math.random() - 0.5) * 160,
+      cy: Math.min(p.y, ty) - 80 - Math.random() * 120,
+      t: 0,
+      dur: 66,
+    });
+    pendingSpawnRef.current = null;
+  }, []);
 
   // Starry canvas
   useEffect(() => {
@@ -225,6 +352,86 @@ export default function AssessPage() {
       ctx.fillStyle = nebula;
       ctx.fillRect(0, 0, w, h);
 
+      // --- Confidence nebula & traveler stars (viewport-fixed) ---
+      if (!transitioningRef.current) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const toCX = (vx: number) => (vx + (w / DPR - vw) / 2) * DPR;
+        const toCY = (vy: number) => (vy + (h / DPR - vh) / 2) * DPR;
+        const ax = toCX(vw - 110);
+        const ay = toCY(vh - 130);
+        const nAns = answeredCountRef.current;
+        if (nAns > 0) {
+          const conf = 99 * nAns / (nAns + 20);
+          const pulseAge = frame - nebulaPulseRef.current;
+          const pulse = pulseAge >= 0 && pulseAge < 36 ? Math.sin((pulseAge / 36) * Math.PI) : 0;
+          const baseR = (60 + conf * 4.6) * DPR * (1 + pulse * 0.14);
+          const alpha = (0.13 + conf * 0.0075) * (1 + pulse * 0.9);
+          const layerCols = ["10,163,163", "124,58,237", "217,70,160", "212,160,23", "173,232,255"];
+          for (let i = 0; i < 5; i++) {
+            const wob = frame * (0.004 + i * 0.0021) + i * 1.7;
+            const nx = ax + Math.cos(wob) * (8 + i * 11) * DPR;
+            const ny = ay + Math.sin(wob * 0.8) * (7 + i * 9) * DPR;
+            const r = baseR * (1 - i * 0.16);
+            const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, r);
+            g.addColorStop(0, `rgba(${layerCols[i]},${alpha * (0.85 - i * 0.13)})`);
+            g.addColorStop(1, "transparent");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(nx, ny, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          const coreR = (12 + conf * 0.30) * DPR * (1 + pulse);
+          const core = ctx.createRadialGradient(ax, ay, 0, ax, ay, coreR);
+          core.addColorStop(0, `rgba(240,253,255,${0.55 + pulse * 0.4})`);
+          core.addColorStop(1, "transparent");
+          ctx.fillStyle = core;
+          ctx.beginPath();
+          ctx.arc(ax, ay, coreR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const list = travelersRef.current;
+        for (let i = list.length - 1; i >= 0; i--) {
+          const tr = list[i];
+          tr.t += 1;
+          const p = Math.min(1, tr.t / tr.dur);
+          const ease = p * p * (3 - 2 * p);
+          const x0 = toCX(tr.sx);
+          const y0 = toCY(tr.sy);
+          const x1 = toCX(tr.cx);
+          const y1 = toCY(tr.cy);
+          const mt = 1 - ease;
+          const px = mt * mt * x0 + 2 * mt * ease * x1 + ease * ease * ax;
+          const py = mt * mt * y0 + 2 * mt * ease * y1 + ease * ease * ay;
+          const tp = Math.max(0, ease - 0.12);
+          const tmt = 1 - tp;
+          const trailX = tmt * tmt * x0 + 2 * tmt * tp * x1 + tp * tp * ax;
+          const trailY = tmt * tmt * y0 + 2 * tmt * tp * y1 + tp * tp * ay;
+          const trail = ctx.createLinearGradient(trailX, trailY, px, py);
+          trail.addColorStop(0, "rgba(173,232,255,0)");
+          trail.addColorStop(1, `rgba(173,232,255,${0.75 * (1 - p * 0.3)})`);
+          ctx.save();
+          ctx.lineCap = "round";
+          ctx.lineWidth = 2.2 * DPR;
+          ctx.strokeStyle = trail;
+          ctx.beginPath();
+          ctx.moveTo(trailX, trailY);
+          ctx.lineTo(px, py);
+          ctx.stroke();
+          ctx.shadowColor = "rgba(173,232,255,0.8)";
+          ctx.shadowBlur = 8 * DPR;
+          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          ctx.beginPath();
+          ctx.arc(px, py, 2.6 * DPR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          if (p >= 1) {
+            list.splice(i, 1);
+            nebulaPulseRef.current = frame;
+          }
+        }
+      }
+
       frame++;
       skyFrameRef.current = frame;
       animRef.current = requestAnimationFrame(draw);
@@ -250,7 +457,17 @@ export default function AssessPage() {
       p_attempt_id: aid,
       p_user_id: uid,
     });
-    if (error) { setErrorMsg(error.message); setPhase("error"); return; }
+    if (error) {
+      if (error.message.includes("assessment_answers_user_id_fkey")) {
+        await supabase.auth.signOut();
+        clearAssessmentBrowserStorage();
+        setErrorMsg("Your anonymous assessment session expired after Supabase restarted. Start a fresh assessment and the questions should work again.");
+      } else {
+        setErrorMsg(error.message);
+      }
+      setPhase("error");
+      return;
+    }
     if (!data || data.length === 0) { setPhase("complete"); return; }
 
     const q = data[0];
@@ -258,6 +475,9 @@ export default function AssessPage() {
     if (Array.isArray(q.choices)) {
       choices = q.choices.map((c: { id: string; text: string }) => ({ id: c.id, text: c.text }));
     }
+    activeQuestionIdRef.current = q.out_generated_question_id;
+    isSubmittingAnswerRef.current = false;
+    setIsSubmittingAnswer(false);
     setQuestion({ ...q, choices });
     setSelectedChoice(null);
     setIsCorrect(null);
@@ -271,10 +491,156 @@ export default function AssessPage() {
     shiftSky();
   }, [shiftSky]);
 
+  const loadNtMetadata = useCallback(async () => {
+    if (!NT_PILOT_ENABLED) return;
+    setNtMetadataLoaded(false);
+    const { data, error } = await supabase
+      .from("scripture_books")
+      .select("book_code,canon_order,name,nt_division")
+      .eq("testament", "NT")
+      .order("canon_order", { ascending: true });
+
+    if (error) {
+      setNtError(error.message);
+      setNtMetadataLoaded(true);
+      return;
+    }
+
+    const rows = (data ?? [])
+      .map(row => {
+        const ntDivision = typeof row.nt_division === "string" ? normalizeNtSection(row.nt_division) : null;
+        if (
+          typeof row.book_code === "string" &&
+          typeof row.canon_order === "number" &&
+          typeof row.name === "string" &&
+          ntDivision
+        ) {
+          return {
+            book_code: row.book_code,
+            canon_order: row.canon_order,
+            name: row.name,
+            nt_division: ntDivision,
+          };
+        }
+        return null;
+      })
+      .filter((row): row is NtBookMetadata => {
+        return row !== null;
+      })
+      .sort((a, b) => a.canon_order - b.canon_order);
+    setNtBooks(rows);
+    setNtMetadataLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!modeReady || assessmentMode !== "NT") return;
+    void loadNtMetadata();
+  }, [assessmentMode, loadNtMetadata, modeReady]);
+
+  const ntScopeOptions: NtScopeOption[] = [
+    { kind: "all", value: "ALL", label: "All New Testament", description: "Preview questions across all 27 New Testament books." },
+    ...(["GOSPELS_ACTS", "PAULINE", "GENERAL", "APOCALYPSE"] as NtSectionKey[]).map(section => ({
+      kind: "section" as const,
+      value: section,
+      rpcValue: NT_SECTION_RPC_VALUES[section],
+      label: NT_SECTION_LABELS[section],
+      description: ntBooks.length > 0 ? `${ntBooks.filter(book => book.nt_division === section).length} New Testament books` : "New Testament section",
+    })),
+    ...ntBooks.map(book => ({
+      kind: "book" as const,
+      value: book.book_code,
+      label: book.name,
+      description: NT_SECTION_LABELS[book.nt_division],
+    })),
+  ];
+
+  const startNtPilot = useCallback(async (scope: NtScopeOption = ntScope) => {
+    if (!NT_PILOT_ENABLED) {
+      setNtError("The New Testament pilot is not enabled right now.");
+      return;
+    }
+    setNtLoading(true);
+    setNtError("");
+    setAnsweredCount(0);
+    setCorrectCount(0);
+    setNtAnswers([]);
+    setNtQuestionIndex(0);
+    setSelectedChoice(null);
+    setIsCorrect(null);
+    setCorrectChoiceId(null);
+
+    const { data, error } = await supabase.rpc("nt_get_pilot_questions", {
+      p_section: scope.kind === "section" ? (scope.rpcValue ?? scope.value) : null,
+      p_book_code: scope.kind === "book" ? scope.value : null,
+      p_limit: NT_PILOT_TARGET,
+    });
+
+    setNtLoading(false);
+    if (error) {
+      setNtError(error.message);
+      setPhase("error");
+      setErrorMsg(error.message);
+      return;
+    }
+
+    const parsed = ((data ?? []) as NtPilotQuestionRow[])
+      .map(row => {
+        const choices = Array.isArray(row.choices)
+          ? row.choices
+              .filter((choice): choice is Choice => {
+                if (!choice || typeof choice !== "object") return false;
+                const possibleChoice = choice as Partial<Choice>;
+                return typeof possibleChoice.id === "string" && typeof possibleChoice.text === "string";
+              })
+              .map(choice => ({ id: choice.id, text: choice.text }))
+          : [];
+        if (!row.out_generated_question_id || !row.prompt || choices.length === 0) return null;
+        const section = normalizeNtSection(row.nt_division) ?? "GOSPELS_ACTS";
+        return {
+          out_generated_question_id: row.out_generated_question_id,
+          prompt: row.prompt,
+          question_type: row.question_type ?? "nt_pilot",
+          choices,
+          event_title: scope.label,
+          book_code: row.book_code ?? "",
+          book_name: row.book_name ?? row.book_code ?? "New Testament",
+          importance_tier: 1,
+          section: NT_SECTION_LABELS[section],
+          nt_division: section,
+        } satisfies NtPilotQuestion;
+      })
+      .filter((item): item is NtPilotQuestion => Boolean(item));
+
+    if (parsed.length === 0) {
+      setNtError("No New Testament pilot questions are available for this scope yet.");
+      setPhase("error");
+      setErrorMsg("No New Testament pilot questions are available for this scope yet.");
+      return;
+    }
+
+    setNtScope(scope);
+    setNtQuestions(parsed);
+    activeQuestionIdRef.current = parsed[0].out_generated_question_id;
+    isSubmittingAnswerRef.current = false;
+    setIsSubmittingAnswer(false);
+    setQuestion(parsed[0]);
+    setPhase("question");
+    shiftSky();
+  }, [ntScope, shiftSky]);
+
   useEffect(() => {
     async function init() {
+      if (!modeReady || assessmentMode !== "OT") return;
       try {
         let { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && !session.user.email) {
+          const { data: userData, error: userError } = await supabase.auth.getUser();
+          if (userError || userData.user?.id !== session.user.id) {
+            await supabase.auth.signOut();
+            clearAssessmentBrowserStorage();
+            session = null;
+          }
+        }
         if (!session) {
           const { data, error } = await supabase.auth.signInAnonymously();
           if (error) throw error;
@@ -284,6 +650,11 @@ export default function AssessPage() {
         const uid = session?.user?.id;
         if (!uid) throw new Error("No user ID");
         setUserId(uid);
+        if (session && !session.user.email) {
+          sessionStorage.setItem(ANON_SESSION_ACTIVE_KEY, "1");
+          sessionStorage.setItem(ANON_USER_ID_KEY, uid);
+          localStorage.setItem(ANON_USER_ID_KEY, uid);
+        }
 
         const storedAnswered = Number(localStorage.getItem("obs_answered") || 0);
         const storedCorrect = Number(localStorage.getItem("obs_correct") || 0);
@@ -314,25 +685,47 @@ export default function AssessPage() {
         localStorage.setItem("obs_user_id", uid);
         await loadQuestion(attempt.id, uid);
       } catch (err: unknown) {
-        setErrorMsg(err instanceof Error ? err.message : "Failed to start assessment");
+        const message = err instanceof Error
+          ? err.message
+          : typeof err === "object" && err && "message" in err
+            ? String((err as { message?: unknown }).message)
+            : "Failed to start assessment";
+        setErrorMsg(message);
         setPhase("error");
       }
     }
     init();
-  }, [loadQuestion]);
+  }, [assessmentMode, loadQuestion, modeReady]);
 
   const submitAnswer = useCallback(async (choiceId: string) => {
-    if (!attemptId || !userId || !question) return;
+    if (!attemptId || !userId || !question || isSubmittingAnswerRef.current) return;
+    const submittedQuestionId = question.out_generated_question_id;
+    isSubmittingAnswerRef.current = true;
+    setIsSubmittingAnswer(true);
     setSelectedChoice(choiceId);
 
     const { data, error } = await supabase.rpc("submit_assessment_answer_v1", {
       p_attempt_id: attemptId,
       p_user_id: userId,
-      p_generated_question_id: question.out_generated_question_id,
+      p_generated_question_id: submittedQuestionId,
       p_selected_choice_id: choiceId,
     });
 
-    if (error) { setErrorMsg(error.message); setPhase("error"); return; }
+    if (activeQuestionIdRef.current !== submittedQuestionId) return;
+
+    if (error) {
+      isSubmittingAnswerRef.current = false;
+      setIsSubmittingAnswer(false);
+      if (error.message.includes("assessment_answers_user_id_fkey")) {
+        await supabase.auth.signOut();
+        clearAssessmentBrowserStorage();
+        setErrorMsg("Your anonymous assessment session expired after Supabase restarted. Start a fresh assessment and the questions should work again.");
+      } else {
+        setErrorMsg(error.message);
+      }
+      setPhase("error");
+      return;
+    }
 
     const result = data?.[0];
     if (result) {
@@ -344,9 +737,59 @@ export default function AssessPage() {
       if (result.is_correct) setCorrectCount(newCorrect);
       localStorage.setItem("obs_answered", String(newAnswered));
       localStorage.setItem("obs_correct", String(newCorrect));
+      sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
+      sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
+      spawnTraveler();
     }
+    isSubmittingAnswerRef.current = false;
+    setIsSubmittingAnswer(false);
     setPhase("feedback");
-  }, [attemptId, userId, question, answeredCount, correctCount]);
+  }, [attemptId, userId, question, answeredCount, correctCount, spawnTraveler]);
+
+  const submitNtAnswer = useCallback(async (choiceId: string) => {
+    if (!question || isSubmittingAnswerRef.current) return;
+    const submittedQuestionId = question.out_generated_question_id;
+    isSubmittingAnswerRef.current = true;
+    setIsSubmittingAnswer(true);
+    setSelectedChoice(choiceId);
+
+    const { data, error } = await supabase.rpc("nt_submit_pilot_answer", {
+      p_generated_question_id: submittedQuestionId,
+      p_selected_choice_id: choiceId,
+    });
+
+    if (activeQuestionIdRef.current !== submittedQuestionId) return;
+
+    if (error) {
+      isSubmittingAnswerRef.current = false;
+      setIsSubmittingAnswer(false);
+      setErrorMsg(error.message);
+      setPhase("error");
+      return;
+    }
+
+    const result = data?.[0];
+    const correct = Boolean(result?.is_correct) && choiceId !== IDK_CHOICE_ID;
+    setIsCorrect(correct);
+    setCorrectChoiceId(result?.correct_choice_id ?? null);
+    setAnsweredCount(count => count + 1);
+    setCorrectCount(count => count + (correct ? 1 : 0));
+    const ntQuestion = question as NtPilotQuestion;
+    setNtAnswers(answers => [
+      ...answers,
+      {
+        questionId: question.out_generated_question_id,
+        bookCode: question.book_code,
+        bookName: ntQuestion.book_name || BOOK_NAMES[question.book_code] || question.book_code,
+        section: ntQuestion.nt_division,
+        isCorrect: correct,
+      },
+    ]);
+    isSubmittingAnswerRef.current = false;
+    setIsSubmittingAnswer(false);
+    spawnTraveler();
+    setPhase("feedback");
+  }, [question, spawnTraveler]);
 
   const submitQuestionReport = useCallback(async () => {
     if (!question || !userId) return;
@@ -380,8 +823,35 @@ export default function AssessPage() {
   }, [attemptId, correctChoiceId, question, reportCategory, reportText, selectedChoice, userId]);
 
   const nextQuestion = useCallback(() => {
+    if (assessmentMode === "NT") {
+      const nextIndex = ntQuestionIndex + 1;
+      if (nextIndex >= ntQuestions.length) {
+        const savedAccuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
+        localStorage.setItem("oba_nt_pilot_summary", JSON.stringify({
+          answered: answeredCount,
+          correct: correctCount,
+          accuracy: savedAccuracy,
+          scope: ntScope.label,
+          booksAttempted: Array.from(new Set(ntAnswers.map(answer => answer.bookCode))).length,
+          updatedAt: new Date().toISOString(),
+        }));
+        setPhase("complete");
+        return;
+      }
+      setNtQuestionIndex(nextIndex);
+      activeQuestionIdRef.current = ntQuestions[nextIndex].out_generated_question_id;
+      isSubmittingAnswerRef.current = false;
+      setIsSubmittingAnswer(false);
+      setQuestion(ntQuestions[nextIndex]);
+      setSelectedChoice(null);
+      setIsCorrect(null);
+      setCorrectChoiceId(null);
+      setPhase("question");
+      shiftSky();
+      return;
+    }
     if (attemptId && userId) loadQuestion(attemptId, userId);
-  }, [attemptId, userId, loadQuestion]);
+  }, [answeredCount, assessmentMode, attemptId, correctCount, loadQuestion, ntAnswers, ntQuestionIndex, ntQuestions, ntScope.label, shiftSky, userId]);
 
   const choiceLabel = (id: string) => {
     if (!selectedChoice) return "";
@@ -396,6 +866,11 @@ export default function AssessPage() {
     : [];
   const isSkipped = selectedChoice === IDK_CHOICE_ID;
   const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
+  const confidenceScore = Math.round(99 * answeredCount / (answeredCount + 20));
+  const ntProgressEnd = assessmentMode === "NT" ? Math.max(ntQuestions.length || NT_PILOT_TARGET, 1) : TOTAL_INITIAL;
+  const ntProgressPct = assessmentMode === "NT"
+    ? Math.min(100, Math.max(0, (answeredCount / ntProgressEnd) * 100))
+    : 0;
   const isInitialPhase = answeredCount < TOTAL_INITIAL;
   const nextMilestone = answeredCount < TOTAL_INITIAL ? TOTAL_INITIAL : Math.ceil((answeredCount + 1) / 10) * 10;
   const progressStart = isInitialPhase ? 0 : nextMilestone - 10;
@@ -410,6 +885,12 @@ export default function AssessPage() {
       ? `${answeredCount} of ${TOTAL_INITIAL} answered in this browser`
       : `${Math.max(0, TOTAL_INITIAL - answeredCount)} questions until first BLI snapshot`)
     : (isSignedIn ? "Your BLI refines after every answer" : "Sign in to preserve your BLI across devices");
+  const displayNavPhaseLabel = assessmentMode === "NT" ? "New Testament Pilot" : navPhaseLabel;
+  const displayNavSubLabel = assessmentMode === "NT"
+    ? `${ntScope.label} · developmental preview`
+    : navSubLabel;
+  const displayProgressPct = assessmentMode === "NT" ? ntProgressPct : progressPct;
+  const displayProgressEnd = assessmentMode === "NT" ? ntProgressEnd : progressEnd;
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -481,6 +962,21 @@ export default function AssessPage() {
           position: fixed; left: 50%; top: 50%; z-index: 0; pointer-events: none;
           transform-origin: 50% 50%; transform: translate3d(-50%,-50%,0);
         }
+        .confidence-nebula-label {
+          position: fixed; right: 110px; bottom: 26px; z-index: 1;
+          transform: translateX(50%);
+          display: flex; flex-direction: column; align-items: center; gap: 2px;
+          pointer-events: none; text-align: center;
+        }
+        .confidence-nebula-label span {
+          font-size: 13px; font-weight: 850; letter-spacing: .18em;
+          text-transform: uppercase; color: rgba(255,255,255,.62);
+          text-shadow: 0 2px 10px rgba(0,0,0,.7);
+        }
+        .confidence-nebula-label strong {
+          font-size: 26px; font-weight: 800; color: rgba(255,255,255,.92);
+          text-shadow: 0 2px 14px rgba(0,0,0,.75);
+        }
         canvas.stars.dashboard-transition { animation: starSpinDissolve 2.35s linear both; }
         @keyframes starSpinDissolve {
           0% { transform: translate3d(-50%,-50%,0) rotate(0deg); filter: brightness(1); opacity: 1; }
@@ -521,6 +1017,37 @@ export default function AssessPage() {
           font-family: "Crimson Pro", Georgia, serif; font-weight: 600; font-size: 17px;
           color: #fff; text-decoration: none; opacity: .85;
         }
+        .brand-wrap { display: inline-flex; align-items: center; gap: 8px; }
+        .beta-badge {
+          position: relative;
+          display: inline-flex; align-items: center;
+          padding: 2px 8px; border-radius: 999px;
+          font-family: system-ui, sans-serif;
+          font-size: 10px; font-weight: 800; letter-spacing: .10em;
+          text-transform: uppercase;
+          color: rgba(255,255,255,.82);
+          background: rgba(255,255,255,.08);
+          border: 1px solid rgba(255,255,255,.16);
+          cursor: help; outline: none;
+        }
+        .beta-tooltip {
+          position: absolute; top: calc(100% + 10px); left: 0;
+          width: 260px; padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(14,18,38,.98);
+          border: 1px solid rgba(255,255,255,.14);
+          box-shadow: 0 12px 34px rgba(0,0,0,.5);
+          font-family: system-ui, sans-serif;
+          font-size: 12px; font-weight: 500; letter-spacing: 0;
+          text-transform: none; line-height: 1.45;
+          color: rgba(255,255,255,.86);
+          opacity: 0; visibility: hidden; transform: translateY(-4px);
+          transition: opacity .16s ease, transform .16s ease, visibility .16s;
+          z-index: 50; pointer-events: none;
+        }
+        .beta-badge:hover .beta-tooltip,
+        .beta-badge:focus .beta-tooltip { opacity: 1; visibility: visible; transform: translateY(0); }
+
         .nav-center { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: min(420px, 48vw); }
         .nav-phase {
           font-size: 12px; font-weight: 850; letter-spacing: .12em;
@@ -878,6 +1405,69 @@ export default function AssessPage() {
           animation: spin .8s linear infinite; margin: 0 auto;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .selection-grid {
+          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px; width: 100%;
+        }
+        .testament-card {
+          text-align: left; border: 1.5px solid var(--border);
+          background: rgba(255,255,255,.68); border-radius: 18px;
+          padding: 22px; cursor: pointer; font-family: inherit;
+          transition: transform .14s, border-color .14s, background .14s, box-shadow .14s;
+        }
+        .testament-card:hover,
+        .testament-card:focus-visible {
+          outline: none; transform: translateY(-2px);
+          border-color: var(--accent-line); background: #fff;
+          box-shadow: 0 14px 30px rgba(27,36,66,.13);
+        }
+        .testament-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+        .testament-title {
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: 24px; font-weight: 700; color: var(--navy);
+        }
+        .pilot-badge {
+          display: inline-flex; align-items: center; border-radius: 999px;
+          padding: 5px 9px; font-size: 10.5px; font-weight: 850;
+          letter-spacing: .08em; text-transform: uppercase;
+          background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+        }
+        .testament-desc { color: var(--muted); font-size: 14px; line-height: 1.55; }
+        .nt-scope-grid {
+          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px; width: 100%; max-height: 330px; overflow: auto; padding-right: 4px;
+        }
+        .nt-scope-btn {
+          text-align: left; border: 1.5px solid var(--border);
+          border-radius: 13px; background: rgba(255,255,255,.66);
+          padding: 12px 13px; cursor: pointer; font-family: inherit;
+          transition: border-color .13s, background .13s, transform .11s;
+        }
+        .nt-scope-btn:hover,
+        .nt-scope-btn:focus-visible {
+          outline: none; border-color: var(--accent-line);
+          background: var(--accent-dim); transform: translateY(-1px);
+        }
+        .nt-scope-btn.is-active {
+          border-color: var(--accent-line); background: var(--accent-dim);
+        }
+        .nt-scope-btn strong { display: block; color: var(--navy); font-size: 13.5px; margin-bottom: 3px; }
+        .nt-scope-btn span { color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+        .pilot-note {
+          padding: 12px 14px; border-radius: 12px;
+          background: rgba(212,160,23,.12); border: 1px solid rgba(212,160,23,.26);
+          color: #744a08; font-size: 13px; line-height: 1.5; font-weight: 600;
+        }
+        .nt-results-grid {
+          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px; width: 100%;
+        }
+        .nt-result-row {
+          display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          padding: 11px 13px; border-radius: 12px; background: rgba(27,36,66,.045);
+          color: var(--navy); font-size: 13px;
+        }
+        .nt-result-row span { color: var(--muted); font-weight: 650; }
 
         @media (max-width: 640px) {
           .card { padding: 30px 22px; max-width: 100%; }
@@ -891,10 +1481,17 @@ export default function AssessPage() {
           .results-fab { bottom: 16px; right: 16px; padding: 10px 16px; font-size: 13px; }
           .overlay-card { padding: 28px 24px; }
           .overlay-score { font-size: 52px; }
+          .selection-grid, .nt-scope-grid, .nt-results-grid { grid-template-columns: 1fr; }
         }
       `}</style>
 
       <canvas ref={canvasRef} className={`stars ${isDashboardTransitioning ? "dashboard-transition" : ""}`} aria-hidden="true" />
+      {answeredCount > 0 && !isDashboardTransitioning && (
+        <div className="confidence-nebula-label" aria-hidden="true">
+          <span>Confidence</span>
+          <strong>{confidenceScore}%</strong>
+        </div>
+      )}
       {isDashboardTransitioning && <div className="dashboard-warp" aria-hidden="true" />}
       {phase === "feedback" && isCorrect && (
         <div key={`${answeredCount}-${question?.out_generated_question_id || "correct"}`} className="cosmic-burst" aria-hidden="true">
@@ -906,20 +1503,28 @@ export default function AssessPage() {
 
       {/* Nav */}
       <nav className={`nav ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
-        <Link className="nav-brand" href="/">OBS</Link>
+        <span className="brand-wrap">
+          <Link className="nav-brand" href="/">Open Bible Assessment</Link>
+          <span className="beta-badge" tabIndex={0}>
+            Beta
+            <span className="beta-tooltip" role="tooltip">
+              Open Bible Assessment is still in active development. Scores and questions are being refined, so your results may shift as the platform matures.
+            </span>
+          </span>
+        </span>
         <div className="nav-center">
-          <span className="nav-phase">{navPhaseLabel}</span>
-          <span className="nav-subphase">{navSubLabel}</span>
+          <span className="nav-phase">{displayNavPhaseLabel}</span>
+          <span className="nav-subphase">{displayNavSubLabel}</span>
           <div className="nav-progress-row">
             <span className="nav-count">{answeredCount}</span>
             <div className="progress-bar-track">
-              <div className="progress-bar-fill" style={{ width: `${progressPct}%` }} />
+              <div className="progress-bar-fill" style={{ width: `${displayProgressPct}%` }} />
             </div>
-            <span className="nav-count-right">{progressEnd}</span>
+            <span className="nav-count-right">{displayProgressEnd}</span>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {isSignedIn ? (
+          {assessmentMode === "OT" && (isSignedIn ? (
             <button
               onClick={handleSignOut}
               style={{fontSize:12,color:"rgba(255,255,255,.4)",background:"none",border:"1px solid rgba(255,255,255,.08)",borderRadius:999,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit",transition:"color .14s"}}
@@ -933,28 +1538,101 @@ export default function AssessPage() {
             >
               Sign in
             </button>
-          )}
+          ))}
           <Link className="nav-exit" href="/">Exit</Link>
         </div>
       </nav>
 
       <div className={`scene ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
-        {phase === "starting" && (
+        {assessmentMode === "select" && (
+          <div className="card center-card">
+            <p className="pilot-badge">Choose assessment</p>
+            <div className="card-heading">What would you like to assess?</div>
+            <p className="card-sub">The Old Testament assessment is the full adaptive BLI flow. The New Testament pilot is a developmental preview.</p>
+            <div className="selection-grid">
+              <button className="testament-card" type="button" onClick={() => window.location.href = "/assess"}>
+                <div className="testament-top">
+                  <strong className="testament-title">Old Testament Assessment</strong>
+                </div>
+                <p className="testament-desc">Full adaptive assessment across the Old Testament.</p>
+              </button>
+              <button className="testament-card" type="button" onClick={() => window.location.href = NT_PILOT_ENABLED ? "/assess?testament=NT" : "/assess?choose=1"}>
+                <div className="testament-top">
+                  <strong className="testament-title">New Testament Pilot</strong>
+                  <span className="pilot-badge">Pilot</span>
+                </div>
+                <p className="testament-desc">Preview questions across all 27 New Testament books. Results are developmental and not yet credential-grade.</p>
+              </button>
+            </div>
+            {!NT_PILOT_ENABLED && <p className="card-sub">The New Testament pilot is currently unavailable.</p>}
+          </div>
+        )}
+
+        {assessmentMode === "NT" && phase === "starting" && (
+          <div className="card center-card">
+            <span className="pilot-badge">Pilot</span>
+            <div className="card-heading">New Testament Pilot</div>
+            <p className="card-sub">Choose a section or book. These results are developmental and do not affect your verified BLI credential.</p>
+            {ntError && <p className="pilot-note">{ntError}</p>}
+            {!ntMetadataLoaded && !ntError ? (
+              <div className="spinner" />
+            ) : (
+              <>
+                <div className="nt-scope-grid" role="group" aria-label="New Testament pilot scope">
+                  {ntScopeOptions.map(option => (
+                    <button
+                      key={`${option.kind}-${option.value}`}
+                      type="button"
+                      className={`nt-scope-btn ${ntScope.kind === option.kind && ntScope.value === option.value ? "is-active" : ""}`}
+                      onClick={() => setNtScope(option)}
+                    >
+                      <strong>{option.label}</strong>
+                      <span>{option.description}</span>
+                    </button>
+                  ))}
+                </div>
+                {ntBooks.length === 0 && (
+                  <p className="pilot-note">Book metadata is not visible yet, so individual book filters are hidden. You can still start the all-NT pilot if the NT question RPC is installed.</p>
+                )}
+                <p className="pilot-note">New Testament results are currently developmental and do not affect your verified BLI credential.</p>
+                <button className="btn-primary" type="button" onClick={() => startNtPilot()} disabled={ntLoading}>
+                  {ntLoading ? "Loading..." : `Start ${ntScope.label}`}
+                </button>
+                <Link className="btn-secondary" href="/assess?choose=1">Back to assessment choices</Link>
+              </>
+            )}
+          </div>
+        )}
+
+        {assessmentMode === "OT" && phase === "starting" && (
           <div className="card center-card">
             <div className="spinner" />
             <p className="card-sub">Loading your assessment...</p>
           </div>
         )}
 
-        {phase === "error" && (
+        {phase === "error" && assessmentMode !== "select" && (
           <div className="card center-card">
             <div className="card-heading">Something went wrong</div>
             <p className="card-sub">{errorMsg}</p>
-            <Link className="btn-primary" href="/">Back to dashboard</Link>
+            {assessmentMode === "NT" ? (
+              <Link className="btn-primary" href="/assess?testament=NT">Explore another NT section</Link>
+            ) : (
+              <button
+                className="btn-primary"
+                type="button"
+                onClick={() => {
+                  clearAssessmentBrowserStorage();
+                  window.location.href = "/assess";
+                }}
+              >
+                Start fresh assessment
+              </button>
+            )}
           </div>
         )}
 
-        {(phase === "question" || phase === "feedback") && question && (
+        {(phase === "question" || phase === "feedback") && question && assessmentMode !== "select" && (
           <div className="card">
             {/* Location graphic */}
             <div className="question-head">
@@ -971,12 +1649,20 @@ export default function AssessPage() {
                     className="loc-dot"
                     style={{ background: SECTION_COLORS[question.section] || "#0aa3a3" }}
                   />
-                  {question.section}
+                  {assessmentMode === "NT" ? "New Testament Pilot" : question.section}
                 </span>
                 <span className="loc-sep">·</span>
                 <span className="loc-pill" style={{ color: "#566070", background: "rgba(27,36,66,.05)", borderColor: "rgba(27,36,66,.09)" }}>
-                  {BOOK_NAMES[question.book_code] || question.book_code}
+                  {assessmentMode === "NT" ? ((question as NtPilotQuestion).book_name || question.book_code) : BOOK_NAMES[question.book_code] || question.book_code}
                 </span>
+                {assessmentMode === "NT" && (
+                  <>
+                    <span className="loc-sep">·</span>
+                    <span className="loc-pill" style={{ color: "#92400e", background: "#fef3c7", borderColor: "#fde68a" }}>
+                      Pilot
+                    </span>
+                  </>
+                )}
                 {question.importance_tier === 1 && (
                   <>
                     <span className="loc-sep">·</span>
@@ -986,22 +1672,24 @@ export default function AssessPage() {
                   </>
                 )}
               </div>
-              <button
-                className="report-trigger"
-                type="button"
-                aria-label="Report a problem with this question"
-                title="Report a problem"
-                onClick={() => {
-                  setReportStatus("idle");
-                  setReportError("");
-                  setShowReportModal(true);
-                }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                  <path d="M4 22V15" />
-                </svg>
-              </button>
+              {assessmentMode === "OT" && (
+                <button
+                  className="report-trigger"
+                  type="button"
+                  aria-label="Report a problem with this question"
+                  title="Report a problem"
+                  onClick={() => {
+                    setReportStatus("idle");
+                    setReportError("");
+                    setShowReportModal(true);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                    <path d="M4 22V15" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             <p className="card-prompt">{question.prompt}</p>
@@ -1010,9 +1698,15 @@ export default function AssessPage() {
               {visibleChoices.map((choice, index) => (
                 <button
                   key={choice.id}
+                  type="button"
                   className={`choice ${phase === "feedback" ? choiceLabel(choice.id) : ""}`}
-                  onClick={() => phase === "question" && submitAnswer(choice.id)}
-                  disabled={phase === "feedback"}
+                  onClick={(e) => {
+                    if (phase !== "question" || isSubmittingAnswer) return;
+                    pendingSpawnRef.current = { x: e.clientX, y: e.clientY };
+                    if (assessmentMode === "NT") submitNtAnswer(choice.id);
+                    else submitAnswer(choice.id);
+                  }}
+                  disabled={phase === "feedback" || isSubmittingAnswer}
                 >
                   <span className="choice-letter">{choice.id === IDK_CHOICE_ID ? "E" : choice.id || String.fromCharCode(65 + index)}</span>
                   {choice.text}
@@ -1026,7 +1720,7 @@ export default function AssessPage() {
                   <span className="feedback-text">
                     {isSkipped ? "Skipped — the correct answer is highlighted." : isCorrect ? "Correct!" : "Not quite — the correct answer is highlighted."}
                   </span>
-                  <button className="next-btn" onClick={nextQuestion}>
+                  <button className="next-btn" type="button" onClick={nextQuestion}>
                     Next →
                   </button>
                 </div>
@@ -1037,7 +1731,7 @@ export default function AssessPage() {
                   <div className="score-item"><strong>{accuracy}%</strong>accuracy</div>
                 </div>
 
-                {answeredCount === TOTAL_INITIAL && (
+                {assessmentMode === "OT" && answeredCount === TOTAL_INITIAL && (
                   <div className="milestone-banner">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 20v-6"/><path d="M6 20v-3"/><path d="M18 20v-9"/><path d="M3 3h18"/>
@@ -1050,7 +1744,34 @@ export default function AssessPage() {
           </div>
         )}
 
-        {phase === "complete" && (
+        {phase === "complete" && assessmentMode === "NT" && (
+          <div className="card center-card">
+            <span className="pilot-badge">Pilot results</span>
+            <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
+            <div className="card-heading">New Testament Pilot complete</div>
+            <p className="card-sub">You answered {correctCount} of {answeredCount} questions correctly in {ntScope.label}.</p>
+            <p className="pilot-note">New Testament results are currently developmental and do not affect your verified BLI credential.</p>
+            <div className="nt-results-grid">
+              {Object.entries(ntAnswers.reduce<Record<string, { correct: number; total: number }>>((acc, answer) => {
+                const key = `${NT_SECTION_LABELS[answer.section]} · ${answer.bookName}`;
+                acc[key] = acc[key] ?? { correct: 0, total: 0 };
+                acc[key].total += 1;
+                if (answer.isCorrect) acc[key].correct += 1;
+                return acc;
+              }, {})).map(([label, stats]) => (
+                <div className="nt-result-row" key={label}>
+                  <strong>{label}</strong>
+                  <span>{stats.correct}/{stats.total}</span>
+                </div>
+              ))}
+            </div>
+            <button className="btn-primary" type="button" onClick={() => startNtPilot(ntScope)}>Retry same scope</button>
+            <Link className="btn-secondary" href="/assess?testament=NT">Explore another NT section</Link>
+            <Link className="btn-secondary" href="/">Back to dashboard</Link>
+          </div>
+        )}
+
+        {phase === "complete" && assessmentMode === "OT" && (
           <div className="card center-card">
             <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
             <div className="card-heading">Assessment complete</div>
@@ -1121,7 +1842,7 @@ export default function AssessPage() {
       )}
 
       {/* Floating results FAB — appears after 20 questions */}
-      {answeredCount >= TOTAL_INITIAL && phase !== "complete" && !showResults && (
+      {assessmentMode === "OT" && answeredCount >= TOTAL_INITIAL && phase !== "complete" && !showResults && (
         <button className={`results-fab ${isDashboardTransitioning ? "dashboard-transition" : ""}`} onClick={transitionToDashboard}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 20v-6"/><path d="M6 20v-3"/><path d="M18 20v-9"/><path d="M3 3h18"/>
@@ -1131,7 +1852,7 @@ export default function AssessPage() {
       )}
 
       {/* Results overlay */}
-      {showResults && (
+      {assessmentMode === "OT" && showResults && (
         <div className="overlay-backdrop" onClick={e => e.target === e.currentTarget && setShowResults(false)}>
           <div className="overlay-card">
             <button className="overlay-close" onClick={() => setShowResults(false)}>
