@@ -511,7 +511,14 @@ export default function AttemptResultsPage() {
                             <strong>Your answer</strong>
                             <AnswerDisplay
                               ordered={isSequence}
-                              value={row.is_idk ? "I don't know / skipped" : row.selected_choice_text || row.selected_choice_id || "No answer recorded"}
+                              value={
+                                row.is_idk
+                                  ? "I don't know / skipped"
+                                  : row.selected_choice_text
+                                    || (row.selected_choice_id
+                                      ? `Recorded choice ${row.selected_choice_id} (exact wording unavailable for this older assessment)`
+                                      : "No answer recorded")
+                              }
                             />
                           </div>
                           <div className="answer-line correct-answer">

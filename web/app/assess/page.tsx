@@ -1015,14 +1015,25 @@ export default function AssessPage() {
   const submitAnswer = useCallback(async (choiceId: string) => {
     if (!attemptId || !userId || !question || isSubmittingAnswerRef.current) return;
     const submittedQuestionId = question.out_generated_question_id;
+    const isSequenceResponse = choiceId.startsWith("__ORDER__:");
+    const displayedChoices = isSequenceResponse
+      ? sequenceOrder
+      : question.choices;
+    const selectedChoiceText = choiceId === IDK_CHOICE_ID
+      ? null
+      : isSequenceResponse
+        ? sequenceOrder.map(item => item.text).join(" -> ")
+        : question.choices.find(choice => choice.id === choiceId)?.text ?? null;
     isSubmittingAnswerRef.current = true;
     setIsSubmittingAnswer(true);
     setSelectedChoice(choiceId);
 
-    const { data, error } = await supabase.rpc("obs_submit_ot_assessment_response", {
+    const { data, error } = await supabase.rpc("obs_submit_ot_assessment_response_v2", {
       p_attempt_id: attemptId,
       p_generated_question_id: submittedQuestionId,
       p_response: choiceId,
+      p_selected_choice_text: selectedChoiceText,
+      p_displayed_choices: displayedChoices,
     });
 
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
@@ -1058,7 +1069,7 @@ export default function AssessPage() {
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setPhase("feedback");
-  }, [attemptId, userId, question, answeredCount, correctCount, loadScoreEvidence, otTargetCount, spawnTraveler]);
+  }, [attemptId, userId, question, sequenceOrder, answeredCount, correctCount, loadScoreEvidence, otTargetCount, spawnTraveler]);
 
   const moveSequenceItem = useCallback((itemId: string, direction: -1 | 1) => {
     setSequenceOrder(current => {
