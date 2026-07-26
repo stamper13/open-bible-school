@@ -90,6 +90,7 @@ type OtAssessmentRequest = {
   startChapter: number | null;
   endChapter: number | null;
   label: string | null;
+  dimensionKey: string | null;
   targetQuestionCount: number;
 };
 type OtAssessmentStartRow = {
@@ -278,6 +279,7 @@ export default function AssessPage() {
     startChapter: null,
     endChapter: null,
     label: null,
+    dimensionKey: null,
     targetQuestionCount: TOTAL_INITIAL,
   });
   const [otAssessment, setOtAssessment] = useState<OtAssessmentStartRow | null>(null);
@@ -305,6 +307,7 @@ export default function AssessPage() {
         startChapter: isFocused ? parseChapter(params.get("start")) : null,
         endChapter: isFocused ? parseChapter(params.get("end")) : null,
         label: isFocused ? params.get("label") : null,
+        dimensionKey: isFocused ? params.get("dimension") : null,
         targetQuestionCount: Math.min(50, Math.max(1, requestedTarget ?? TOTAL_INITIAL)),
       });
       setAssessmentMode("OT");
@@ -876,13 +879,14 @@ export default function AssessPage() {
         const uid = await ensureAssessmentSession();
         await loadScoreEvidence(uid, "OT");
 
-        const { data, error } = await supabase.rpc("obs_start_or_resume_ot_assessment", {
+        const { data, error } = await supabase.rpc("obs_start_or_resume_ot_assessment_v2", {
           p_unit_key: otRequest.unitKey,
           p_book_code: otRequest.bookCode,
           p_start_chapter: otRequest.startChapter,
           p_end_chapter: otRequest.endChapter,
           p_target_question_count: otRequest.targetQuestionCount,
           p_force_new: false,
+          p_dimension_key: otRequest.dimensionKey,
         });
         if (error) throw error;
 

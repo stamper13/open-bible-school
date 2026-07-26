@@ -29,6 +29,15 @@ type BackendRecommendation = {
   retest_question_target: number;
   focus_text: string;
   reason: string;
+  recommendation_kind: "UNIT" | "DIMENSION";
+  dimension_key: string | null;
+  dimension_label: string | null;
+  dimension_short_label: string | null;
+  dimension_answered: number | null;
+  dimension_correct: number | null;
+  dimension_display_score: number | null;
+  dimension_available_questions: number | null;
+  dimension_focus_text: string | null;
 };
 
 type Node = {
@@ -82,6 +91,17 @@ function dimensionForRow(row: BankRow): DimensionKey {
   if (row.dimension_key === "theological_reasoning") return "significance";
   if (row.dimension_key === "structure_cross_ref") return "structure";
   return dimensionForType(row.question_type);
+}
+
+function mapDimensionKey(dimensionKey: string | null): DimensionKey | null {
+  if (dimensionKey === "characters_lineage") return "characters";
+  if (dimensionKey === "events_timeline") return "events";
+  if (dimensionKey === "geography_nations") return "geography";
+  if (dimensionKey === "law_commands") return "commands";
+  if (dimensionKey === "promise_prophecy") return "speech";
+  if (dimensionKey === "theological_reasoning") return "significance";
+  if (dimensionKey === "structure_cross_ref") return "structure";
+  return null;
 }
 
 async function loadDimensionAwareQuestionBank() {
@@ -206,7 +226,7 @@ export default function KnowledgeMapPage() {
             .from("assessment_answers")
             .select("generated_question_id,is_correct")
             .eq("user_id", session.user.id),
-          supabase.rpc("obs_get_user_recommendation", {
+          supabase.rpc("obs_get_user_recommendation_v2", {
             p_user_id: session.user.id,
           }),
         ]);
@@ -239,8 +259,13 @@ export default function KnowledgeMapPage() {
   const recommendedSection = recommendation
     ? SECTIONS.find(section => section.key === recommendation.section) ?? null
     : null;
+  const recommendedDimension = mapDimensionKey(recommendation?.dimension_key ?? null);
+  const recommendedNodeId = recommendedSection && recommendedDimension
+    ? `${recommendedSection.key}:${recommendedDimension}`
+    : null;
   const recommendationHref = recommendation
-    ? `/assess?${new URLSearchParams({
+    ? (() => {
+      const params = new URLSearchParams({
         mode: "focus",
         unit: recommendation.unit_key,
         book: recommendation.book_code,
@@ -248,7 +273,12 @@ export default function KnowledgeMapPage() {
         end: String(recommendation.end_chapter),
         label: recommendation.label,
         target: String(recommendation.retest_question_target),
-      }).toString()}`
+      });
+      if (recommendation.dimension_key) {
+        params.set("dimension", recommendation.dimension_key);
+      }
+      return `/assess?${params.toString()}`;
+    })()
     : "/assess";
 
   return (
@@ -509,7 +539,7 @@ export default function KnowledgeMapPage() {
               <path className="dep-line" d="M360 255 C336 302, 336 350, 360 372" />
               {SECTIONS.map((section) => (
                 <g key={section.key} opacity={selectedSection === "all" || selectedSection === section.key ? 1 : .18}>
-                  {recommendedSection?.key === section.key && (
+                  {recommendedSection?.key === section.key && !recommendedNodeId && (
                     <>
                       <circle className="recommendation-halo" cx={section.x} cy={section.y} r="72" />
                       <text className="recommendation-label" x={section.x} y={section.y - 81}>Recommended next</text>
@@ -538,6 +568,7 @@ export default function KnowledgeMapPage() {
                 const color = nodeColor(node, mode);
                 const radius = nodeRadius(node);
                 const isActive = selectedNode?.id === node.id;
+                const isRecommended = recommendedNodeId === node.id;
                 return (
                   <g
                     key={node.id}
@@ -550,6 +581,12 @@ export default function KnowledgeMapPage() {
                       if (event.key === "Enter" || event.key === " ") setSelectedNodeId(node.id);
                     }}
                   >
+                    {isRecommended && (
+                      <>
+                        <circle className="recommendation-halo" cx={node.x} cy={node.y} r={radius + 17} />
+                        <text className="recommendation-label" x={node.x} y={node.y - radius - 25}>Recommended</text>
+                      </>
+                    )}
                     <circle className="node-ring" cx={node.x} cy={node.y} r={radius + 7} fill={color} opacity=".18" stroke={color} strokeWidth="2" />
                     <circle cx={node.x} cy={node.y} r={radius} fill={color} stroke="rgba(255,255,255,.86)" strokeWidth="2.5" />
                     <text className="node-label" x={node.x} y={node.y}>{DIMENSIONS.find((item) => item.key === node.dimension)?.short}</text>
@@ -563,11 +600,17 @@ export default function KnowledgeMapPage() {
             {recommendation && (
               <section className="recommended-unit" aria-label="Recommended next learning unit">
                 <p className="recommended-kicker">Your next step</p>
-                <h2 className="recommended-name">{recommendation.label}</h2>
+                <h2 className="recommended-name">
+                  {recommendation.dimension_short_label
+                    ? `${recommendation.dimension_short_label} in ${recommendation.label}`
+                    : recommendation.label}
+                </h2>
                 <p className="recommended-copy">
-                  {recommendation.focus_text}
+                  {recommendation.dimension_focus_text ?? recommendation.focus_text}
                   {" "}
-                  {recommendation.display_score === null
+                  {recommendation.dimension_display_score != null
+                    ? `${recommendation.dimension_display_score} BLI in this skill. ${recommendation.reason}`
+                    : recommendation.display_score === null
                     ? recommendation.reason
                     : `${recommendation.display_score} BLI here. ${recommendation.reason}`}
                 </p>

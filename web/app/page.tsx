@@ -163,6 +163,15 @@ type BackendRecommendation = {
   retest_question_target: number;
   focus_text: string;
   reason: string;
+  recommendation_kind: "UNIT" | "DIMENSION";
+  dimension_key: string | null;
+  dimension_label: string | null;
+  dimension_short_label: string | null;
+  dimension_answered: number | null;
+  dimension_correct: number | null;
+  dimension_display_score: number | null;
+  dimension_available_questions: number | null;
+  dimension_focus_text: string | null;
 };
 type BliEvidence = {
   scope: string;
@@ -495,6 +504,12 @@ export default function HomePage() {
   }, []);
 
   const recommendedStudy = backendRecommendation ? (() => {
+    const hasDimensionTarget =
+      backendRecommendation.recommendation_kind === "DIMENSION" &&
+      !!backendRecommendation.dimension_key;
+    const dimensionName =
+      backendRecommendation.dimension_short_label ??
+      backendRecommendation.dimension_label;
     const params = new URLSearchParams({
       mode: "focus",
       unit: backendRecommendation.unit_key,
@@ -504,11 +519,20 @@ export default function HomePage() {
       label: backendRecommendation.label,
       target: String(backendRecommendation.retest_question_target),
     });
+    if (hasDimensionTarget && backendRecommendation.dimension_key) {
+      params.set("dimension", backendRecommendation.dimension_key);
+    }
     return {
-      label: backendRecommendation.label,
-      books: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}`,
-      focus: backendRecommendation.focus_text,
-      priority: backendRecommendation.display_score
+      label: hasDimensionTarget && dimensionName
+        ? `${dimensionName} in ${backendRecommendation.label}`
+        : backendRecommendation.label,
+      books: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}${hasDimensionTarget ? " · Focused skill review" : ""}`,
+      focus: hasDimensionTarget
+        ? `${backendRecommendation.dimension_focus_text ?? `Review ${dimensionName} in this passage range.`} Keep the people, places, and events anchored in ${backendRecommendation.label}.`
+        : backendRecommendation.focus_text,
+      priority: hasDimensionTarget && backendRecommendation.dimension_display_score
+        ? `${backendRecommendation.dimension_display_score} BLI from ${backendRecommendation.dimension_answered ?? 0} ${dimensionName ?? "dimension"} answers here. This is the clearest supported weakness inside your earliest priority reading.`
+        : backendRecommendation.display_score
         ? `${backendRecommendation.display_score} BLI across ${backendRecommendation.answered} answered questions here. ${backendRecommendation.reason}.`
         : `${backendRecommendation.reason}. Reread this range, then take a focused retest.`,
       actionHref: `/assess?${params.toString()}`,
@@ -885,7 +909,7 @@ export default function HomePage() {
             .from("assessment_answers")
             .select("generated_question_id,is_correct,is_idk")
             .eq("user_id", session.user.id),
-          supabase.rpc("obs_get_user_recommendation", { p_user_id: session.user.id }),
+          supabase.rpc("obs_get_user_recommendation_v2", { p_user_id: session.user.id }),
           supabase.rpc("obs_get_bli_uncertainty", {
             p_user_id: session.user.id,
             p_scope: "OT",
