@@ -84,6 +84,32 @@ type NtAssessmentStatusRow = {
   target_reached: boolean;
   completed_at: string | null;
 };
+type OtAssessmentRequest = {
+  unitKey: string | null;
+  bookCode: string | null;
+  startChapter: number | null;
+  endChapter: number | null;
+  label: string | null;
+  targetQuestionCount: number;
+};
+type OtAssessmentStartRow = {
+  attempt_id: string;
+  user_id: string;
+  assessment_kind: "ot_adaptive" | "ot_focused";
+  scope_key: string;
+  unit_key: string | null;
+  label: string;
+  book_code: string | null;
+  start_chapter: number | null;
+  end_chapter: number | null;
+  target_question_count: number;
+  available_question_count: number;
+  answered_count: number;
+  correct_count: number;
+  idk_count: number;
+  target_reached: boolean;
+  resumed: boolean;
+};
 type BliEvidence = {
   scope: string;
   theta: number;
@@ -115,6 +141,7 @@ const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
 const ANON_USER_ID_KEY = "obs_anon_user_id";
 const SESSION_ANSWERED_KEY = "obs_session_answered";
 const SESSION_CORRECT_KEY = "obs_session_correct";
+const OT_ATTEMPT_ID_KEY = "obs_ot_attempt_id";
 const NT_ATTEMPT_ID_KEY = "obs_nt_attempt_id";
 const NT_PILOT_TARGET = 20;
 const NT_PILOT_ENABLED = process.env.NEXT_PUBLIC_NT_PILOT_ENABLED !== "false";
@@ -193,6 +220,7 @@ function clearAssessmentBrowserStorage() {
   sessionStorage.removeItem(ANON_USER_ID_KEY);
   sessionStorage.removeItem(SESSION_ANSWERED_KEY);
   sessionStorage.removeItem(SESSION_CORRECT_KEY);
+  sessionStorage.removeItem(OT_ATTEMPT_ID_KEY);
   sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
 }
 
@@ -244,6 +272,16 @@ export default function AssessPage() {
   const [ntMetadataLoaded, setNtMetadataLoaded] = useState(false);
   const [ntError, setNtError] = useState("");
   const [scoreEvidence, setScoreEvidence] = useState<BliEvidence | null>(null);
+  const [otRequest, setOtRequest] = useState<OtAssessmentRequest>({
+    unitKey: null,
+    bookCode: null,
+    startChapter: null,
+    endChapter: null,
+    label: null,
+    targetQuestionCount: TOTAL_INITIAL,
+  });
+  const [otAssessment, setOtAssessment] = useState<OtAssessmentStartRow | null>(null);
+  const [otTargetCount, setOtTargetCount] = useState(TOTAL_INITIAL);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -254,6 +292,21 @@ export default function AssessPage() {
       setAssessmentMode(NT_PILOT_ENABLED ? "NT" : "select");
       setPhase("starting");
     } else {
+      const parseChapter = (value: string | null) => {
+        if (!value || !/^\d+$/.test(value)) return null;
+        const parsed = Number(value);
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+      };
+      const requestedTarget = parseChapter(params.get("target"));
+      const isFocused = params.get("mode") === "focus";
+      setOtRequest({
+        unitKey: isFocused ? params.get("unit") : null,
+        bookCode: isFocused ? params.get("book")?.toUpperCase() ?? null : null,
+        startChapter: isFocused ? parseChapter(params.get("start")) : null,
+        endChapter: isFocused ? parseChapter(params.get("end")) : null,
+        label: isFocused ? params.get("label") : null,
+        targetQuestionCount: Math.min(50, Math.max(1, requestedTarget ?? TOTAL_INITIAL)),
+      });
       setAssessmentMode("OT");
       setPhase("starting");
     }
@@ -528,10 +581,9 @@ export default function AssessPage() {
     setScoreEvidence(evidence);
   }, []);
 
-  const loadQuestion = useCallback(async (aid: string, uid: string) => {
-    const { data, error } = await supabase.rpc("get_next_assessment_question", {
+  const loadQuestion = useCallback(async (aid: string) => {
+    const { data, error } = await supabase.rpc("obs_get_next_ot_assessment_question", {
       p_attempt_id: aid,
-      p_user_id: uid,
     });
     if (error) {
       if (error.message.includes("assessment_answers_user_id_fkey")) {
@@ -633,8 +685,14 @@ export default function AssessPage() {
   const ensureAssessmentSession = useCallback(async () => {
     let { data: { session } } = await supabase.auth.getSession();
     if (session?.user && !session.user.email) {
+      const belongsToThisBrowserSession =
+        sessionStorage.getItem(ANON_SESSION_ACTIVE_KEY) === "1";
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || userData.user?.id !== session.user.id) {
+      if (
+        !belongsToThisBrowserSession ||
+        userError ||
+        userData.user?.id !== session.user.id
+      ) {
         await supabase.auth.signOut();
         clearAssessmentBrowserStorage();
         session = null;
@@ -815,59 +873,34 @@ export default function AssessPage() {
     async function init() {
       if (!modeReady || assessmentMode !== "OT") return;
       try {
-        let { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && !session.user.email) {
-          const { data: userData, error: userError } = await supabase.auth.getUser();
-          if (userError || userData.user?.id !== session.user.id) {
-            await supabase.auth.signOut();
-            clearAssessmentBrowserStorage();
-            session = null;
-          }
-        }
-        if (!session) {
-          const { data, error } = await supabase.auth.signInAnonymously();
-          if (error) throw error;
-          session = data.session;
-        }
-        setIsSignedIn(Boolean(session?.user?.email));
-        const uid = session?.user?.id;
-        if (!uid) throw new Error("No user ID");
-        setUserId(uid);
+        const uid = await ensureAssessmentSession();
         await loadScoreEvidence(uid, "OT");
-        if (session && !session.user.email) {
-          sessionStorage.setItem(ANON_SESSION_ACTIVE_KEY, "1");
-          sessionStorage.setItem(ANON_USER_ID_KEY, uid);
-          localStorage.setItem(ANON_USER_ID_KEY, uid);
-        }
 
-        const storedAnswered = Number(localStorage.getItem("obs_answered") || 0);
-        const storedCorrect = Number(localStorage.getItem("obs_correct") || 0);
-        if (storedAnswered > 0) {
-          setAnsweredCount(storedAnswered);
-          setCorrectCount(storedCorrect);
-        }
+        const { data, error } = await supabase.rpc("obs_start_or_resume_ot_assessment", {
+          p_unit_key: otRequest.unitKey,
+          p_book_code: otRequest.bookCode,
+          p_start_chapter: otRequest.startChapter,
+          p_end_chapter: otRequest.endChapter,
+          p_target_question_count: otRequest.targetQuestionCount,
+          p_force_new: false,
+        });
+        if (error) throw error;
 
-        const { data: bliData } = await supabase.rpc("compute_bli", { p_user_id: uid });
-        const computed = bliData?.[0];
-        if (computed?.questions_answered > 0) {
-          const computedAnswered = Number(computed.questions_answered);
-          const computedCorrect = Math.round(Number(computed.total_weighted_earned || 0));
-          setAnsweredCount(computedAnswered);
-          setCorrectCount(computedCorrect);
-          localStorage.setItem("obs_answered", String(computedAnswered));
-          localStorage.setItem("obs_correct", String(computedCorrect));
-        }
+        const attempt = ((data ?? [])[0] as OtAssessmentStartRow | undefined) ?? null;
+        if (!attempt?.attempt_id) throw new Error("Failed to start the Old Testament assessment");
 
-        const { data: attempt, error: attemptErr } = await supabase
-          .from("assessment_attempts")
-          .insert({ user_id: uid, prior_self_rating: 3 })
-          .select("id")
-          .single();
-        if (attemptErr) throw attemptErr;
-        setAttemptId(attempt.id);
-        localStorage.setItem("obs_attempt_id", attempt.id);
-        localStorage.setItem("obs_user_id", uid);
-        await loadQuestion(attempt.id, uid);
+        setOtAssessment(attempt);
+        setOtTargetCount(Number(attempt.target_question_count || TOTAL_INITIAL));
+        setAttemptId(attempt.attempt_id);
+        setAnsweredCount(Number(attempt.answered_count || 0));
+        setCorrectCount(Number(attempt.correct_count || 0));
+        sessionStorage.setItem(OT_ATTEMPT_ID_KEY, attempt.attempt_id);
+
+        if (attempt.target_reached) {
+          setPhase("complete");
+          return;
+        }
+        await loadQuestion(attempt.attempt_id);
       } catch (err: unknown) {
         const message = err instanceof Error
           ? err.message
@@ -879,7 +912,7 @@ export default function AssessPage() {
       }
     }
     init();
-  }, [assessmentMode, loadQuestion, loadScoreEvidence, modeReady]);
+  }, [assessmentMode, ensureAssessmentSession, loadQuestion, loadScoreEvidence, modeReady, otRequest]);
 
   const submitAnswer = useCallback(async (choiceId: string) => {
     if (!attemptId || !userId || !question || isSubmittingAnswerRef.current) return;
@@ -888,9 +921,8 @@ export default function AssessPage() {
     setIsSubmittingAnswer(true);
     setSelectedChoice(choiceId);
 
-    const { data, error } = await supabase.rpc("submit_assessment_answer_v1", {
+    const { data, error } = await supabase.rpc("obs_submit_ot_assessment_answer", {
       p_attempt_id: attemptId,
-      p_user_id: userId,
       p_generated_question_id: submittedQuestionId,
       p_selected_choice_id: choiceId,
     });
@@ -915,12 +947,11 @@ export default function AssessPage() {
     if (result) {
       setIsCorrect(result.is_correct);
       setCorrectChoiceId(result.correct_choice_id);
-      const newAnswered = answeredCount + 1;
-      const newCorrect = correctCount + (result.is_correct ? 1 : 0);
+      const newAnswered = Number(result.answered_count ?? answeredCount + 1);
+      const newCorrect = Number(result.correct_count ?? correctCount + (result.is_correct ? 1 : 0));
       setAnsweredCount(newAnswered);
-      if (result.is_correct) setCorrectCount(newCorrect);
-      localStorage.setItem("obs_answered", String(newAnswered));
-      localStorage.setItem("obs_correct", String(newCorrect));
+      setCorrectCount(newCorrect);
+      setOtTargetCount(Number(result.target_question_count ?? otTargetCount));
       sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
       sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
       void loadScoreEvidence(userId, "OT");
@@ -929,7 +960,7 @@ export default function AssessPage() {
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setPhase("feedback");
-  }, [attemptId, userId, question, answeredCount, correctCount, loadScoreEvidence, spawnTraveler]);
+  }, [attemptId, userId, question, answeredCount, correctCount, loadScoreEvidence, otTargetCount, spawnTraveler]);
 
   const submitNtAnswer = useCallback(async (choiceId: string) => {
     if (!attemptId || !question || isSubmittingAnswerRef.current) return;
@@ -1008,8 +1039,12 @@ export default function AssessPage() {
       if (attemptId) void loadNtQuestion(attemptId, ntScope);
       return;
     }
-    if (attemptId && userId) loadQuestion(attemptId, userId);
-  }, [answeredCount, assessmentMode, attemptId, loadNtQuestion, loadQuestion, ntScope, ntTargetCount, userId]);
+    if (answeredCount >= otTargetCount) {
+      setPhase("complete");
+      return;
+    }
+    if (attemptId) loadQuestion(attemptId);
+  }, [answeredCount, assessmentMode, attemptId, loadNtQuestion, loadQuestion, ntScope, ntTargetCount, otTargetCount]);
 
   const choiceLabel = (id: string) => {
     if (!selectedChoice) return "";
@@ -1025,23 +1060,27 @@ export default function AssessPage() {
     : [];
   const isSkipped = selectedChoice === IDK_CHOICE_ID;
   const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
-  const ntProgressEnd = assessmentMode === "NT" ? Math.max(ntTargetCount, 1) : TOTAL_INITIAL;
+  const ntProgressEnd = assessmentMode === "NT" ? Math.max(ntTargetCount, 1) : Math.max(otTargetCount, 1);
   const ntProgressPct = assessmentMode === "NT"
     ? Math.min(100, Math.max(0, (answeredCount / ntProgressEnd) * 100))
     : 0;
-  const isInitialPhase = answeredCount < TOTAL_INITIAL;
-  const nextMilestone = answeredCount < TOTAL_INITIAL ? TOTAL_INITIAL : Math.ceil((answeredCount + 1) / 10) * 10;
+  const isInitialPhase = answeredCount < otTargetCount;
+  const nextMilestone = answeredCount < otTargetCount ? otTargetCount : Math.ceil((answeredCount + 1) / 10) * 10;
   const progressStart = isInitialPhase ? 0 : nextMilestone - 10;
-  const progressEnd = isInitialPhase ? TOTAL_INITIAL : nextMilestone;
+  const progressEnd = isInitialPhase ? otTargetCount : nextMilestone;
   const progressPct = Math.min(100, Math.max(0, ((answeredCount - progressStart) / Math.max(1, progressEnd - progressStart)) * 100));
   const hasBrowserSavedProgress = !isSignedIn && answeredCount > 0;
   const navPhaseLabel = isInitialPhase
-    ? (isSignedIn ? "BLI Baseline" : hasBrowserSavedProgress ? "Saved Baseline" : "Initial Assessment")
+    ? (otAssessment?.assessment_kind === "ot_focused"
+      ? "Focused Retest"
+      : isSignedIn ? "BLI Baseline" : hasBrowserSavedProgress ? "Saved Baseline" : "Initial Assessment")
     : (isSignedIn ? "BLI Refinement" : "Browser-Saved Practice");
   const navSubLabel = isInitialPhase
-    ? (hasBrowserSavedProgress
-      ? `${answeredCount} of ${TOTAL_INITIAL} answered in this browser`
-      : `${Math.max(0, TOTAL_INITIAL - answeredCount)} questions until first BLI snapshot`)
+    ? (otAssessment?.assessment_kind === "ot_focused"
+      ? `${otAssessment.label} · ${answeredCount} of ${otTargetCount}`
+      : hasBrowserSavedProgress
+        ? `${answeredCount} of ${otTargetCount} answered in this browser`
+        : `${Math.max(0, otTargetCount - answeredCount)} questions until first BLI snapshot`)
     : (isSignedIn ? "Your BLI refines after every answer" : "Sign in to preserve your BLI across devices");
   const displayNavPhaseLabel = assessmentMode === "NT" ? "New Testament Pilot" : navPhaseLabel;
   const displayNavSubLabel = assessmentMode === "NT"
@@ -1836,6 +1875,14 @@ export default function AssessPage() {
                 <span className="loc-pill" style={{ color: "#566070", background: "rgba(27,36,66,.05)", borderColor: "rgba(27,36,66,.09)" }}>
                   {assessmentMode === "NT" ? ((question as NtPilotQuestion).book_name || question.book_code) : BOOK_NAMES[question.book_code] || question.book_code}
                 </span>
+                {assessmentMode === "OT" && otAssessment?.assessment_kind === "ot_focused" && (
+                  <>
+                    <span className="loc-sep">·</span>
+                    <span className="loc-pill" style={{ color: "#087f7f", background: "rgba(10,163,163,.10)", borderColor: "rgba(10,163,163,.22)" }}>
+                      {otAssessment.label}
+                    </span>
+                  </>
+                )}
                 {assessmentMode === "NT" && (
                   <>
                     <span className="loc-sep">·</span>
@@ -1920,13 +1967,15 @@ export default function AssessPage() {
                   </div>
                 )}
 
-                {assessmentMode === "OT" && answeredCount === TOTAL_INITIAL && (
+                {assessmentMode === "OT" && answeredCount === otTargetCount && (
                   <div className="milestone-banner">
                     <span className="milestone-copy">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 20v-6"/><path d="M6 20v-3"/><path d="M18 20v-9"/><path d="M3 3h18"/>
                       </svg>
-                      Your first BLI snapshot is ready.
+                      {otAssessment?.assessment_kind === "ot_focused"
+                        ? `${otAssessment.label} retest complete. Your recommendation is being recalculated.`
+                        : "Your BLI snapshot is ready."}
                     </span>
                     <span className="milestone-actions">
                       {attemptId && <Link className="milestone-results" href={`/results/${attemptId}`}>See results</Link>}
@@ -1956,11 +2005,21 @@ export default function AssessPage() {
         {phase === "complete" && assessmentMode === "OT" && (
           <div className="card center-card">
             <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
-            <div className="card-heading">Assessment complete</div>
-            <p className="card-sub">You answered {correctCount} of {answeredCount} questions correctly.</p>
+            <div className="card-heading">
+              {otAssessment?.assessment_kind === "ot_focused"
+                ? `${otAssessment.label} retest complete`
+                : "Assessment complete"}
+            </div>
+            <p className="card-sub">
+              {otAssessment?.assessment_kind === "ot_focused"
+                ? "Your new evidence has been added to your BLI. The dashboard will now recalculate this learning unit and your next recommendation."
+                : `You answered ${correctCount} of ${answeredCount} questions correctly.`}
+            </p>
             {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
             <Link className="btn-primary" href="/">View your dashboard</Link>
-            <Link className="btn-secondary" href="/assess">Keep going</Link>
+            {otAssessment?.assessment_kind !== "ot_focused" && (
+              <Link className="btn-secondary" href="/assess">Keep going</Link>
+            )}
           </div>
         )}
       </div>

@@ -17,6 +17,19 @@ type AnswerRow = {
   generated_question_id: string | null;
   is_correct: boolean | null;
 };
+type BackendRecommendation = {
+  unit_key: string;
+  label: string;
+  section: string;
+  book_code: string;
+  start_chapter: number;
+  end_chapter: number;
+  answered: number;
+  display_score: number | null;
+  retest_question_target: number;
+  focus_text: string;
+  reason: string;
+};
 
 type Node = {
   id: string;
@@ -164,6 +177,7 @@ export default function KnowledgeMapPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [recommendation, setRecommendation] = useState<BackendRecommendation | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,11 +201,21 @@ export default function KnowledgeMapPage() {
 
       let answers: AnswerRow[] = [];
       if (session?.user?.id) {
-        const { data: answerData } = await supabase
-          .from("assessment_answers")
-          .select("generated_question_id,is_correct")
-          .eq("user_id", session.user.id);
+        const [{ data: answerData }, { data: recommendationData }] = await Promise.all([
+          supabase
+            .from("assessment_answers")
+            .select("generated_question_id,is_correct")
+            .eq("user_id", session.user.id),
+          supabase.rpc("obs_get_user_recommendation", {
+            p_user_id: session.user.id,
+          }),
+        ]);
         answers = (answerData ?? []) as AnswerRow[];
+        if (!cancelled) {
+          setRecommendation(
+            ((recommendationData ?? [])[0] as BackendRecommendation | undefined) ?? null,
+          );
+        }
       }
 
       if (!cancelled) {
@@ -212,6 +236,20 @@ export default function KnowledgeMapPage() {
   const selectedNode = filteredNodes.find((node) => node.id === selectedNodeId) ?? filteredNodes[0] ?? null;
   const totalAnswered = nodes.reduce((sum, node) => sum + node.answered, 0);
   const fragileTierOne = nodes.filter((node) => node.tier === 1 && (node.answered === 0 || (node.correct / Math.max(1, node.answered)) < 0.6));
+  const recommendedSection = recommendation
+    ? SECTIONS.find(section => section.key === recommendation.section) ?? null
+    : null;
+  const recommendationHref = recommendation
+    ? `/assess?${new URLSearchParams({
+        mode: "focus",
+        unit: recommendation.unit_key,
+        book: recommendation.book_code,
+        start: String(recommendation.start_chapter),
+        end: String(recommendation.end_chapter),
+        label: recommendation.label,
+        target: String(recommendation.retest_question_target),
+      }).toString()}`
+    : "/assess";
 
   return (
     <>
@@ -318,6 +356,19 @@ export default function KnowledgeMapPage() {
         .node-label { pointer-events: none; font-size: 10px; font-weight: 900; fill: #fff; text-anchor: middle; dominant-baseline: middle; text-shadow: 0 2px 8px #000; }
         .section-label { font-family: "Crimson Pro", Georgia, serif; font-size: 17px; font-weight: 800; fill: #fff; text-anchor: middle; text-shadow: 0 2px 8px #000; }
         .section-books { font-size: 9px; font-weight: 800; fill: rgba(238,246,255,.70); text-anchor: middle; }
+        .recommendation-halo {
+          fill: none; stroke: #72e7ff; stroke-width: 5; stroke-dasharray: 8 7;
+          filter: drop-shadow(0 0 11px rgba(114,231,255,.88));
+          animation: recommendation-pulse 2.4s ease-in-out infinite;
+        }
+        .recommendation-label {
+          fill: #b9f3ff; font-size: 9px; font-weight: 950; letter-spacing: .13em;
+          text-anchor: middle; text-transform: uppercase;
+        }
+        @keyframes recommendation-pulse {
+          0%, 100% { opacity: .52; stroke-width: 4; }
+          50% { opacity: 1; stroke-width: 6; }
+        }
         .empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-weight: 700; }
         .detail-stat { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 0; border-bottom: 1px solid rgba(226,236,248,.12); font-size: 13px; color: var(--muted); }
         .detail-stat strong { color: #fff; }
@@ -329,6 +380,27 @@ export default function KnowledgeMapPage() {
         .next-item:hover { background: rgba(114,231,255,.10); border-color: rgba(114,231,255,.34); }
         .next-item strong { display: block; color: #fff; font-size: 13px; margin-bottom: 3px; }
         .next-item span { color: var(--muted); font-size: 12px; line-height: 1.4; display: block; }
+        .recommended-unit {
+          margin-bottom: 18px; padding: 14px; border: 1px solid rgba(114,231,255,.48);
+          background: linear-gradient(145deg, rgba(114,231,255,.15), rgba(255,255,255,.04));
+          box-shadow: inset 0 0 24px rgba(114,231,255,.07), 0 0 24px rgba(114,231,255,.08);
+        }
+        .recommended-kicker {
+          margin: 0 0 7px; color: #9ceeff; font-size: 9px; font-weight: 950;
+          letter-spacing: .14em; text-transform: uppercase;
+        }
+        .recommended-name {
+          margin: 0 0 5px; color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          font-size: 24px; line-height: 1.05;
+        }
+        .recommended-copy { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+        .recommended-action {
+          display: flex; align-items: center; justify-content: center; min-height: 42px;
+          color: #07111d; background: #b9f3ff; border: 1px solid #e8fbff; border-radius: 3px;
+          text-decoration: none; font-size: 12px; font-weight: 900;
+          box-shadow: 0 8px 22px rgba(0,0,0,.28);
+        }
+        .recommended-action:hover { background: #fff; }
         .legend { display: grid; gap: 9px; color: var(--muted); font-size: 12px; line-height: 1.45; }
         .legend-row { display: flex; align-items: center; gap: 8px; }
         .tier-mark { border-radius: 50%; border: 2px solid rgba(238,246,255,.50); background: rgba(255,255,255,.10); box-shadow: 0 0 12px rgba(114,231,255,.18); }
@@ -437,6 +509,12 @@ export default function KnowledgeMapPage() {
               <path className="dep-line" d="M360 255 C336 302, 336 350, 360 372" />
               {SECTIONS.map((section) => (
                 <g key={section.key} opacity={selectedSection === "all" || selectedSection === section.key ? 1 : .18}>
+                  {recommendedSection?.key === section.key && (
+                    <>
+                      <circle className="recommendation-halo" cx={section.x} cy={section.y} r="72" />
+                      <text className="recommendation-label" x={section.x} y={section.y - 81}>Recommended next</text>
+                    </>
+                  )}
                   <circle cx={section.x} cy={section.y} r="63" fill={section.color} opacity=".16" />
                   <circle cx={section.x} cy={section.y} r="47" fill="rgba(5,8,18,.70)" stroke={section.color} strokeWidth="4" />
                   <text className="section-label" x={section.x} y={section.y - 3}>{section.key}</text>
@@ -482,6 +560,22 @@ export default function KnowledgeMapPage() {
           </section>
 
           <aside className="panel panel-pad" aria-label="Node details">
+            {recommendation && (
+              <section className="recommended-unit" aria-label="Recommended next learning unit">
+                <p className="recommended-kicker">Your next step</p>
+                <h2 className="recommended-name">{recommendation.label}</h2>
+                <p className="recommended-copy">
+                  {recommendation.focus_text}
+                  {" "}
+                  {recommendation.display_score === null
+                    ? recommendation.reason
+                    : `${recommendation.display_score} BLI here. ${recommendation.reason}`}
+                </p>
+                <Link className="recommended-action" href={recommendationHref}>
+                  I reread this - retest me
+                </Link>
+              </section>
+            )}
             <p className="panel-title">Selected node</p>
             {selectedNode ? (
               <>
