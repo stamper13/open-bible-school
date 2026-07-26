@@ -13,6 +13,10 @@ export default function AuthCallback() {
         // Exchange code for session
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
+        const requestedPath = params.get("next");
+        const nextPath = requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
+          ? requestedPath
+          : "/";
         if (code) {
           await supabase.auth.exchangeCodeForSession(code);
         }
@@ -48,8 +52,15 @@ export default function AuthCallback() {
         }
 
         localStorage.removeItem("obs_anon_user_id");
+        localStorage.removeItem("obs_answered");
+        localStorage.removeItem("obs_correct");
+        localStorage.removeItem("obs_attempt_id");
+        localStorage.removeItem("obs_user_id");
+        sessionStorage.removeItem("obs_anon_session_active");
         sessionStorage.removeItem("obs_anon_user_id");
-        router.push("/");
+        sessionStorage.removeItem("obs_session_answered");
+        sessionStorage.removeItem("obs_session_correct");
+        router.push(nextPath);
       } catch (err) {
         console.error("Auth callback error:", err);
         router.push("/");

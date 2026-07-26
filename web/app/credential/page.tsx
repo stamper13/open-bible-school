@@ -187,7 +187,7 @@ export default function CredentialPage() {
       </div>
 
       <nav className="nav">
-        <Link className="nav-brand" href="/">Open Bible School</Link>
+        <Link className="nav-brand" href="/">Open Bible Assessment</Link>
         <div className="nav-links">
           <Link className="nav-link" href="/">Dashboard</Link>
           <Link className="nav-link" href="/about">About</Link>
@@ -200,7 +200,7 @@ export default function CredentialPage() {
           <div className="hero-eyebrow">For churches &amp; sessions</div>
           <h1 className="hero-heading">An objective measure of<br/>Scripture content knowledge</h1>
           <p className="hero-lead">
-            Seminary grades and an MDiv are imperfect proxies for biblical literacy. Open Bible School provides an independent, objective baseline — available to any candidate regardless of how or where they were trained.
+            Seminary grades and an MDiv are imperfect proxies for biblical literacy. Open Bible Assessment provides an independent, objective baseline — available to any candidate regardless of how or where they were trained.
           </p>
           <div className="hero-note">
             This feature is in development. The assessments below are not yet functional — this page shows what is being built.
@@ -289,7 +289,7 @@ export default function CredentialPage() {
             <h3 className="how-col-title">Verified Assessment <span className="how-col-badge custom">Option B</span></h3>
             <div className="steps">
               {[
-                { t: "Candidate requests exam", d: "The candidate logs in to their OBS account and requests a verified assessment, entering the elder's email address." },
+                { t: "Candidate requests exam", d: "The candidate logs in to their Open Bible Assessment account and requests a verified assessment, entering the elder's email address." },
                 { t: "Elder receives secure link", d: "The elder receives an email with a secure link valid for 30 days. The candidate never sees this link." },
                 { t: "Candidate takes paper exam", d: "The elder administers the printed exam independently. The candidate answers on paper with no access to the site." },
                 { t: "Elder submits results", d: "Using a second link in the same email, the elder enters section-level scores. The site generates a verified BLI report." },
@@ -311,7 +311,7 @@ export default function CredentialPage() {
 
         <div className="contact-strip">
           <div>
-            <h2 className="contact-heading">Interested in using OBS for your church?</h2>
+            <h2 className="contact-heading">Interested in using Open Bible Assessment for your church?</h2>
             <p className="contact-desc">If you are a church leader, elder, or session clerk interested in the verified assessment feature when it launches, get in touch.</p>
           </div>
           <a className="contact-btn" href="mailto:contact@openbibleschool.com">Get in touch</a>

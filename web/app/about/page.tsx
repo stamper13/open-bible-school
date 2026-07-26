@@ -91,6 +91,28 @@ export default function AboutPage() {
         .section-body { font-size: 15.5px; line-height: 1.80; color: #3a4455; }
         .section-body p + p { margin-top: 14px; }
         .section-body strong { color: var(--navy); font-weight: 650; }
+        .inline-link { color: #0a6e6e; font-weight: 650; text-decoration: none; border-bottom: 1px solid rgba(10,163,163,.30); }
+        .inline-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+        .principle-grid {
+          display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px; margin: 28px 0 8px;
+        }
+        .principle-card {
+          background: var(--card); border: 1px solid var(--border);
+          border-radius: 12px; padding: 16px 14px;
+          box-shadow: var(--shadow-sm); min-height: 128px;
+        }
+        .principle-step {
+          width: 28px; height: 28px; border-radius: 999px;
+          display: inline-flex; align-items: center; justify-content: center;
+          background: var(--accent-dim); color: #0a6e6e;
+          font-size: 12px; font-weight: 800; margin-bottom: 10px;
+        }
+        .principle-title {
+          font-size: 13px; font-weight: 750; color: var(--navy);
+          text-transform: uppercase; letter-spacing: .06em; margin-bottom: 7px;
+        }
+        .principle-copy { font-size: 13px; line-height: 1.55; color: var(--muted); }
         .rule { border: none; border-top: 1px solid var(--border); margin: 60px 0; }
         .objection {
           background: var(--card); border: 1px solid var(--border);
@@ -162,18 +184,20 @@ export default function AboutPage() {
           .objection { padding: 22px 20px; }
           .cta-row { flex-direction: column; }
           .beta-banner { padding: 9px 16px; font-size: 12px; }
+          .principle-grid { grid-template-columns: 1fr; }
         }
       `}</style>
 
       <div className="beta-banner">
         <span className="beta-badge">Beta</span>
-        Open Bible School is in active development. Questions and resources are being refined — feedback on accuracy and wording is welcome.
+        Open Bible Assessment is in active development. Questions and resources are being refined — feedback on accuracy and wording is welcome.
       </div>
 
       <nav className="nav">
-        <Link className="nav-brand" href="/">Open Bible School</Link>
+        <Link className="nav-brand" href="/">Open Bible Assessment</Link>
         <div className="nav-links">
           <Link className="nav-link" href="/">Dashboard</Link>
+          <Link className="nav-link" href="/bli">How BLI Works</Link>
           <Link className="nav-link" href="/credential">For Churches</Link>
         </div>
         <Link className="nav-btn" href="/">Start Assessment</Link>
@@ -181,25 +205,60 @@ export default function AboutPage() {
 
       <main className="page">
         <header className="hero">
-          <div className="hero-eyebrow">About Open Bible School</div>
+          <div className="hero-eyebrow">About Open Bible Assessment</div>
           <h1 className="hero-heading">The grammar of<br/><em>biblical knowledge</em></h1>
           <p className="hero-lead">
-            Open Bible School is a free, adaptive tool that helps you find out what you actually know about the Bible — and where your gaps are. It is not a spiritual barometer. It measures one thing: familiarity with the content of Scripture.
+            Open Bible Assessment is a free, adaptive tool that helps you find out what you actually know about the Bible, where your gaps are, and what to study next. It is not a spiritual barometer. It measures one thing: familiarity with the content of Scripture.
           </p>
         </header>
+
+        <section className="section">
+          <p className="section-label">The basic idea</p>
+          <h2 className="section-heading">Assess, map, route, repeat</h2>
+          <div className="section-body">
+            <p>
+              Open Bible Assessment is built around a simple cycle: <strong>assess, map, route, repeat</strong>. First, it assesses underlying competency directly rather than relying on proxies like credentials, course completion, reading plans, or self-confidence. Then it maps where your knowledge is strong and where it is thin. From there, it can route you toward the passages and resources most relevant to your actual gaps. Over time, repeated assessment gives a clearer picture of growth.
+            </p>
+            <p>
+              This is different from many approaches to Bible training. The problem is not a lack of resources. There are more books, sermons, courses, podcasts, study guides, and curricula than any one person could ever use. The harder question is knowing what you actually need next.
+            </p>
+          </div>
+          <div className="principle-grid">
+            <div className="principle-card">
+              <span className="principle-step">1</span>
+              <div className="principle-title">Assess</div>
+              <p className="principle-copy">Measure real content familiarity instead of assuming knowledge from credentials or completed material.</p>
+            </div>
+            <div className="principle-card">
+              <span className="principle-step">2</span>
+              <div className="principle-title">Map</div>
+              <p className="principle-copy">Show the shape of your knowledge by section, book, and eventually other domains.</p>
+            </div>
+            <div className="principle-card">
+              <span className="principle-step">3</span>
+              <div className="principle-title">Route</div>
+              <p className="principle-copy">Point you toward the passages and resources that match your actual gaps.</p>
+            </div>
+            <div className="principle-card">
+              <span className="principle-step">4</span>
+              <div className="principle-title">Repeat</div>
+              <p className="principle-copy">Return after study and let the map become more accurate as evidence accumulates.</p>
+            </div>
+          </div>
+        </section>
 
         <section className="section">
           <p className="section-label">What it measures</p>
           <h2 className="section-heading">Content knowledge, nothing more</h2>
           <div className="section-body">
             <p>
-              The Bible Literacy Index (BLI) measures the <strong>grammar of biblical knowledge</strong> — the foundational content that underlies all serious engagement with Scripture: the events, the people, the sequence, the textual detail. What happened in Genesis 15. What the two goats in Leviticus 16 represent. What 2 Kings says about the northern kingdom and why. These are facts, not interpretations. They can be tested. They can be measured.
+              The Bible Literacy Index (BLI) measures the <strong>grammar of biblical knowledge</strong> — the foundational content that underlies all serious engagement with Scripture: the events, the people, the sequence, the textual detail. What happened in Genesis 15. What the two goats in Leviticus 16 represent. What 2 Kings says about the northern kingdom and why. These are mostly questions of textual content rather than denominational position. They can be tested. They can be measured.
             </p>
             <p>
               In some cases a question may presume a particular reading of a text — that is unavoidable at this level of detail. What the BLI does not test are positions that require drawing multiple passages together into a theological argument: whether infant baptism or believer&apos;s baptism is correct, for instance, is a question that falls entirely outside its scope.
             </p>
             <p>
-              What the BLI cannot measure — and does not attempt to — is wisdom, interpretive skill, theological depth, or how the Bible has shaped a person&apos;s life. Strong OT content knowledge is something a Presbyterian, a Baptist, an Anglican, and a Pentecostal can all demonstrate — or lack. The tool belongs to no denomination and tilts toward no tradition in what it tests.
+              What the BLI cannot measure — and does not attempt to — is wisdom, interpretive skill, theological depth, or how the Bible has shaped a person&apos;s life. Strong Scripture content knowledge is something a Presbyterian, a Baptist, an Anglican, and a Pentecostal can all demonstrate — or lack. The tool belongs to no denomination and tilts toward no tradition in what it tests.
             </p>
             <p>
               A high BLI score does not make someone a better Christian, a more faithful elder, or a wiser pastor. It means they know the content of Scripture well. That knowledge matters — it undergirds everything else. But it is the floor, not the ceiling.
@@ -210,8 +269,8 @@ export default function AboutPage() {
         <div className="objection">
           <div className="objection-q">Can you really quantify Bible knowledge?</div>
           <div className="objection-a">
-            <p>Not fully — and we&apos;re not trying to. What you can measure is whether someone knows specific things. The BLI reflects how many of those things a person has encountered and retained, sampled across the most significant events and passages in the Old Testament.</p>
-            <p>Think of it like a vocabulary test. A vocabulary test does not capture everything about a person&apos;s relationship with language. But it does tell you something real and useful. A person with a 500-word vocabulary and a person with a 5,000-word vocabulary are not equally equipped, whatever else might be true of them. The BLI works the same way: incomplete as a full measure of biblical knowledge, but accurate and useful within its stated scope.</p>
+            <p>Not fully — and we&apos;re not trying to. But testing it is not a new idea. Seminaries run Bible content exams. Ordination boards test Scripture knowledge before licensing ministers. What they&apos;re all doing is the same thing: assessing something real — whether a person has engaged with and retained the content of Scripture.</p>
+            <p>The BLI works on the same principle. It won&apos;t capture wisdom, interpretive skill, or spiritual formation. But it can tell whether someone knows the events, people, and passages of the Old Testament. Think of the score as a proxy — useful and honest within its scope, not a final verdict on anything.</p>
           </div>
         </div>
 
@@ -226,52 +285,78 @@ export default function AboutPage() {
               Your BLI score is a snapshot, not a verdict. Early in the process it reflects a small sample; over time it becomes a genuinely informative picture of where you stand. The dashboard shows you not just an overall score but a breakdown by section — Torah, Former Prophets, Latter Prophets — so you can see exactly where your knowledge is strong and where it thins out.
             </p>
             <p>
-              <strong>The goal is more time in Scripture, not more time here.</strong> The assessment is a diagnostic tool, not a destination. When it identifies a gap — the Davidic covenant, the fall of the northern kingdom, the Zechariah passages behind the passion narratives — the right response is to go read those passages, not to keep answering questions about them.
+              For readers who want the technical details, including how weighting and the display scale work, see <Link className="inline-link" href="/bli">How the Bible Literacy Index Works</Link>.
             </p>
-          </div>
-        </section>
-
-        <hr className="rule" />
-
-        <section className="section">
-          <p className="section-label">For churches and sessions</p>
-          <h2 className="section-heading">An objective baseline for biblical literacy</h2>
-          <div className="section-body">
-            <p>
-              Seminary grades and an MDiv in hand are imperfect proxies for biblical knowledge. That is not a criticism of seminary education — it is an observation about what credentials measure and what they do not. Course grades reflect performance in academic contexts. They do not reliably tell a session whether a candidate has read and absorbed the Old Testament. And the converse is equally true: some of the most biblically knowledgeable people have no formal training at all. The credential and the knowledge are not the same thing.
-            </p>
-            <p>
-              Open Bible School is working toward something that does not yet exist: an independent, objective measure of Scripture content knowledge — available to any candidate regardless of how or where they were trained, and interpretable by any session without specialized knowledge of seminary curricula or grading standards.
-            </p>
-            <p>
-              The curated resources available through this site reflect a broadly confessional Reformed perspective, consistent with the <strong>Westminster Standards</strong> and the <strong>Savoy Declaration</strong>. The assessment itself tests content that any Christian tradition affirms — the text of Scripture — and is designed to be useful to any church that takes biblical knowledge seriously.
-            </p>
-          </div>
-          <div className="future-note">
-            <span>The verified assessment feature for church credentialing is a planned feature, not yet available. The question bank is currently in beta and being refined through community feedback. If you are a church leader or session clerk interested in using OBS when it is ready, you are welcome to get in touch.</span>
-          </div>
-          <div className="confession-row">
-            <span className="conf-badge">Westminster Confession of Faith</span>
-            <span className="conf-badge">Westminster Larger &amp; Shorter Catechisms</span>
-            <span className="conf-badge">Savoy Declaration</span>
           </div>
         </section>
 
         <hr className="rule" />
 
         <blockquote className="pull-quote">
-          <p>&ldquo;The goal is not more time on this site. It is more time in Scripture — with a clearer sense of where to go and why it matters.&rdquo;</p>
+          <p>&ldquo;The destination is the real goal. The score, the map, and the recommendations are only useful if they send you back to Scripture with a clearer sense of where to go.&rdquo;</p>
         </blockquote>
+
+        <section className="section">
+          <p className="section-label">The destination</p>
+          <h2 className="section-heading">Resources are means, not the goal</h2>
+          <div className="section-body">
+            <p>
+              People grow in biblical knowledge through many faithful means: reading Scripture, hearing sermons, studying commentaries, taking courses, talking with pastors and teachers, memorizing passages, and discussing the Bible with other Christians. Open Bible Assessment does not replace any of those. It helps you use them more tactically.
+            </p>
+            <p>
+              The point is not to collect resources, complete courses, or accumulate credentials as though those automatically equal biblical competence. Those things can be valuable. But they are means. The goal is to know Scripture better.
+            </p>
+            <p>
+              Open Bible Assessment is not trying to solve biblical literacy by becoming one more content library in an already crowded world. It is trying to become a competency map: a way to see what is actually there, what is missing, and what would be most fruitful to pursue next.
+            </p>
+          </div>
+        </section>
+
+        <hr className="rule" />
+
+        <section className="section">
+          <p className="section-label">For churches</p>
+          <h2 className="section-heading">An objective baseline for biblical literacy</h2>
+          <div className="section-body">
+            <p>
+              Seminary grades and an MDiv in hand are imperfect proxies for biblical knowledge. That is not a criticism of seminary education — it is an observation about what credentials measure and what they do not. Course grades reflect performance in academic contexts. They do not reliably tell a session whether a candidate has read and absorbed the Old Testament. And the converse is equally true: some of the most biblically knowledgeable people have no formal training at all. The credential and the knowledge are not the same thing.
+            </p>
+            <p>
+              Open Bible Assessment is working toward something that does not yet exist: an independent, objective measure of Scripture content knowledge — available to any candidate regardless of how or where they were trained, and interpretable by any session without specialized knowledge of seminary curricula or grading standards.
+            </p>
+            <p>
+              This is the core advantage of direct competency assessment: it bypasses proxies and looks at the underlying thing itself. Credentials, courses, and libraries all have a place. But the question beneath them is simpler and more demanding: what does this person actually know?
+            </p>
+          </div>
+          <div className="future-note">
+            <span>The verified assessment feature for church credentialing is a planned feature, not yet available. The question bank is currently in beta and being refined through community feedback. If you are a church leader or session clerk interested in using Open Bible Assessment when it is ready, you are welcome to get in touch.</span>
+          </div>
+          <div className="confession-row">
+            </div>
+        </section>
 
         <section className="section">
           <p className="section-label">Curated resources</p>
           <h2 className="section-heading">Where to go from here</h2>
           <div className="section-body">
             <p>
-              The dashboard identifies your gaps and links to curated resources for each area. These recommendations reflect a broadly Reformed approach to Scripture: high view of biblical authority, attention to the redemptive-historical narrative, and engagement with the text as a unified whole.
+              The dashboard identifies your gaps and links to curated resources for each area.
+            </p>
+          </div>
+        </section>
+
+        <section className="section">
+          <p className="section-label">Beta project</p>
+          <h2 className="section-heading">A proof of concept being refined in public</h2>
+          <div className="section-body">
+            <p>
+              Open Bible Assessment is currently a beta project. The goal is to build a useful diagnostic tool for Bible content knowledge, not to pretend that the present score is already a fully validated psychometric instrument. The BLI is provisional: useful for mapping gaps and guiding study, but still in need of more question review, more user data, and more statistical validation.
             </p>
             <p>
-              If that&apos;s not your tradition, the assessment is still useful. The resources are one perspective among several faithful ones. A community feedback system is in development that will allow users to flag questions for accuracy and suggest resources.
+              That means feedback is part of the work. Biblical insight matters: question wording, textual accuracy, passage selection, book coverage, and theological neutrality all need careful review. Technical insight matters too: scoring, data modeling, accessibility, security, analytics, and frontend/backend reliability all affect whether this can become genuinely useful.
+            </p>
+            <p>
+              If the idea has potential, it will need more than one person. The hope is to make the early version good enough to test honestly, learn from real use, and invite help from people who care about Scripture, education, statistics, and software.
             </p>
           </div>
         </section>
@@ -279,13 +364,14 @@ export default function AboutPage() {
         <div className="donate-block">
           <h2 className="donate-heading">Free, and staying that way</h2>
           <p className="donate-body">
-            Open Bible School is not a product. There is no subscription, no premium tier, no advertising. The tool is free to use and will remain so. If you find it useful and want to support the ongoing work, you can make a donation. If not, use it anyway.
+            Open Bible Assessment is not a product. There is no subscription, no premium tier, no advertising. The tool is free to use and will remain so. If you find it useful and want to support the ongoing work, you can make a donation. If not, use it anyway.
           </p>
           <a className="donate-btn" href="/donate">Support the work</a>
         </div>
 
         <div className="cta-row">
           <Link className="btn-primary" href="/">Start the assessment</Link>
+          <Link className="btn-secondary" href="/bli">How BLI works</Link>
           <Link className="btn-secondary" href="/credential">For churches</Link>
         </div>
       </main>

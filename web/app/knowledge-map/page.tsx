@@ -4,18 +4,14 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { loadPublicQuestionMetadata, type PublicQuestionMetadataRow } from "@/lib/supabase/questionMetadata";
+import { sectionForBook, type OldTestamentSectionName } from "@/lib/bibleTaxonomy";
 
-type SectionKey = "Torah" | "Former Prophets" | "Latter Prophets" | "Writings";
-type DimensionKey = "events" | "sequence" | "characters" | "speech" | "commands" | "details" | "structure" | "significance";
+type SectionKey = OldTestamentSectionName;
+type DimensionKey = "characters" | "events" | "geography" | "commands" | "speech" | "significance" | "structure";
 type MapMode = "mastery" | "tier" | "evidence";
 
-type BankRow = {
-  generated_question_id: string;
-  question_type: string | null;
-  payload: Record<string, unknown> | null;
-  book_code: string | null;
-  routing_score: number | null;
-};
+type BankRow = PublicQuestionMetadataRow;
 
 type AnswerRow = {
   generated_question_id: string | null;
@@ -43,42 +39,44 @@ const SECTIONS: Array<{ key: SectionKey; books: string; color: string; x: number
 ];
 
 const DIMENSIONS: Array<{ key: DimensionKey; label: string; short: string }> = [
-  { key: "events", label: "Events", short: "Event" },
-  { key: "sequence", label: "Sequence", short: "Seq" },
-  { key: "characters", label: "Characters", short: "Char" },
-  { key: "speech", label: "Speech & promise", short: "Speech" },
-  { key: "commands", label: "Commands", short: "Cmd" },
-  { key: "details", label: "Textual detail", short: "Detail" },
-  { key: "structure", label: "Book structure", short: "Struct" },
-  { key: "significance", label: "Significance", short: "Sig" },
+  { key: "characters", label: "Characters & Lineage", short: "Who" },
+  { key: "events", label: "Events & Timeline", short: "Event" },
+  { key: "geography", label: "Geography & Nations", short: "Geo" },
+  { key: "commands", label: "Law & Commands", short: "Law" },
+  { key: "speech", label: "Promise & Prophecy", short: "Promise" },
+  { key: "significance", label: "Theological Reasoning", short: "Reason" },
+  { key: "structure", label: "Structure & Cross Ref", short: "Struct" },
 ];
-
-const BOOK_SECTION: Record<string, SectionKey> = {
-  GEN: "Torah", EXO: "Torah", LEV: "Torah", NUM: "Torah", DEU: "Torah",
-  JOS: "Former Prophets", JDG: "Former Prophets", RUT: "Former Prophets", "1SA": "Former Prophets", "2SA": "Former Prophets",
-  "1KI": "Former Prophets", "2KI": "Former Prophets", "1CH": "Former Prophets", "2CH": "Former Prophets", EZR: "Former Prophets",
-  NEH: "Former Prophets", EST: "Former Prophets",
-  ISA: "Latter Prophets", JER: "Latter Prophets", LAM: "Latter Prophets", EZE: "Latter Prophets", DAN: "Latter Prophets",
-  HOS: "Latter Prophets", JOL: "Latter Prophets", AMO: "Latter Prophets", OBA: "Latter Prophets", JON: "Latter Prophets",
-  MIC: "Latter Prophets", NAM: "Latter Prophets", HAB: "Latter Prophets", ZEP: "Latter Prophets", HAG: "Latter Prophets",
-  ZEC: "Latter Prophets", MAL: "Latter Prophets",
-  JOB: "Writings", PSA: "Writings", PRO: "Writings", ECC: "Writings", SNG: "Writings",
-};
 
 function dimensionForType(questionType: string | null): DimensionKey {
   const q = (questionType ?? "").toLowerCase();
-  if (q.includes("chronology") || q.includes("sequence")) return "sequence";
-  if (q.includes("relationship") || q.includes("role") || q.includes("oppressor") || q.includes("entity")) return "characters";
-  if (q.includes("speech") || q.includes("promise")) return "speech";
-  if (q.includes("command")) return "commands";
-  if (q.includes("numeric") || q.includes("detail")) return "details";
-  if (q.includes("outline")) return "structure";
-  if (q.includes("significance") || q.includes("concept")) return "significance";
+  if (q.includes("relationship") || q.includes("role") || q.includes("oppressor") || q.includes("entity") || q.includes("lineage") || q.includes("genealogy")) return "characters";
+  if (q.includes("geography") || q.includes("location") || q.includes("nation") || q.includes("empire")) return "geography";
+  if (q.includes("command") || q.includes("law") || q.includes("covenant_curse")) return "commands";
+  if (q.includes("speech") || q.includes("promise") || q.includes("prophecy") || q.includes("prophetic")) return "speech";
+  if (q.includes("outline") || q.includes("structure") || q.includes("scripture_connection") || q.includes("cross_ref") || q.includes("intertextual")) return "structure";
+  if (q.includes("significance") || q.includes("concept") || q.includes("wisdom") || q.includes("theological")) return "significance";
+  if (q.includes("chronology") || q.includes("sequence") || q.includes("numeric") || q.includes("detail")) return "events";
   return "events";
 }
 
+function dimensionForRow(row: BankRow): DimensionKey {
+  if (row.dimension_key === "characters_lineage") return "characters";
+  if (row.dimension_key === "events_timeline") return "events";
+  if (row.dimension_key === "geography_nations") return "geography";
+  if (row.dimension_key === "law_commands") return "commands";
+  if (row.dimension_key === "promise_prophecy") return "speech";
+  if (row.dimension_key === "theological_reasoning") return "significance";
+  if (row.dimension_key === "structure_cross_ref") return "structure";
+  return dimensionForType(row.question_type);
+}
+
+async function loadDimensionAwareQuestionBank() {
+  return loadPublicQuestionMetadata();
+}
+
 function tierFor(row: BankRow): 1 | 2 | 3 {
-  const layer = Number(row.payload?.question_layer);
+  const layer = Number(row.question_layer);
   if (layer === 1 || layer === 2 || layer === 3) return layer as 1 | 2 | 3;
   const score = Number(row.routing_score ?? 0);
   if (score >= 72) return 1;
@@ -119,9 +117,12 @@ function buildNodes(bankRows: BankRow[], answerRows: AnswerRow[]) {
   const grouped = new Map<string, Node>();
   bankRows.forEach((row) => {
     const book = (row.book_code ?? "").toUpperCase();
-    const section = BOOK_SECTION[book];
+    const mappedSection = sectionForBook(book);
+    const section = SECTIONS.some((item) => item.key === mappedSection)
+      ? mappedSection as SectionKey
+      : null;
     if (!section) return;
-    const dimension = dimensionForType(row.question_type);
+    const dimension = dimensionForRow(row);
     const id = `${section}:${dimension}`;
     const sectionConfig = SECTIONS.find((item) => item.key === section)!;
     const dimIndex = DIMENSIONS.findIndex((item) => item.key === dimension);
@@ -169,13 +170,12 @@ export default function KnowledgeMapPage() {
     async function loadMap() {
       setLoading(true);
       setLoadError(null);
-      const { data: bank, error: bankError } = await supabase
-        .from("v_question_bank")
-        .select("generated_question_id,question_type,payload,book_code,routing_score")
-        .limit(1000);
-      if (bankError) {
+      let bank: BankRow[] = [];
+      try {
+        bank = (await loadDimensionAwareQuestionBank()) as BankRow[];
+      } catch (error) {
         if (!cancelled) {
-          setLoadError(bankError.message);
+          setLoadError(error instanceof Error ? error.message : "Could not load question bank.");
           setLoading(false);
         }
         return;
@@ -350,7 +350,7 @@ export default function KnowledgeMapPage() {
       `}</style>
 
       <nav className="nav">
-        <Link className="nav-brand" href="/">Open Bible School</Link>
+        <Link className="nav-brand" href="/">Open Bible Assessment</Link>
         <div className="nav-links">
           <Link className="nav-link" href="/">Dashboard</Link>
           <Link className="nav-link active" href="/knowledge-map">Knowledge Map</Link>

@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -23,6 +24,8 @@
 # misc
 .DS_Store
 *.pem
+*.bak
+*.save
 
 # debug
 npm-debug.log*
@@ -40,3 +43,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local/generated Bible ingest data
+/bible-ingest/input/
+/bible-ingest/output/
+/bible-ingest/cross_references*.txt
+/bible-ingest/people-candidates.csv

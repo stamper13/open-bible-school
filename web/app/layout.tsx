@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Open Bible School",
+  title: "Open Bible Assessment",
   description: "A free, adaptive tool to find out what you actually know about the Bible.",
 };
 

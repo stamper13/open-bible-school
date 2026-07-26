@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
+import { loadPublicQuestionMetadata, type PublicQuestionMetadataRow } from "@/lib/supabase/questionMetadata";
+import { BLI_LEVELS, levelForScore, toDisplayScore } from "@/lib/bli";
+import { BOOK_NAMES, OT_BOOK_CODES, SECTION_BOOKS, sectionForBook } from "@/lib/bibleTaxonomy";
 
 const SKY_SEED_KEY = "obs_sky_seed";
 const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
@@ -43,30 +46,28 @@ function getOrCreateSkySeed() {
   return seed;
 }
 
-// BLI display scale (200-800) + seven-level bands. compute_bli returns raw 0-100.
-const BLI_BANDS = [
-  { name: "Unfamiliar", min: 200, max: 290, color: "#566070", description: "You do not yet have a steady grasp of the Old Testament's major plot, events, characters, and book locations." },
-  { name: "Acquainted", min: 291, max: 434, color: "#6b7f8a", description: "You recognize some major people and stories, but many core events, sequences, and book-level connections are still forming." },
-  { name: "Familiar",   min: 435, max: 584, color: "#0aa3a3", description: "You know many major stories and characters, with growing awareness of where events belong and how they connect." },
-  { name: "Literate",   min: 585, max: 674, color: "#0e8c6a", description: "You can navigate the Old Testament with confidence, connecting books, events, characters, and theological themes." },
-  { name: "Studied",    min: 675, max: 734, color: "#2563c4", description: "You show detailed knowledge of the text, including less obvious events, patterns, references, and historical flow." },
-  { name: "Learned",    min: 735, max: 770, color: "#7c3aed", description: "You understand the Old Testament at a deep level, with strong command of structure, sequence, characters, and theology." },
-  { name: "Scholar",    min: 771, max: 800, color: "#d4a017", description: "You demonstrate exceptional mastery, including fine textual detail, interconnections, and theological architecture." },
-];
-function toDisplayScore(raw: number): number {
-  return Math.max(200, Math.min(800, Math.round(raw * 6 + 200)));
-}
-function levelForScore(s: number): string {
-  return (BLI_BANDS.find(b => s <= b.max) ?? BLI_BANDS[BLI_BANDS.length - 1]).name;
-}
 function coneMarkerPercent(s: number): number {
-  const bandIndex = BLI_BANDS.findIndex(b => s >= b.min && s <= b.max);
-  const safeBandIndex = bandIndex === -1 ? (s < BLI_BANDS[0].min ? 0 : BLI_BANDS.length - 1) : bandIndex;
-  const band = BLI_BANDS[safeBandIndex];
+  const bandIndex = BLI_LEVELS.findIndex(b => s >= b.min && s <= b.max);
+  const safeBandIndex = bandIndex === -1 ? (s < BLI_LEVELS[0].min ? 0 : BLI_LEVELS.length - 1) : bandIndex;
+  const band = BLI_LEVELS[safeBandIndex];
   const span = Math.max(1, band.max - band.min);
   const withinBand = Math.max(0, Math.min(1, (s - band.min) / span));
-  const visualIndexFromTop = BLI_BANDS.length - 1 - safeBandIndex;
-  return ((visualIndexFromTop + (1 - withinBand)) / BLI_BANDS.length) * 100;
+  const visualIndexFromTop = BLI_LEVELS.length - 1 - safeBandIndex;
+  return ((visualIndexFromTop + (1 - withinBand)) / BLI_LEVELS.length) * 100;
+}
+function formatProgressDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+function formatScoreChange(value: number): string {
+  const rounded = Math.round(value);
+  if (rounded > 0) return `+${rounded}`;
+  return String(rounded);
 }
 
 const SECTION_RECOMMENDATIONS = [
@@ -112,16 +113,39 @@ type ScopeScore = {
   correct: number;
   confidence: "none" | "low" | "moderate" | "high";
 };
-type BankRow = {
-  generated_question_id: string;
-  question_type: string;
-  dimension_key?: string | null;
-  payload: Record<string, unknown> | null;
-  book_code: string | null;
-  routing_score: number | null;
-  importance_conceptual: number | null;
-  importance_context: number | null;
+type ScopeSummary = {
+  scope_type: string;
+  scope_key: string;
+  answered: number;
+  correct: number;
+  idk: number;
+  accuracy: number | null;
+  first_answered_at: string | null;
+  last_answered_at: string | null;
+  evidence_level: "Needs more evidence" | "Low evidence" | "Moderate evidence" | "High evidence";
+  books: Array<{
+    book_code: string;
+    answered: number;
+    correct: number;
+    idk: number;
+    accuracy: number | null;
+  }>;
+  dimensions: Array<{
+    dimension_key: string;
+    answered: number;
+    correct: number;
+    idk: number;
+    accuracy: number | null;
+  }>;
 };
+type ScopeDetailTarget = {
+  scopeType: "TESTAMENT" | "SECTION" | "BOOK" | "DIMENSION" | "UNIT";
+  scopeKey: string;
+  label: string;
+  subtitle: string;
+  unitKey?: string;
+};
+type BankRow = PublicQuestionMetadataRow;
 type AnswerRow = {
   generated_question_id: string | null;
   is_correct: boolean;
@@ -140,6 +164,30 @@ type BackendRecommendation = {
   focus_text: string;
   reason: string;
 };
+type BliEvidence = {
+  scope: string;
+  theta: number;
+  theta_se: number;
+  theta_lower_95: number;
+  theta_upper_95: number;
+  n_responses: number;
+  evidence_level: "Very limited" | "Limited" | "Developing" | "Strong" | "Very strong";
+  evidence_description: string;
+};
+type ProgressPoint = {
+  attempt_id: string;
+  captured_at: string;
+  raw_bli: number;
+  display_bli: number;
+  bli_level: string;
+  questions_answered: number;
+  correct_answers: number;
+  idk_answers: number;
+  theta: number | null;
+  theta_se: number | null;
+  n_responses: number;
+  score_change: number;
+};
 type NtPilotSummary = {
   answered: number;
   correct: number;
@@ -149,31 +197,8 @@ type NtPilotSummary = {
   updatedAt: string;
 };
 
-const BOOK_ORDER = [
-  "GEN", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA", "1KI", "2KI",
-  "1CH", "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO", "ECC", "SNG", "ISA", "JER",
-  "LAM", "EZE", "DAN", "HOS", "JOL", "AMO", "OBA", "JON", "MIC", "NAM", "HAB", "ZEP",
-  "HAG", "ZEC", "MAL",
-];
-const BOOK_NAMES: Record<string, string> = {
-  GEN: "Genesis", EXO: "Exodus", LEV: "Leviticus", NUM: "Numbers", DEU: "Deuteronomy",
-  JOS: "Joshua", JDG: "Judges", RUT: "Ruth", "1SA": "1 Samuel", "2SA": "2 Samuel",
-  "1KI": "1 Kings", "2KI": "2 Kings", "1CH": "1 Chronicles", "2CH": "2 Chronicles",
-  EZR: "Ezra", NEH: "Nehemiah", EST: "Esther", JOB: "Job", PSA: "Psalms",
-  PRO: "Proverbs", ECC: "Ecclesiastes", SNG: "Song of Songs", ISA: "Isaiah",
-  JER: "Jeremiah", LAM: "Lamentations", EZE: "Ezekiel", DAN: "Daniel",
-  HOS: "Hosea", JOL: "Joel", AMO: "Amos", OBA: "Obadiah", JON: "Jonah",
-  MIC: "Micah", NAM: "Nahum", HAB: "Habakkuk", ZEP: "Zephaniah", HAG: "Haggai",
-  ZEC: "Zechariah", MAL: "Malachi",
-};
-const SECTION_BOOKS: Record<string, string[]> = {
-  Torah: ["GEN", "EXO", "LEV", "NUM", "DEU"],
-  "Former Prophets": ["JOS", "JDG", "RUT", "1SA", "2SA", "1KI", "2KI"],
-  "Latter Prophets": ["ISA", "JER", "LAM", "EZE", "DAN", "HOS", "JOL", "AMO", "OBA", "JON", "MIC", "NAM", "HAB", "ZEP", "HAG", "ZEC", "MAL"],
-  Writings: ["1CH", "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO", "ECC", "SNG"],
-};
 const SECTION_META = [
-  { key: "ot", label: "Old Testament", subtitle: "Genesis - Malachi", kind: "canon" as const, className: "ot", books: BOOK_ORDER },
+  { key: "ot", label: "Old Testament", subtitle: "Genesis - Malachi", kind: "canon" as const, className: "ot", books: OT_BOOK_CODES },
   { key: "torah", label: "Torah", subtitle: "Genesis - Deuteronomy", kind: "section" as const, className: "torah", books: SECTION_BOOKS.Torah },
   { key: "prophets", label: "Prophets", subtitle: "Former + Latter Prophets", kind: "section" as const, className: "prophets", books: [...SECTION_BOOKS["Former Prophets"], ...SECTION_BOOKS["Latter Prophets"]] },
   { key: "former", label: "Former Prophets", subtitle: "Joshua - Kings", kind: "section" as const, className: "former", books: SECTION_BOOKS["Former Prophets"] },
@@ -190,22 +215,42 @@ const DOMAIN_META = [
   { key: "scripture_connections", backendKey: "structure_cross_ref", label: "Cross Ref", match: (type: string) => type.includes("scripture_connection") || type.includes("cross_ref") || type.includes("intertextual") },
 ];
 
+function detailTargetForScore(score: ScopeScore): ScopeDetailTarget {
+  if (score.kind === "canon") {
+    return { scopeType: "TESTAMENT", scopeKey: "OT", label: score.label, subtitle: score.subtitle };
+  }
+  if (score.kind === "book") {
+    return {
+      scopeType: "BOOK",
+      scopeKey: score.key.replace("book:", ""),
+      label: score.label,
+      subtitle: score.subtitle,
+    };
+  }
+  if (score.kind === "domain") {
+    const domain = DOMAIN_META.find(item => `domain:${item.key}` === score.key);
+    return {
+      scopeType: "DIMENSION",
+      scopeKey: domain?.backendKey ?? score.key.replace("domain:", ""),
+      label: score.label,
+      subtitle: "Knowledge dimension",
+    };
+  }
+  return { scopeType: "SECTION", scopeKey: score.label, label: score.label, subtitle: score.subtitle };
+}
+
+function dimensionDisplayName(key: string): string {
+  return DOMAIN_META.find(domain => domain.backendKey === key)?.label
+    ?? key.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
 async function loadDimensionAwareQuestionBank() {
-  const dimensionResult = await supabase
-    .from("obs_question_bank_with_dimensions")
-    .select("generated_question_id,question_type,dimension_key,payload,book_code,routing_score,importance_conceptual,importance_context");
-
-  if (!dimensionResult.error) return dimensionResult.data ?? [];
-
-  const fallbackResult = await supabase
-    .from("v_question_bank")
-    .select("generated_question_id,question_type,payload,book_code,routing_score,importance_conceptual,importance_context");
-
-  return fallbackResult.data ?? [];
+  return loadPublicQuestionMetadata();
 }
 
 function sectionNameForBook(bookCode: string) {
-  return Object.entries(SECTION_BOOKS).find(([, books]) => books.includes(bookCode))?.[0] ?? "Old Testament";
+  const section = sectionForBook(bookCode);
+  return section === "Unmapped" ? "Old Testament" : section;
 }
 
 function classNameForSection(sectionName: string) {
@@ -285,7 +330,7 @@ function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
     evidence.filter(row => scope.books.includes(row.bookCode)),
   ));
 
-  const books = BOOK_ORDER.map(bookCode => makeScore(
+  const books = OT_BOOK_CODES.map(bookCode => makeScore(
     `book:${bookCode}`,
     BOOK_NAMES[bookCode] ?? bookCode,
     sectionNameForBook(bookCode),
@@ -315,7 +360,7 @@ function evidenceLabel(score: ScopeScore) {
 
 function hasBaselineEvidence(score: ScopeScore | undefined) {
   if (!score || score.rawScore === null) return false;
-  return score.answered >= 3 && (score.displayScore ?? 200) >= 585;
+  return score.answered >= 3 && (score.displayScore ?? 0) >= 513;
 }
 
 function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: boolean, bookScores: ScopeScore[]) {
@@ -330,14 +375,14 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
     };
   }
 
-  const bookTarget = BOOK_ORDER
+  const bookTarget = OT_BOOK_CODES
     .map(bookCode => {
       const focus = BOOK_FOCUS_RANGES[bookCode];
       const score = bookScores.find(item => item.key === `book:${bookCode}`);
       return focus ? { bookCode, focus, score } : null;
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
-    .find(item => !item.score || item.score.answered < 3 || (item.score.displayScore ?? 200) < 585);
+    .find(item => !item.score || item.score.answered < 3 || (item.score.displayScore ?? 0) < 513);
 
   if (bookTarget) {
     const score = bookTarget.score;
@@ -383,22 +428,36 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
 
 export default function HomePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [dashboardUserId, setDashboardUserId] = useState<string | null>(null);
   const [assessmentData, setAssessmentData] = useState<{answered: number, correct: number, bli?: number} | null>(null);
   const [sectionScores, setSectionScores] = useState<Record<string, {pct: number, total: number, weighted_pct: number}>>({});
   const [scopeScores, setScopeScores] = useState<{sections: ScopeScore[]; books: ScopeScore[]; domains: ScopeScore[]}>(() => buildScopeScores([], []));
   const [activeBreakdownTab, setActiveBreakdownTab] = useState<BreakdownTab>("sections");
-  const [bliLevel, setBliLevel] = useState<string | null>(null);
   const [showBliTooltip, setShowBliTooltip] = useState(false);
+  const [showEvidenceTooltip, setShowEvidenceTooltip] = useState(false);
   const [expandedConeLayer, setExpandedConeLayer] = useState<string | null>(null);
   const [isAssessmentCharging, setIsAssessmentCharging] = useState(false);
   const [activeDashboardTab, setActiveDashboardTab] = useState<"bli" | "church-history" | "biblical-languages">("bli");
   const [isAnonymousDashboard, setIsAnonymousDashboard] = useState(false);
   const [backendRecommendation, setBackendRecommendation] = useState<BackendRecommendation | null>(null);
+  const [bliEvidence, setBliEvidence] = useState<BliEvidence | null>(null);
+  const [progressTestament, setProgressTestament] = useState<"OT" | "NT">("OT");
+  const [progressHistory, setProgressHistory] = useState<ProgressPoint[]>([]);
+  const [activeProgressAttemptId, setActiveProgressAttemptId] = useState<string | null>(null);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [scopeDetailTarget, setScopeDetailTarget] = useState<ScopeDetailTarget | null>(null);
+  const [scopeSummary, setScopeSummary] = useState<ScopeSummary | null>(null);
+  const [scopeSummaryLoading, setScopeSummaryLoading] = useState(false);
+  const [scopeSummaryError, setScopeSummaryError] = useState<string | null>(null);
   const [ntPilotSummary, setNtPilotSummary] = useState<NtPilotSummary | null>(null);
   const [pendingRetestHref, setPendingRetestHref] = useState<string | null>(null);
   const tooltipCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assessmentHoldDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assessmentHoldRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressBackfillAttemptedRef = useRef<string | null>(null);
+  const scopeRequestRef = useRef(0);
+  const recordedRecommendationRef = useRef<string | null>(null);
   const coneRef = useRef<HTMLDivElement>(null);
   const sloshRef = useRef({
     x1: 0, v1: 0, x2: 0, v2: 0,
@@ -410,16 +469,10 @@ export default function HomePage() {
   });
   const currentDisplayScore = assessmentData
     ? toDisplayScore(assessmentData.bli ?? Math.round((assessmentData.correct / assessmentData.answered) * 100))
-    : 200;
-  const currentDisplayLevel = levelForScore(currentDisplayScore);
-  const waterFillPercent = assessmentData ? 100 - coneMarkerPercent(currentDisplayScore) : 0;
-  const confidenceScore = assessmentData
-    ? Math.round(99 * assessmentData.answered / (assessmentData.answered + 20))
     : 0;
-  const confidenceLabel = confidenceScore >= 85 ? "Very high"
-    : confidenceScore >= 70 ? "High"
-    : confidenceScore >= 50 ? "Moderate"
-    : "Low";
+  const currentDisplayLevel = levelForScore(currentDisplayScore);
+  const currentDisplayBand = BLI_LEVELS.find((band) => band.name === currentDisplayLevel) ?? BLI_LEVELS[0];
+  const waterFillPercent = assessmentData ? 100 - coneMarkerPercent(currentDisplayScore) : 0;
 
   useEffect(() => {
     try {
@@ -472,12 +525,180 @@ export default function HomePage() {
     const former = scopeScores.sections.find(score => score.label === "Former Prophets");
     return hasBaselineEvidence(torah) && hasBaselineEvidence(former);
   }, [scopeScores.sections]);
+  const chronologicalProgress = useMemo(
+    () => [...progressHistory].reverse(),
+    [progressHistory],
+  );
+  const progressBounds = useMemo(() => {
+    const scores = chronologicalProgress.map(p => Math.max(0, Math.min(800, p.display_bli)));
+    if (scores.length === 0) return { lo: 0, hi: 800 };
+    const dataLo = Math.min(...scores);
+    const dataHi = Math.max(...scores);
+    const span = Math.max(dataHi - dataLo, 90);
+    const pad = span * 0.28;
+    const lo = Math.max(0, Math.floor((dataLo - pad) / 10) * 10);
+    const hi = Math.min(800, Math.ceil((dataHi + pad) / 10) * 10);
+    return { lo, hi: hi > lo ? hi : lo + 100 };
+  }, [chronologicalProgress]);
+  const plottedProgress = useMemo(() => {
+    const lastIndex = chronologicalProgress.length - 1;
+    const { lo, hi } = progressBounds;
+    const range = Math.max(hi - lo, 1);
+    return chronologicalProgress.map((point, index) => {
+      const score = Math.max(0, Math.min(800, point.display_bli));
+      return {
+        point,
+        x: lastIndex <= 0 ? 50 : 3 + (index / lastIndex) * 94,
+        y: 92 - ((score - lo) / range) * 84,
+      };
+    });
+  }, [chronologicalProgress, progressBounds]);
+  const progressAxisLabels = useMemo(() => {
+    const { lo, hi } = progressBounds;
+    return [hi, Math.round((hi + lo) / 2), lo];
+  }, [progressBounds]);
+  const progressXAxisLabels = useMemo(() => {
+    const n = plottedProgress.length;
+    if (n === 0) return [];
+    const times = plottedProgress.map(p => new Date(p.point.captured_at).getTime());
+    const spanDays = (times[n - 1] - times[0]) / 86400000;
+    if (n === 1) {
+      return [{
+        x: plottedProgress[0].x,
+        text: new Date(times[0]).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }),
+      }];
+    }
+
+    // Granularity follows the span: hours within a single day, days for weeks and
+    // months, month+year once the record stretches past a year.
+    const fmt = (t: number) => {
+      const d = new Date(t);
+      if (spanDays < 1) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      if (spanDays < 3) return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric" });
+      if (spanDays < 400) return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+    };
+
+    // Denser records earn more ticks; sparse ones label every point.
+    const target = n <= 5 ? n : spanDays < 3 ? 4 : n <= 12 ? 4 : n <= 30 ? 5 : 6;
+    const idxs = Array.from(
+      new Set(Array.from({ length: target }, (_, k) => Math.round((k * (n - 1)) / Math.max(target - 1, 1)))),
+    ).sort((a, b) => a - b);
+
+    const out: Array<{ x: number; text: string }> = [];
+    idxs.forEach((i, k) => {
+      const text = fmt(times[i]);
+      // Drop a tick whose text repeats the previous one, unless it's the final tick.
+      if (k > 0 && k < idxs.length - 1 && out.length > 0 && out[out.length - 1].text === text) return;
+      out.push({ x: plottedProgress[i].x, text });
+    });
+    if (out.length > 1 && out[out.length - 1].text === out[out.length - 2].text) out.splice(out.length - 2, 1);
+    return out;
+  }, [plottedProgress]);
+  const progressPath = plottedProgress
+    .map((entry, index) => `${index === 0 ? "M" : "L"} ${entry.x.toFixed(2)} ${entry.y.toFixed(2)}`)
+    .join(" ");
+  const progressAreaPath = plottedProgress.length > 0
+    ? `${progressPath} L ${plottedProgress[plottedProgress.length - 1].x.toFixed(2)} 100 L ${plottedProgress[0].x.toFixed(2)} 100 Z`
+    : "";
+  const activeProgressPoint = progressHistory.find(point => point.attempt_id === activeProgressAttemptId)
+    ?? progressHistory[0]
+    ?? null;
 
   useEffect(() => {
     if (!recommendedStudy.actionHref.startsWith("/assess?")) return;
     const key = `obs_recommendation_seen:${recommendedStudy.actionHref}`;
     if (!localStorage.getItem(key)) localStorage.setItem(key, String(Date.now()));
   }, [recommendedStudy.actionHref]);
+
+  const recordStudyEvent = useCallback(async (
+    eventType: "recommendation_viewed" | "reading_started" | "reading_completed" | "retest_started" | "retest_completed" | "recommendation_dismissed",
+    unitKey: string,
+  ) => {
+    if (!dashboardUserId) return;
+    await supabase.rpc("obs_record_study_event", {
+      p_user_id: dashboardUserId,
+      p_unit_key: unitKey,
+      p_event_type: eventType,
+      p_attempt_id: null,
+      p_metadata: { source: "dashboard_recommendation" },
+    });
+  }, [dashboardUserId]);
+
+  useEffect(() => {
+    if (!dashboardUserId || !backendRecommendation?.unit_key) return;
+    const eventKey = `${dashboardUserId}:${backendRecommendation.unit_key}`;
+    if (recordedRecommendationRef.current === eventKey) return;
+    recordedRecommendationRef.current = eventKey;
+    void recordStudyEvent("recommendation_viewed", backendRecommendation.unit_key);
+  }, [backendRecommendation?.unit_key, dashboardUserId, recordStudyEvent]);
+
+  const openScopeDetail = async (target: ScopeDetailTarget) => {
+    setScopeDetailTarget(target);
+    setScopeSummary(null);
+    setScopeSummaryError(null);
+    if (!dashboardUserId) {
+      setScopeSummaryError("Complete an assessment or sign in to build scope details.");
+      return;
+    }
+
+    const requestId = scopeRequestRef.current + 1;
+    scopeRequestRef.current = requestId;
+    setScopeSummaryLoading(true);
+    const { data, error } = await supabase.rpc("obs_get_scope_summary", {
+      p_user_id: dashboardUserId,
+      p_scope_type: target.scopeType,
+      p_scope_key: target.scopeKey,
+    });
+    if (requestId !== scopeRequestRef.current) return;
+
+    if (error) {
+      setScopeSummaryError(error.message || "This scope could not be loaded.");
+      setScopeSummaryLoading(false);
+      return;
+    }
+
+    const row = ((data ?? [])[0] as ScopeSummary | undefined) ?? null;
+    setScopeSummary(row ? {
+      ...row,
+      answered: Number(row.answered),
+      correct: Number(row.correct),
+      idk: Number(row.idk),
+      accuracy: row.accuracy === null ? null : Number(row.accuracy),
+      books: (row.books ?? []).map(book => ({
+        ...book,
+        answered: Number(book.answered),
+        correct: Number(book.correct),
+        idk: Number(book.idk),
+        accuracy: book.accuracy === null ? null : Number(book.accuracy),
+      })),
+      dimensions: (row.dimensions ?? []).map(dimension => ({
+        ...dimension,
+        answered: Number(dimension.answered),
+        correct: Number(dimension.correct),
+        idk: Number(dimension.idk),
+        accuracy: dimension.accuracy === null ? null : Number(dimension.accuracy),
+      })),
+    } : null);
+    setScopeSummaryLoading(false);
+  };
+
+  const closeScopeDetail = useCallback(() => {
+    scopeRequestRef.current += 1;
+    setScopeDetailTarget(null);
+    setScopeSummary(null);
+    setScopeSummaryError(null);
+    setScopeSummaryLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!scopeDetailTarget) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeScopeDetail();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeScopeDetail, scopeDetailTarget]);
 
   const handleRecommendedAction = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!recommendedStudy.actionHref.startsWith("/assess?")) return;
@@ -487,11 +708,14 @@ export default function HomePage() {
     if (isFresh) {
       event.preventDefault();
       setPendingRetestHref(recommendedStudy.actionHref);
+      return;
     }
+    if (backendRecommendation?.unit_key) void recordStudyEvent("retest_started", backendRecommendation.unit_key);
   };
 
   const continuePendingRetest = () => {
     if (!pendingRetestHref) return;
+    if (backendRecommendation?.unit_key) void recordStudyEvent("retest_started", backendRecommendation.unit_key);
     window.location.href = pendingRetestHref;
   };
 
@@ -637,6 +861,7 @@ export default function HomePage() {
         clearAssessmentBrowserStorage();
         session = null;
       }
+      setDashboardUserId(session?.user?.id ?? null);
       setIsAnonymousDashboard(isAnonymousSession(session));
       if (session?.user?.email) {
         setUserEmail(session.user.email);
@@ -652,6 +877,7 @@ export default function HomePage() {
           bankData,
           { data: answerData },
           { data: recommendationData },
+          { data: evidenceData },
         ] = await Promise.all([
           supabase.rpc("compute_bli", { p_user_id: session.user.id }),
           loadDimensionAwareQuestionBank(),
@@ -660,8 +886,23 @@ export default function HomePage() {
             .select("generated_question_id,is_correct,is_idk")
             .eq("user_id", session.user.id),
           supabase.rpc("obs_get_user_recommendation", { p_user_id: session.user.id }),
+          supabase.rpc("obs_get_bli_uncertainty", {
+            p_user_id: session.user.id,
+            p_scope: "OT",
+          }),
         ]);
         setBackendRecommendation(((recommendationData ?? [])[0] as BackendRecommendation | undefined) ?? null);
+        let resolvedEvidence = ((evidenceData ?? [])[0] as BliEvidence | undefined) ?? null;
+        if (!resolvedEvidence) {
+          const { data: bibleEvidenceData, error: bibleEvidenceError } = await supabase.rpc("obs_get_bli_uncertainty", {
+            p_user_id: session.user.id,
+            p_scope: "BIBLE",
+          });
+          if (!bibleEvidenceError) {
+            resolvedEvidence = ((bibleEvidenceData ?? [])[0] as BliEvidence | undefined) ?? null;
+          }
+        }
+        setBliEvidence(resolvedEvidence);
 
         const scoped = buildScopeScores((bankData ?? []) as BankRow[], (answerData ?? []) as AnswerRow[]);
         setScopeScores(scoped);
@@ -685,17 +926,83 @@ export default function HomePage() {
               correct: Math.round(b.total_weighted_earned),
               bli: parseFloat(b.bli_score)
             });
-            setBliLevel(b.bli_level);
           }
         }
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email || null);
+      setDashboardUserId(session?.user?.id ?? null);
       setIsAnonymousDashboard(isAnonymousSession(session));
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!dashboardUserId) {
+      setProgressHistory([]);
+      setActiveProgressAttemptId(null);
+      setProgressLoading(false);
+      setProgressError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadHistory = async () => {
+      setProgressLoading(true);
+      setProgressError(null);
+      setActiveProgressAttemptId(null);
+
+      const requestHistory = () => supabase.rpc("obs_get_progress_history", {
+        p_user_id: dashboardUserId,
+        p_testament: progressTestament,
+        p_limit: 50,
+      });
+
+      let { data, error } = await requestHistory();
+      if (!error && (data ?? []).length === 0 && progressBackfillAttemptedRef.current !== dashboardUserId) {
+        progressBackfillAttemptedRef.current = dashboardUserId;
+        const { error: backfillError } = await supabase.rpc("obs_backfill_assessment_snapshots", {
+          p_user_id: dashboardUserId,
+        });
+        if (!backfillError) {
+          ({ data, error } = await requestHistory());
+        } else {
+          error = backfillError;
+        }
+      }
+
+      if (cancelled) return;
+      if (error) {
+        setProgressHistory([]);
+        setProgressError(error.message || "Progress history is temporarily unavailable.");
+        setProgressLoading(false);
+        return;
+      }
+
+      const rows = ((data ?? []) as ProgressPoint[]).map(row => ({
+        ...row,
+        raw_bli: Number(row.raw_bli),
+        display_bli: Number(row.display_bli),
+        questions_answered: Number(row.questions_answered),
+        correct_answers: Number(row.correct_answers),
+        idk_answers: Number(row.idk_answers),
+        theta: row.theta === null ? null : Number(row.theta),
+        theta_se: row.theta_se === null ? null : Number(row.theta_se),
+        n_responses: Number(row.n_responses),
+        score_change: Number(row.score_change),
+      }));
+      setProgressHistory(rows);
+      setActiveProgressAttemptId(rows[0]?.attempt_id ?? null);
+      setProgressLoading(false);
+    };
+
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardUserId, progressTestament]);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef(0);
   // Domain constellation: when the Domains tab is active, a few sky stars fly
@@ -718,6 +1025,16 @@ export default function HomePage() {
     });
     constellation.active = true;
   }, [activeBreakdownTab, scopeScores.domains, scriptureConnectionsUnlocked]);
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const isArrivingFromAssessment = sessionStorage.getItem("obs_dashboard_arriving") === "1";
+    const initialRotation = isArrivingFromAssessment
+      ? Number(sessionStorage.getItem("obs_dashboard_sky_rotation") || 0)
+      : 0;
+    canvas.style.setProperty("--sky-start-rotation", `${initialRotation}deg`);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -744,7 +1061,6 @@ export default function HomePage() {
       } catch {}
     }
     canvas.style.setProperty("--sky-start-rotation", `${initialRotation}deg`);
-    document.documentElement.style.setProperty("--sky-start-rotation", `${initialRotation}deg`);
     sessionStorage.removeItem("obs_dashboard_arriving");
     sessionStorage.removeItem("obs_dashboard_sky_rotation");
     sessionStorage.removeItem("obs_dashboard_sky_frame");
@@ -1210,6 +1526,181 @@ export default function HomePage() {
           animation: shimmer 3s ease-in-out infinite;
         }
         @keyframes shimmer { 0%,100%{opacity:0} 50%{opacity:1} }
+        .progress-card {
+          position: relative; z-index: 3; overflow: hidden;
+          margin: 0 0 18px; padding: 24px 26px 20px;
+          color: #f8fafc; background: rgba(8,17,34,.82);
+          border: 1px solid rgba(148,163,184,.24); border-radius: 18px;
+          box-shadow: 0 18px 44px rgba(0,0,0,.22);
+          backdrop-filter: blur(14px);
+        }
+        .progress-card::before {
+          content: ""; position: absolute; inset: 0; pointer-events: none;
+          background:
+            radial-gradient(circle at 14% 26%, rgba(255,255,255,.72) 0 1px, transparent 1.6px),
+            radial-gradient(circle at 76% 18%, rgba(112,218,221,.62) 0 1px, transparent 1.7px),
+            radial-gradient(circle at 88% 72%, rgba(245,200,66,.54) 0 1px, transparent 1.8px),
+            radial-gradient(circle at 38% 82%, rgba(255,255,255,.48) 0 1px, transparent 1.5px);
+          opacity: .72;
+        }
+        .progress-head {
+          position: relative; z-index: 1;
+          display: flex; justify-content: space-between; align-items: flex-start;
+          gap: 22px; margin-bottom: 18px;
+        }
+        .progress-eyebrow {
+          margin-bottom: 5px; color: #6fdadd;
+          font-size: 10px; font-weight: 850; letter-spacing: .13em;
+          text-transform: uppercase;
+        }
+        .progress-title {
+          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          font-size: 25px; font-weight: 650; line-height: 1.1;
+        }
+        .progress-sub {
+          max-width: 500px; margin-top: 5px;
+          color: rgba(226,232,240,.70); font-size: 12.5px; line-height: 1.45;
+        }
+        .progress-controls { display: flex; align-items: center; gap: 13px; }
+        .progress-tabs {
+          display: inline-grid; grid-template-columns: repeat(2, 1fr); padding: 3px;
+          border: 1px solid rgba(148,163,184,.25); border-radius: 999px;
+          background: rgba(255,255,255,.06);
+        }
+        .progress-tab {
+          min-width: 48px; border: 0; border-radius: 999px; padding: 7px 11px;
+          color: rgba(226,232,240,.68); background: transparent;
+          font: inherit; font-size: 11px; font-weight: 800; cursor: pointer;
+        }
+        .progress-tab:hover, .progress-tab:focus-visible { color: #fff; outline: none; }
+        .progress-tab.is-active {
+          color: var(--navy); background: #f8fafc; box-shadow: 0 3px 10px rgba(0,0,0,.18);
+        }
+        .progress-latest {
+          min-width: 66px; text-align: right;
+          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          font-size: 27px; font-weight: 700; line-height: 1;
+        }
+        .progress-latest span {
+          display: block; margin-top: 3px; color: rgba(226,232,240,.58);
+          font-family: "Inter", system-ui, sans-serif; font-size: 9px;
+          font-weight: 750; letter-spacing: .10em; text-transform: uppercase;
+        }
+        .progress-chart-shell {
+          position: relative; z-index: 1;
+          display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 9px;
+        }
+        .progress-axis {
+          height: 174px; display: flex; flex-direction: column;
+          justify-content: space-between; padding: 3px 0 2px;
+          color: #8fe6e9; font-size: 11.5px; font-weight: 800;
+          text-align: right; letter-spacing: .02em;
+          text-shadow: 0 1px 6px rgba(0,0,0,.6);
+        }
+        .progress-chart-scroll {
+          min-width: 0; overflow-x: auto; overflow-y: hidden;
+          scrollbar-width: thin; scrollbar-color: rgba(111,218,221,.35) transparent;
+        }
+        .progress-chart {
+          position: relative; min-width: 620px; height: 174px;
+          margin-bottom: 24px;
+        }
+        .progress-xaxis {
+          position: absolute; top: 100%; left: 0; right: 0; height: 22px;
+          pointer-events: none;
+        }
+        .progress-xaxis span {
+          position: absolute; top: 7px; transform: translateX(-50%);
+          color: rgba(226,232,240,.66); font-size: 10.5px; font-weight: 750;
+          letter-spacing: .04em; white-space: nowrap;
+        }
+        .progress-xaxis span:first-child { transform: translateX(-20%); }
+        .progress-xaxis span:last-child { transform: translateX(-80%); }
+        .progress-chart svg {
+          position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible;
+        }
+        .progress-guide {
+          stroke: rgba(148,163,184,.24); stroke-width: 1; vector-effect: non-scaling-stroke;
+          stroke-dasharray: 3 5;
+        }
+        .progress-line-glow {
+          fill: none; stroke: rgba(10,163,163,.20); stroke-width: 8;
+          stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke;
+        }
+        .progress-area { fill: url(#progressArea); }
+        .progress-line {
+          fill: none; stroke: url(#progressStroke); stroke-width: 2.4;
+          stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke;
+        }
+        .progress-line-flow {
+          fill: none; stroke: rgba(240,253,255,.85); stroke-width: 1.6;
+          stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke;
+          stroke-dasharray: 2.5 13.5;
+          animation: progressFlow 3.2s linear infinite;
+          opacity: .55;
+        }
+        @keyframes progressFlow {
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: -16; }
+        }
+        .progress-point {
+          position: absolute; width: 8px; height: 8px; padding: 0;
+          transform: translate(-50%,-50%); border-radius: 50%;
+          border: 1px solid rgba(223,250,251,.85); background: #0f2537;
+          box-shadow: inset 0 0 4px rgba(111,218,221,.9), 0 0 8px rgba(111,218,221,.4);
+          cursor: pointer; transition: transform .16s cubic-bezier(.34,1.56,.64,1), background .16s ease, box-shadow .16s ease;
+        }
+        .progress-point:hover, .progress-point:focus-visible, .progress-point.is-active {
+          transform: translate(-50%,-50%) scale(1.7);
+          background: #f5c842; border-color: #fff8d6;
+          box-shadow: 0 0 0 4px rgba(245,200,66,.16), 0 0 18px rgba(245,200,66,.6);
+          outline: none;
+        }
+        .progress-point.is-latest {
+          width: 10px; height: 10px;
+          background: #f5c842; border-color: #fff8d6;
+          box-shadow: 0 0 12px rgba(245,200,66,.7), 0 0 26px rgba(245,200,66,.35);
+        }
+        .progress-point.is-latest::after {
+          content: ""; position: absolute; inset: -3px; border-radius: 50%;
+          border: 1.5px solid rgba(245,200,66,.65);
+          animation: progressRadar 2.2s ease-out infinite;
+        }
+        @keyframes progressRadar {
+          0% { transform: scale(1); opacity: .9; }
+          100% { transform: scale(3.2); opacity: 0; }
+        }
+        .progress-detail {
+          position: relative; z-index: 1;
+          display: grid; grid-template-columns: minmax(150px,1.2fr) repeat(3,minmax(80px,.65fr));
+          gap: 14px; align-items: center; margin-top: 14px; padding-top: 15px;
+          border-top: 1px solid rgba(148,163,184,.17);
+        }
+        .progress-detail-primary strong {
+          display: block; color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          font-size: 20px; line-height: 1.1;
+        }
+        .progress-detail-primary span,
+        .progress-stat span {
+          display: block; margin-top: 4px; color: rgba(226,232,240,.58);
+          font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+        }
+        .progress-stat strong { color: #fff; font-size: 13px; font-weight: 750; }
+        .progress-note {
+          position: relative; z-index: 1; margin-top: 13px;
+          color: rgba(226,232,240,.52); font-size: 10.5px; line-height: 1.4;
+        }
+        .progress-empty {
+          position: relative; z-index: 1; min-height: 132px;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          text-align: center; color: rgba(226,232,240,.68);
+        }
+        .progress-empty strong {
+          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          font-size: 20px; font-weight: 650;
+        }
+        .progress-empty span { max-width: 420px; margin-top: 6px; font-size: 12px; line-height: 1.5; }
+        .progress-error { color: #fcd5d5; }
         .score-block {
           display: flex; flex-direction: column; align-items: center; justify-content: center;
           padding: 30px 36px; gap: 4px; border-right: 1px solid var(--border);
@@ -1504,7 +1995,7 @@ export default function HomePage() {
         .conf-block {
           display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
           padding: 30px 32px; gap: 9px;
-          border-left: 1px solid var(--border); min-width: 210px;
+          border-left: 1px solid var(--border); min-width: 210px; position: relative;
         }
         .conf-empty-label {
           display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
@@ -1512,7 +2003,7 @@ export default function HomePage() {
           text-transform: uppercase; color: rgba(27,36,66,.56); text-align: left;
         }
         .conf-percent {
-          font-family: "Crimson Pro", Georgia, serif; font-size: 36px; line-height: .9;
+          font-family: "Crimson Pro", Georgia, serif; font-size: 27px; line-height: 1;
           font-weight: 750; color: var(--navy); letter-spacing: 0; text-transform: none;
         }
         .conf-note { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--muted); text-align: left; line-height: 1.35; }
@@ -1522,16 +2013,56 @@ export default function HomePage() {
           background: var(--accent-dim); border: 1px solid var(--accent-line);
           color: #0a6e6e; font-size: 12px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase;
         }
+        .evidence-info-btn {
+          width: 21px; height: 21px; display: inline-flex; align-items: center; justify-content: center;
+          border-radius: 50%; border: 1px solid rgba(27,36,66,.14); background: rgba(255,255,255,.58);
+          color: var(--muted); font: 800 11px "Inter", sans-serif; cursor: pointer;
+        }
+        .evidence-tooltip {
+          position: absolute; right: 22px; top: calc(100% - 10px); z-index: 80;
+          width: min(300px, calc(100vw - 42px)); padding: 13px 15px; border-radius: 8px;
+          background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+          color: var(--navy); font-size: 12px; font-weight: 600; line-height: 1.5;
+          opacity: 0; visibility: hidden; transform: translateY(-5px);
+          transition: opacity .14s, transform .14s, visibility .14s; pointer-events: none;
+        }
+        .evidence-tooltip.is-open { opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto; }
         .assessment-suite {
           display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 16px; margin-bottom: 28px;
         }
         .assessment-suite-card {
+          position: relative; overflow: hidden;
           background: var(--card); border: 1px solid var(--border);
-          border-radius: 18px; padding: 20px 22px;
+          border-radius: 18px; padding: 22px 22px 20px;
           box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
           display: flex; flex-direction: column; gap: 12px;
+          transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
         }
+        .assessment-suite-card::before {
+          content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+        }
+        .assessment-suite-card::after {
+          content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+        }
+        .assessment-suite-card > * { position: relative; z-index: 1; }
+        .assessment-suite-card:hover {
+          transform: translateY(-2px); box-shadow: 0 20px 40px rgba(0,0,0,.14);
+        }
+        .assessment-suite-card.is-ot::before {
+          background: linear-gradient(90deg, #d4a017, #f5c842, #d4a017);
+        }
+        .assessment-suite-card.is-ot::after {
+          background: radial-gradient(120% 80% at 100% 0%, rgba(245,200,66,.12), transparent 60%);
+        }
+        .assessment-suite-card.is-ot:hover { border-color: rgba(212,160,23,.42); }
+        .assessment-suite-card.is-nt::before {
+          background: linear-gradient(90deg, #7c3aed, #a855f7, #7c3aed);
+        }
+        .assessment-suite-card.is-nt::after {
+          background: radial-gradient(120% 80% at 100% 0%, rgba(124,58,237,.12), transparent 60%);
+        }
+        .assessment-suite-card.is-nt:hover { border-color: rgba(124,58,237,.42); }
         .assessment-suite-top {
           display: flex; align-items: center; justify-content: space-between; gap: 10px;
         }
@@ -1543,7 +2074,10 @@ export default function HomePage() {
           display: inline-flex; align-items: center; border-radius: 999px;
           padding: 5px 9px; font-size: 10.5px; font-weight: 850;
           letter-spacing: .08em; text-transform: uppercase;
-          background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+          background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe;
+        }
+        .assessment-suite-badge.is-verified {
+          background: #d1fae5; color: #065f46; border-color: #a7f3d0;
         }
         .assessment-suite-copy { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
         .assessment-suite-stats {
@@ -1556,9 +2090,22 @@ export default function HomePage() {
         }
         .assessment-suite-link {
           display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
-          color: var(--navy); text-decoration: none; font-size: 13.5px; font-weight: 800;
+          margin-top: auto; color: var(--navy); text-decoration: none;
+          font-size: 13.5px; font-weight: 800;
+          transition: gap .16s ease, color .16s ease;
         }
-        .assessment-suite-link:hover { color: #0a6e6e; }
+        .assessment-suite-link:hover { color: #0a6e6e; gap: 11px; }
+        .assessment-suite-actions {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; margin-top: auto;
+        }
+        .assessment-suite-actions .assessment-suite-link { margin-top: 0; }
+        .scope-text-btn {
+          border: 0; padding: 5px 0; background: transparent; color: var(--muted);
+          font: inherit; font-size: 11.5px; font-weight: 750; cursor: pointer;
+        }
+        .scope-text-btn:hover, .scope-text-btn:focus-visible { color: #0a6e6e; outline: none; }
+        .is-nt .assessment-suite-link:hover { color: #7c3aed; }
         .start-hero {
           background: var(--card); border: 1px solid var(--border);
           border-radius: 20px; padding: 48px 40px;
@@ -1826,11 +2373,17 @@ export default function HomePage() {
           align-items: center; padding: 9px 11px; border-radius: 12px;
           background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.13);
           box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+          width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer;
+          transition: background .15s ease, border-color .15s ease, transform .15s ease;
+        }
+        .domain-radar-row:hover, .domain-radar-row:focus-visible {
+          background: rgba(255,255,255,.15); border-color: rgba(111,218,221,.45);
+          transform: translateX(2px); outline: none;
         }
         .domain-radar-row.is-locked {
           background: rgba(255,255,255,.06);
           border-style: dashed;
-          opacity: .72;
+          opacity: .72; cursor: default;
         }
         .domain-radar-name {
           color: rgba(255,255,255,.92); font-size: 13px; font-weight: 760;
@@ -1852,6 +2405,12 @@ export default function HomePage() {
           border-radius: 16px; padding: 20px 22px;
           box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
           position: relative; overflow: hidden; opacity: .75;
+          width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer;
+          transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
+        }
+        .section-card:hover, .section-card:focus-visible {
+          transform: translateY(-2px); border-color: rgba(10,163,163,.32);
+          box-shadow: 0 13px 30px rgba(0,0,0,.22); outline: none;
         }
         .section-card.has-score { opacity: 1; }
         .section-card.low-evidence { opacity: .82; }
@@ -1880,10 +2439,116 @@ export default function HomePage() {
         .sc-chip-empty.evidence-moderate { background: var(--accent-dim); border-color: var(--accent-line); color: #0a6e6e; }
         .sc-chip-empty.evidence-low { background: #fef3c7; border-color: #fde68a; color: #92400e; }
         .sc-chip-empty.evidence-none { background: rgba(27,36,66,.05); border-color: var(--border); color: var(--muted); }
+        .scope-drawer-backdrop {
+          position: fixed; inset: 0; z-index: 120; display: flex; justify-content: flex-end;
+          background: rgba(3,8,20,.58); backdrop-filter: blur(5px);
+          animation: scopeBackdropIn .18s ease-out both;
+        }
+        .scope-drawer {
+          width: min(480px, 100%); height: 100%; overflow-y: auto;
+          background: #f7f9fb; color: var(--navy);
+          border-left: 1px solid rgba(255,255,255,.42);
+          box-shadow: -24px 0 60px rgba(0,0,0,.32);
+          animation: scopeDrawerIn .24s cubic-bezier(.22,.72,.18,1) both;
+        }
+        @keyframes scopeBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scopeDrawerIn { from { transform: translateX(34px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .scope-drawer-head {
+          position: sticky; top: 0; z-index: 2; display: flex;
+          justify-content: space-between; align-items: flex-start; gap: 18px;
+          padding: 28px 28px 20px; background: rgba(247,249,251,.94);
+          border-bottom: 1px solid rgba(27,36,66,.10); backdrop-filter: blur(12px);
+        }
+        .scope-drawer-kicker {
+          margin-bottom: 6px; color: #0a7b7b; font-size: 10px;
+          font-weight: 850; letter-spacing: .12em; text-transform: uppercase;
+        }
+        .scope-drawer-title {
+          font-family: "Crimson Pro", Georgia, serif; font-size: 31px;
+          font-weight: 700; line-height: 1.05;
+        }
+        .scope-drawer-sub { margin-top: 5px; color: var(--muted); font-size: 12.5px; }
+        .scope-drawer-close {
+          flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%;
+          border: 1px solid rgba(27,36,66,.13); background: #fff; color: var(--navy);
+          font: 500 24px/1 system-ui, sans-serif; cursor: pointer;
+        }
+        .scope-drawer-close:hover, .scope-drawer-close:focus-visible {
+          border-color: var(--accent-line); color: #0a6e6e; outline: none;
+        }
+        .scope-drawer-body { padding: 24px 28px 34px; }
+        .scope-state {
+          min-height: 280px; display: grid; place-content: center; text-align: center;
+          color: var(--muted); font-size: 13px; line-height: 1.55;
+        }
+        .scope-state strong {
+          display: block; margin-bottom: 5px; color: var(--navy);
+          font-family: "Crimson Pro", Georgia, serif; font-size: 22px;
+        }
+        .scope-evidence {
+          display: flex; justify-content: space-between; align-items: center; gap: 16px;
+          padding-bottom: 20px; border-bottom: 1px solid rgba(27,36,66,.10);
+        }
+        .scope-evidence-label {
+          display: inline-flex; padding: 6px 10px; border-radius: 999px;
+          background: var(--accent-dim); border: 1px solid var(--accent-line);
+          color: #0a6e6e; font-size: 11px; font-weight: 850;
+        }
+        .scope-evidence-copy { margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+        .scope-evidence-score {
+          color: var(--navy); font-family: "Crimson Pro", Georgia, serif;
+          font-size: 32px; font-weight: 700; text-align: right;
+        }
+        .scope-evidence-score span {
+          display: block; margin-top: 2px; color: var(--muted);
+          font-family: "Inter", system-ui, sans-serif; font-size: 9px;
+          font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+        }
+        .scope-metrics {
+          display: grid; grid-template-columns: repeat(3,1fr);
+          padding: 19px 0; border-bottom: 1px solid rgba(27,36,66,.10);
+        }
+        .scope-metric { padding-right: 12px; }
+        .scope-metric strong { display: block; font-size: 17px; }
+        .scope-metric span {
+          color: var(--muted); font-size: 9px; font-weight: 800;
+          letter-spacing: .08em; text-transform: uppercase;
+        }
+        .scope-period { padding: 15px 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+        .scope-breakdown { padding-top: 18px; border-top: 1px solid rgba(27,36,66,.10); }
+        .scope-breakdown + .scope-breakdown { margin-top: 20px; }
+        .scope-breakdown h3 {
+          margin-bottom: 9px; font-size: 10px; font-weight: 850;
+          letter-spacing: .11em; text-transform: uppercase; color: var(--muted);
+        }
+        .scope-breakdown-row {
+          display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px;
+          padding: 10px 0; border-bottom: 1px solid rgba(27,36,66,.07);
+        }
+        .scope-breakdown-row:last-child { border-bottom: 0; }
+        .scope-breakdown-name { font-size: 13px; font-weight: 750; }
+        .scope-breakdown-meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+        .scope-breakdown-value { font-size: 13px; font-weight: 800; text-align: right; }
+        .scope-focused-action {
+          display: flex; justify-content: space-between; align-items: center; gap: 18px;
+          margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(27,36,66,.10);
+        }
+        .scope-focused-action p { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+        .scope-focused-link {
+          flex: 0 0 auto; border-radius: 999px; padding: 10px 15px;
+          color: #fff; background: var(--navy); text-decoration: none;
+          font-size: 12px; font-weight: 800; box-shadow: 0 8px 20px rgba(27,36,66,.22);
+        }
         @media (max-width: 640px) {
           .score-strip { grid-template-columns: 1fr; }
           .score-block { border-right: none; border-bottom: 1px solid var(--border); }
           .conf-block { border-left: none; border-top: 1px solid var(--border); align-items: center; text-align: center; }
+          .progress-card { padding: 22px 16px 18px; }
+          .progress-head { flex-direction: column; gap: 14px; }
+          .progress-controls { width: 100%; justify-content: space-between; }
+          .progress-chart { min-width: 560px; }
+          .progress-detail { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 12px; }
+          .progress-detail-primary { grid-column: 1 / -1; }
           .breakdown-head { flex-direction: column; align-items: flex-start; }
           .breakdown-tabs { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
           .breakdown-tab { padding-inline: 8px; }
@@ -1928,6 +2593,14 @@ export default function HomePage() {
           .dashboard-tabs { grid-template-columns: 1fr; margin-top: -8px; }
           .placeholder-dashboard { grid-template-columns: 1fr; padding: 30px 24px; min-height: 360px; }
           .placeholder-orbit { width: min(210px, 70vw); margin: 0 auto; }
+          .scope-drawer-backdrop { align-items: flex-end; }
+          .scope-drawer {
+            width: 100%; height: min(88vh, 760px); border-left: 0;
+            border-top: 1px solid rgba(255,255,255,.42);
+          }
+          .scope-drawer-head { padding: 22px 20px 17px; }
+          .scope-drawer-body { padding: 20px 20px 30px; }
+          .scope-focused-action { align-items: flex-start; flex-direction: column; }
           .nav { padding: 13px 16px; }
           .page { padding: 28px 16px 72px; }
         }
@@ -1936,17 +2609,13 @@ export default function HomePage() {
           .water-wave, .water-wave::before,
           .assessment-cta-wrap::before, .assessment-cta-wrap::after,
           .start-hero.compact .start-btn::before,
+          .progress-point,
+          .scope-drawer-backdrop, .scope-drawer,
           .placeholder-orbit, .placeholder-orbit::before, .placeholder-orbit::after {
             animation: none !important;
           }
         }
       `}</style>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `try{var r=sessionStorage.getItem("obs_dashboard_arriving")==="1"?sessionStorage.getItem("obs_dashboard_sky_rotation")||"0":"0";document.documentElement.style.setProperty("--sky-start-rotation",r+"deg");}catch(e){}`,
-        }}
-      />
-
       <canvas ref={canvasRef} className="stars" aria-hidden="true" />
 
       <nav className="nav">
@@ -1977,7 +2646,6 @@ export default function HomePage() {
                   setSectionScores({});
                   setScopeScores(buildScopeScores([], []));
                   setBackendRecommendation(null);
-                  setBliLevel(null);
                 }}
                 style={{fontSize:12,color:"var(--muted)",padding:"6px 12px",borderRadius:999,border:"1px solid var(--border)",background:"rgba(255,255,255,.5)",cursor:"pointer",fontFamily:"inherit",transition:"color .14s"}}
               >
@@ -2057,20 +2725,35 @@ export default function HomePage() {
         )}
 
         <section className="assessment-suite" aria-label="Assessment dashboards">
-          <div className="assessment-suite-card">
+          <div className="assessment-suite-card is-ot">
             <div className="assessment-suite-top">
               <h2 className="assessment-suite-title">Old Testament</h2>
+              <span className="assessment-suite-badge is-verified">Credential</span>
             </div>
             <p className="assessment-suite-copy">Full adaptive assessment across the Old Testament. This is the verified BLI track.</p>
             <div className="assessment-suite-stats">
               <span>{assessmentData ? `${assessmentData.answered} answered` : "Not yet assessed"}</span>
               <span>{assessmentData ? `BLI ${currentDisplayScore}` : "Credential track"}</span>
             </div>
-            <Link className="assessment-suite-link" href="/assess?choose=1">
-              {assessmentData ? "Continue OT assessment" : "Start OT assessment"} →
-            </Link>
+            <div className="assessment-suite-actions">
+              <Link className="assessment-suite-link" href="/assess?choose=1">
+                {assessmentData ? "Continue OT assessment" : "Start OT assessment"} →
+              </Link>
+              <button
+                type="button"
+                className="scope-text-btn"
+                onClick={() => void openScopeDetail({
+                  scopeType: "TESTAMENT",
+                  scopeKey: "OT",
+                  label: "Old Testament",
+                  subtitle: "Genesis - Malachi",
+                })}
+              >
+                View details
+              </button>
+            </div>
           </div>
-          <div className="assessment-suite-card">
+          <div className="assessment-suite-card is-nt">
             <div className="assessment-suite-top">
               <h2 className="assessment-suite-title">New Testament Pilot</h2>
               <span className="assessment-suite-badge">Pilot</span>
@@ -2080,9 +2763,23 @@ export default function HomePage() {
               <span>{ntPilotSummary ? `${ntPilotSummary.accuracy}% latest` : "No pilot attempt yet"}</span>
               <span>{ntPilotSummary ? `${ntPilotSummary.booksAttempted} books attempted` : "Separate from BLI"}</span>
             </div>
-            <Link className="assessment-suite-link" href="/assess?testament=NT">
-              Explore NT pilot →
-            </Link>
+            <div className="assessment-suite-actions">
+              <Link className="assessment-suite-link" href="/assess?testament=NT">
+                Explore NT pilot →
+              </Link>
+              <button
+                type="button"
+                className="scope-text-btn"
+                onClick={() => void openScopeDetail({
+                  scopeType: "TESTAMENT",
+                  scopeKey: "NT",
+                  label: "New Testament",
+                  subtitle: "Matthew - Revelation",
+                })}
+              >
+                View details
+              </button>
+            </div>
           </div>
         </section>
 
@@ -2119,7 +2816,7 @@ export default function HomePage() {
                     onFocus={openBliTooltip}
                     onBlur={closeBliTooltipSoon}
                   >
-                    Your Bible Literacy Index measures your knowledge of the Old Testament across four sections, weighted by the theological importance of each book and passage. Scores range from 200 (Unfamiliar) to 800 (Scholar).
+                    Your Bible Literacy Index measures your knowledge of the Old Testament across four sections, weighted by the theological importance of each book and passage. Scores range from 0 (Unfamiliar) to 800 (Scholar).
                     <span>Learn more →</span>
                   </Link>
                 </span>
@@ -2153,7 +2850,7 @@ export default function HomePage() {
                     onFocus={openBliTooltip}
                     onBlur={closeBliTooltipSoon}
                   >
-                    Your Bible Literacy Index measures your knowledge of the Old Testament across four sections, weighted by the theological importance of each book and passage. Scores range from 200 (Unfamiliar) to 800 (Scholar).
+                    Your Bible Literacy Index measures your knowledge of the Old Testament across four sections, weighted by the theological importance of each book and passage. Scores range from 0 (Unfamiliar) to 800 (Scholar).
                     <span>Learn more →</span>
                   </Link>
                 </span>
@@ -2161,19 +2858,13 @@ export default function HomePage() {
             )}
           </div>
           <div className="level-block">
-            {assessmentData && bliLevel ? (
+            {assessmentData ? (
               <>
                 <div className="level-badge-empty" style={{background:"var(--accent-dim)",borderColor:"var(--accent-line)",color:"#0a6e6e"}}>
-                  {bliLevel}
+                  {currentDisplayLevel}
                 </div>
                 <p className="level-desc-empty">
-                  {bliLevel === "Scholar" && "You command the Old Testament at the highest level this index measures — text, structure, theology, and the connections between them."}
-                  {bliLevel === "Learned" && "Your knowledge extends well beyond the narratives into fine textual detail and theological architecture. You read the OT the way its careful students do."}
-                  {bliLevel === "Studied" && "You engage with the OT at a scholarly level — aware of intertextual connections, textual detail, and theological structure."}
-                  {bliLevel === "Literate" && "You know both the stories and the text. You can navigate the OT with confidence and are ready to go deeper into its theological architecture."}
-                  {bliLevel === "Familiar" && "You know the major stories and characters well. The next step is moving deeper into textual detail — specific words, names, and connections between events."}
-                  {bliLevel === "Acquainted" && "You have some exposure to the OT but significant narrative gaps remain. Start with Genesis, Exodus, and 1-2 Samuel."}
-                  {bliLevel === "Unfamiliar" && "You're at the very beginning — and that's a fine place to start. Begin with Genesis and Exodus; the rest of the Old Testament builds on them."}
+                  {currentDisplayBand.description}
                 </p>
               </>
             ) : (
@@ -2187,18 +2878,164 @@ export default function HomePage() {
           </div>
           <div className="conf-block">
             <span className="conf-empty-label">
-              Confidence <span className="conf-percent">{assessmentData ? `${confidenceScore}%` : "--"}</span>
+              Score evidence
+              <button
+                className="evidence-info-btn"
+                type="button"
+                aria-label="About score evidence"
+                aria-expanded={showEvidenceTooltip}
+                onMouseEnter={() => setShowEvidenceTooltip(true)}
+                onMouseLeave={() => setShowEvidenceTooltip(false)}
+                onFocus={() => setShowEvidenceTooltip(true)}
+                onBlur={() => setShowEvidenceTooltip(false)}
+                onClick={() => setShowEvidenceTooltip(value => !value)}
+              >
+                i
+              </button>
             </span>
             <span className="conf-note">
-              {assessmentData ? (
+              {bliEvidence ? (
                 <>
-                  <span className="conf-level">{confidenceLabel}</span>
-                  <span>{assessmentData.answered} answers</span>
+                  <span className="conf-level">{bliEvidence.evidence_level}</span>
+                  <span>{bliEvidence.n_responses} responses</span>
                 </>
-              ) : "Answer questions to calculate"}
+              ) : "Answer questions to establish evidence"}
+            </span>
+            <span className={`evidence-tooltip ${showEvidenceTooltip ? "is-open" : ""}`} role="tooltip">
+              {bliEvidence?.evidence_description || "Score evidence reflects the amount and consistency of psychometric evidence supporting your current estimate."}
             </span>
           </div>
         </div>
+
+        <section className="progress-card" aria-labelledby="progress-title">
+          <div className="progress-head">
+            <div>
+              <p className="progress-eyebrow">Assessment snapshots</p>
+              <h2 className="progress-title" id="progress-title">Progress over time</h2>
+              <p className="progress-sub">
+                A record of completed assessments, shown on the full 0-800 BLI scale.
+              </p>
+            </div>
+            <div className="progress-controls">
+              <div className="progress-tabs" role="tablist" aria-label="Progress testament">
+                {(["OT", "NT"] as const).map(testament => (
+                  <button
+                    key={testament}
+                    type="button"
+                    role="tab"
+                    aria-selected={progressTestament === testament}
+                    className={`progress-tab ${progressTestament === testament ? "is-active" : ""}`}
+                    onClick={() => setProgressTestament(testament)}
+                  >
+                    {testament}
+                  </button>
+                ))}
+              </div>
+              <div className="progress-latest">
+                {progressHistory[0]?.display_bli ?? "--"}
+                <span>Latest BLI</span>
+              </div>
+            </div>
+          </div>
+
+          {progressLoading ? (
+            <div className="progress-empty" role="status">
+              <strong>Plotting your progress...</strong>
+              <span>Loading completed assessment snapshots.</span>
+            </div>
+          ) : progressError ? (
+            <div className="progress-empty progress-error" role="status">
+              <strong>Progress is temporarily unavailable</strong>
+              <span>{progressError}</span>
+            </div>
+          ) : plottedProgress.length === 0 ? (
+            <div className="progress-empty">
+              <strong>No {progressTestament} snapshots yet</strong>
+              <span>
+                Complete an {progressTestament} assessment to begin a durable progress record.
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="progress-chart-shell">
+                <div className="progress-axis" aria-hidden="true">
+                  {progressAxisLabels.map((v, i) => <span key={i}>{v}</span>)}
+                </div>
+                <div className="progress-chart-scroll">
+                  <div className="progress-chart">
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                      <defs>
+                        <linearGradient id="progressArea" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="rgba(111,218,221,.34)" />
+                          <stop offset="55%" stopColor="rgba(111,218,221,.10)" />
+                          <stop offset="100%" stopColor="rgba(111,218,221,0)" />
+                        </linearGradient>
+                        <linearGradient id="progressStroke" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#3ba8ab" />
+                          <stop offset="62%" stopColor="#6fdadd" />
+                          <stop offset="88%" stopColor="#b8ecd9" />
+                          <stop offset="100%" stopColor="#f5c842" />
+                        </linearGradient>
+                      </defs>
+                      <line className="progress-guide" x1="0" y1="8" x2="100" y2="8" />
+                      <line className="progress-guide" x1="0" y1="50" x2="100" y2="50" />
+                      <line className="progress-guide" x1="0" y1="92" x2="100" y2="92" />
+                      {progressAreaPath && <path className="progress-area" d={progressAreaPath} />}
+                      {progressPath && <path className="progress-line-glow" d={progressPath} />}
+                      {progressPath && <path className="progress-line" d={progressPath} />}
+                      {progressPath && <path className="progress-line-flow" d={progressPath} pathLength={100} />}
+                    </svg>
+                    {plottedProgress.map(({point, x, y}, pointIndex) => {
+                      const pointDate = formatProgressDate(point.captured_at);
+                      const isLatest = pointIndex === plottedProgress.length - 1;
+                      return (
+                        <button
+                          key={`${point.attempt_id}:${point.captured_at}`}
+                          type="button"
+                          className={`progress-point ${isLatest ? "is-latest" : ""} ${activeProgressPoint?.attempt_id === point.attempt_id ? "is-active" : ""}`}
+                          style={{left: `${x}%`, top: `${y}%`}}
+                          aria-label={`${pointDate}: BLI ${point.display_bli}, ${point.bli_level}, ${point.questions_answered} questions answered`}
+                          onMouseEnter={() => setActiveProgressAttemptId(point.attempt_id)}
+                          onFocus={() => setActiveProgressAttemptId(point.attempt_id)}
+                          onClick={() => setActiveProgressAttemptId(point.attempt_id)}
+                        />
+                      );
+                    })}
+                    <div className="progress-xaxis" aria-hidden="true">
+                      {progressXAxisLabels.map((lbl, i) => (
+                        <span key={i} style={{ left: `${lbl.x}%` }}>{lbl.text}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {activeProgressPoint && (
+                <div className="progress-detail" aria-live="polite">
+                  <div className="progress-detail-primary">
+                    <strong>{formatProgressDate(activeProgressPoint.captured_at)}</strong>
+                    <span>{activeProgressPoint.bli_level}</span>
+                  </div>
+                  <div className="progress-stat">
+                    <strong>{activeProgressPoint.display_bli}</strong>
+                    <span>BLI score</span>
+                  </div>
+                  <div className="progress-stat">
+                    <strong>{activeProgressPoint.questions_answered}</strong>
+                    <span>Questions answered</span>
+                  </div>
+                  <div className="progress-stat">
+                    <strong>{formatScoreChange(activeProgressPoint.score_change)}</strong>
+                    <span>From prior snapshot</span>
+                  </div>
+                </div>
+              )}
+              <p className="progress-note">
+                Ordinary movement is expected as evidence accumulates; a single change does not necessarily indicate a meaningful shift in ability.
+              </p>
+            </>
+          )}
+        </section>
 
         <div className={`start-hero compact ${isAssessmentCharging ? "is-charging" : ""}`}>
           <div className="assessment-cta-wrap">
@@ -2250,9 +3087,9 @@ export default function HomePage() {
                   <span className="water-wave water-wave-c" />
                 </div>
               </div>
-              {[...BLI_BANDS].reverse().map((band, index) => {
+              {[...BLI_LEVELS].reverse().map((band, index) => {
                 const topWidth = 98 - index * 7;
-                const bottomWidth = index === BLI_BANDS.length - 1 ? topWidth - 7 : 98 - (index + 1) * 7;
+                const bottomWidth = index === BLI_LEVELS.length - 1 ? topWidth - 7 : 98 - (index + 1) * 7;
                 return (
                   <button
                     key={band.name}
@@ -2276,12 +3113,12 @@ export default function HomePage() {
                 );
               })}
               {expandedConeLayer && (() => {
-                const band = BLI_BANDS.find((item) => item.name === expandedConeLayer);
-                const index = [...BLI_BANDS].reverse().findIndex((item) => item.name === expandedConeLayer);
+                const band = BLI_LEVELS.find((item) => item.name === expandedConeLayer);
+                const index = [...BLI_LEVELS].reverse().findIndex((item) => item.name === expandedConeLayer);
                 return band && index >= 0 ? (
                   <div
                     className="cone-layer-popover"
-                    style={{"--popover-y": `${((index + 0.5) / BLI_BANDS.length) * 100}`} as { [key: string]: string }}
+                    style={{"--popover-y": `${((index + 0.5) / BLI_LEVELS.length) * 100}`} as { [key: string]: string }}
                   >
                     <strong>{band.name} · {band.min}-{band.max}</strong>
                     <span>{band.description}</span>
@@ -2310,6 +3147,21 @@ export default function HomePage() {
           </div>
           <div>
             <p className="recommended-priority">{recommendedStudy.priority}</p>
+            {backendRecommendation && (
+              <button
+                type="button"
+                className="scope-text-btn"
+                onClick={() => void openScopeDetail({
+                  scopeType: "UNIT",
+                  scopeKey: backendRecommendation.unit_key,
+                  unitKey: backendRecommendation.unit_key,
+                  label: backendRecommendation.label,
+                  subtitle: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}`,
+                })}
+              >
+                View learning details
+              </button>
+            )}
             <Link className="recommended-action" href={recommendedStudy.actionHref} onClick={handleRecommendedAction}>
               {recommendedStudy.actionLabel}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2425,7 +3277,13 @@ export default function HomePage() {
                   {scores.map(score => {
                     const isLockedConnection = score.key === "domain:scripture_connections" && !scriptureConnectionsUnlocked;
                     return (
-                      <div className={`domain-radar-row ${isLockedConnection ? "is-locked" : ""}`} key={score.key}>
+                      <button
+                        type="button"
+                        className={`domain-radar-row ${isLockedConnection ? "is-locked" : ""}`}
+                        key={score.key}
+                        disabled={isLockedConnection}
+                        onClick={() => void openScopeDetail(detailTargetForScore(score))}
+                      >
                         <div>
                           <div className="domain-radar-name">{score.label}</div>
                           <div className="domain-radar-meta">
@@ -2437,7 +3295,7 @@ export default function HomePage() {
                         <div className={`domain-radar-score ${isLockedConnection ? "is-locked" : ""}`}>
                           {isLockedConnection ? "Locked" : score.displayScore ?? "--"}
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -2456,9 +3314,11 @@ export default function HomePage() {
                 : s.className === "ot" ? "linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed)"
                 : "linear-gradient(90deg,#0aa3a3,#67e8f9)";
               return (
-                <div
+                <button
+                  type="button"
                   key={s.key}
                   className={`section-card ${s.className} ${hasScore ? "has-score" : ""} ${s.confidence === "low" || s.confidence === "none" ? "low-evidence" : ""}`}
+                  onClick={() => void openScopeDetail(detailTargetForScore(s))}
                 >
                   <div className="sc-top">
                     <div>
@@ -2484,7 +3344,7 @@ export default function HomePage() {
                     </span>
                     {hasScore && <span className={`sc-chip-empty evidence-${s.confidence}`}>{evidenceLabel(s)}</span>}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -2512,6 +3372,140 @@ export default function HomePage() {
           </section>
         )}
       </main>
+      {scopeDetailTarget && (
+        <div className="scope-drawer-backdrop" role="presentation" onClick={closeScopeDetail}>
+          <aside
+            className="scope-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scope-drawer-title"
+            onClick={event => event.stopPropagation()}
+          >
+            <header className="scope-drawer-head">
+              <div>
+                <p className="scope-drawer-kicker">{scopeDetailTarget.scopeType.toLowerCase()} detail</p>
+                <h2 className="scope-drawer-title" id="scope-drawer-title">{scopeDetailTarget.label}</h2>
+                <p className="scope-drawer-sub">{scopeDetailTarget.subtitle}</p>
+              </div>
+              <button
+                type="button"
+                className="scope-drawer-close"
+                aria-label="Close scope details"
+                onClick={closeScopeDetail}
+              >
+                ×
+              </button>
+            </header>
+            <div className="scope-drawer-body">
+              {scopeSummaryLoading ? (
+                <div className="scope-state" role="status">
+                  <strong>Gathering scope evidence...</strong>
+                  Loading your responses for this part of the assessment.
+                </div>
+              ) : scopeSummaryError ? (
+                <div className="scope-state" role="status">
+                  <strong>Details unavailable</strong>
+                  {scopeSummaryError}
+                </div>
+              ) : !scopeSummary ? (
+                <div className="scope-state">
+                  <strong>No evidence here yet</strong>
+                  Answer questions in this scope to begin building a profile.
+                </div>
+              ) : (
+                <>
+                  <div className="scope-evidence">
+                    <div>
+                      <span className="scope-evidence-label">{scopeSummary.evidence_level}</span>
+                      <p className="scope-evidence-copy">
+                        {scopeSummary.evidence_level === "Needs more evidence" || scopeSummary.evidence_level === "Low evidence"
+                          ? "The sample is still small, so accuracy may move substantially."
+                          : "There is enough response evidence for this scope to be more informative."}
+                      </p>
+                    </div>
+                    <div className="scope-evidence-score">
+                      {scopeSummary.accuracy === null ? "--" : `${Math.round(scopeSummary.accuracy)}%`}
+                      <span>
+                        {scopeSummary.evidence_level === "Needs more evidence" || scopeSummary.evidence_level === "Low evidence"
+                          ? "Early accuracy"
+                          : "Accuracy"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="scope-metrics">
+                    <div className="scope-metric">
+                      <strong>{scopeSummary.answered}</strong>
+                      <span>Answered</span>
+                    </div>
+                    <div className="scope-metric">
+                      <strong>{scopeSummary.correct}</strong>
+                      <span>Correct</span>
+                    </div>
+                    <div className="scope-metric">
+                      <strong>{scopeSummary.idk}</strong>
+                      <span>Skipped</span>
+                    </div>
+                  </div>
+                  {(scopeSummary.first_answered_at || scopeSummary.last_answered_at) && (
+                    <p className="scope-period">
+                      {scopeSummary.first_answered_at && `First answered ${formatProgressDate(scopeSummary.first_answered_at)}`}
+                      {scopeSummary.first_answered_at && scopeSummary.last_answered_at && " · "}
+                      {scopeSummary.last_answered_at && `Latest response ${formatProgressDate(scopeSummary.last_answered_at)}`}
+                    </p>
+                  )}
+                  {scopeSummary.books.length > 0 && (
+                    <section className="scope-breakdown" aria-labelledby="scope-books-heading">
+                      <h3 id="scope-books-heading">Book evidence</h3>
+                      {scopeSummary.books.slice(0, 10).map(book => (
+                        <div className="scope-breakdown-row" key={book.book_code}>
+                          <div>
+                            <div className="scope-breakdown-name">{BOOK_NAMES[book.book_code] ?? book.book_code}</div>
+                            <div className="scope-breakdown-meta">{book.answered} answered · {book.idk} skipped</div>
+                          </div>
+                          <div className="scope-breakdown-value">
+                            {book.accuracy === null ? "--" : `${Math.round(book.accuracy)}%`}
+                          </div>
+                        </div>
+                      ))}
+                    </section>
+                  )}
+                  {scopeSummary.dimensions.length > 0 && (
+                    <section className="scope-breakdown" aria-labelledby="scope-dimensions-heading">
+                      <h3 id="scope-dimensions-heading">Dimension evidence</h3>
+                      {scopeSummary.dimensions.slice(0, 10).map(dimension => (
+                        <div className="scope-breakdown-row" key={dimension.dimension_key}>
+                          <div>
+                            <div className="scope-breakdown-name">{dimensionDisplayName(dimension.dimension_key)}</div>
+                            <div className="scope-breakdown-meta">{dimension.answered} answered · {dimension.idk} skipped</div>
+                          </div>
+                          <div className="scope-breakdown-value">
+                            {dimension.accuracy === null ? "--" : `${Math.round(dimension.accuracy)}%`}
+                          </div>
+                        </div>
+                      ))}
+                    </section>
+                  )}
+                  {scopeDetailTarget.unitKey === backendRecommendation?.unit_key && (
+                    <div className="scope-focused-action">
+                      <p>This focused retest follows the same rereading delay used by your dashboard recommendation.</p>
+                      <Link
+                        className="scope-focused-link"
+                        href={recommendedStudy.actionHref}
+                        onClick={event => {
+                          closeScopeDetail();
+                          handleRecommendedAction(event);
+                        }}
+                      >
+                        Focused retest
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
       {pendingRetestHref && (
         <div className="retest-modal-backdrop" role="presentation" onClick={() => setPendingRetestHref(null)}>
           <div className="retest-modal" role="dialog" aria-modal="true" aria-labelledby="retest-modal-title" onClick={event => event.stopPropagation()}>
