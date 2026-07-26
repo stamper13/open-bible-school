@@ -4,6 +4,23 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 import Link from "next/link";
 import { BOOK_NAMES } from "@/lib/bibleTaxonomy";
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const SKY_SEED_KEY = "obs_sky_seed";
 function createSeededRandom(seed: number) {
@@ -225,6 +242,76 @@ function clearAssessmentBrowserStorage() {
   sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
 }
 
+function SortableSequenceItem({
+  item,
+  index,
+  disabled,
+  isFirst,
+  isLast,
+  onMove,
+}: {
+  item: Choice;
+  index: number;
+  disabled: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  onMove: (itemId: string, direction: -1 | 1) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id, disabled });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`sequence-item ${isDragging ? "is-dragging" : ""}`}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+    >
+      <span className="sequence-number" aria-hidden="true">{index + 1}</span>
+      <button
+        type="button"
+        className="sequence-handle"
+        aria-label={`Drag ${item.text}`}
+        title="Drag to reorder"
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+      >
+        <span aria-hidden="true">⠿</span>
+      </button>
+      <span className="sequence-text">{item.text}</span>
+      <span className="sequence-step-controls">
+        <button
+          type="button"
+          aria-label={`Move ${item.text} earlier`}
+          title="Move earlier"
+          disabled={disabled || isFirst}
+          onClick={() => onMove(item.id, -1)}
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          aria-label={`Move ${item.text} later`}
+          title="Move later"
+          disabled={disabled || isLast}
+          onClick={() => onMove(item.id, 1)}
+        >
+          ↓
+        </button>
+      </span>
+    </div>
+  );
+}
+
 export default function AssessPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
@@ -243,6 +330,7 @@ export default function AssessPage() {
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [question, setQuestion] = useState<Question | null>(null);
+  const [sequenceOrder, setSequenceOrder] = useState<Choice[]>([]);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [correctChoiceId, setCorrectChoiceId] = useState<string | null>(null);
@@ -284,6 +372,10 @@ export default function AssessPage() {
   });
   const [otAssessment, setOtAssessment] = useState<OtAssessmentStartRow | null>(null);
   const [otTargetCount, setOtTargetCount] = useState(TOTAL_INITIAL);
+  const sequenceSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -610,6 +702,7 @@ export default function AssessPage() {
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setQuestion({ ...q, choices });
+    setSequenceOrder(choices);
     setSelectedChoice(null);
     setIsCorrect(null);
     setCorrectChoiceId(null);
@@ -776,6 +869,7 @@ export default function AssessPage() {
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setQuestion(parsed);
+    setSequenceOrder(choices);
     setSelectedChoice(null);
     setIsCorrect(null);
     setCorrectChoiceId(null);
@@ -925,10 +1019,10 @@ export default function AssessPage() {
     setIsSubmittingAnswer(true);
     setSelectedChoice(choiceId);
 
-    const { data, error } = await supabase.rpc("obs_submit_ot_assessment_answer", {
+    const { data, error } = await supabase.rpc("obs_submit_ot_assessment_response", {
       p_attempt_id: attemptId,
       p_generated_question_id: submittedQuestionId,
-      p_selected_choice_id: choiceId,
+      p_response: choiceId,
     });
 
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
@@ -965,6 +1059,31 @@ export default function AssessPage() {
     setIsSubmittingAnswer(false);
     setPhase("feedback");
   }, [attemptId, userId, question, answeredCount, correctCount, loadScoreEvidence, otTargetCount, spawnTraveler]);
+
+  const moveSequenceItem = useCallback((itemId: string, direction: -1 | 1) => {
+    setSequenceOrder(current => {
+      const currentIndex = current.findIndex(item => item.id === itemId);
+      const nextIndex = currentIndex + direction;
+      if (currentIndex < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      return arrayMove(current, currentIndex, nextIndex);
+    });
+  }, []);
+
+  const handleSequenceDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setSequenceOrder(current => {
+      const oldIndex = current.findIndex(item => item.id === active.id);
+      const newIndex = current.findIndex(item => item.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return current;
+      return arrayMove(current, oldIndex, newIndex);
+    });
+  }, []);
+
+  const submitSequenceOrder = useCallback(() => {
+    if (sequenceOrder.length === 0) return;
+    void submitAnswer(`__ORDER__:${JSON.stringify(sequenceOrder.map(item => item.id))}`);
+  }, [sequenceOrder, submitAnswer]);
 
   const submitNtAnswer = useCallback(async (choiceId: string) => {
     if (!attemptId || !question || isSubmittingAnswerRef.current) return;
@@ -1062,6 +1181,8 @@ export default function AssessPage() {
   const visibleChoices = question
     ? [...question.choices, IDK_CHOICE]
     : [];
+  const isSequenceQuestion = assessmentMode === "OT"
+    && question?.question_type === "sequence_order_v1";
   const isSkipped = selectedChoice === IDK_CHOICE_ID;
   const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
   const ntProgressEnd = assessmentMode === "NT" ? Math.max(ntTargetCount, 1) : Math.max(otTargetCount, 1);
@@ -1358,6 +1479,67 @@ export default function AssessPage() {
         .choice.wrong   .choice-letter { background: var(--wrong);   color: #fff; }
         .choice.skipped .choice-letter { background: var(--muted); color: #fff; }
         .choice.recorded .choice-letter { background: var(--accent); color: #fff; }
+        .sequence-instruction {
+          margin: -18px 0 14px; color: var(--muted);
+          font-size: 13px; line-height: 1.45;
+        }
+        .sequence-list { display: flex; flex-direction: column; gap: 9px; }
+        .sequence-item {
+          position: relative; z-index: 1;
+          display: grid; grid-template-columns: 32px 38px minmax(0,1fr) auto;
+          align-items: center; gap: 10px; min-height: 66px; padding: 10px 12px;
+          border: 1.5px solid var(--border); border-radius: 8px;
+          background: rgba(255,255,255,.76); color: var(--navy);
+          box-shadow: 0 4px 12px rgba(27,36,66,.045);
+        }
+        .sequence-item.is-dragging {
+          z-index: 4; border-color: var(--accent);
+          background: #fff; box-shadow: 0 16px 34px rgba(27,36,66,.18);
+        }
+        .sequence-number {
+          width: 30px; height: 30px; border-radius: 50%;
+          display: grid; place-items: center;
+          background: var(--navy); color: #fff;
+          font-size: 12px; font-weight: 800;
+        }
+        .sequence-handle {
+          width: 36px; height: 36px; border-radius: 7px;
+          display: grid; place-items: center; border: 1px solid var(--border);
+          background: rgba(27,36,66,.045); color: var(--muted);
+          font: 800 20px/1 system-ui, sans-serif; cursor: grab;
+          touch-action: none;
+        }
+        .sequence-handle:active { cursor: grabbing; }
+        .sequence-handle:disabled { cursor: default; opacity: .5; }
+        .sequence-text { font-size: 14.5px; line-height: 1.4; font-weight: 600; }
+        .sequence-step-controls { display: inline-flex; gap: 5px; }
+        .sequence-step-controls button {
+          width: 30px; height: 30px; border-radius: 7px;
+          border: 1px solid var(--border); background: rgba(255,255,255,.78);
+          color: var(--navy); font: 800 14px/1 system-ui, sans-serif; cursor: pointer;
+        }
+        .sequence-step-controls button:hover:not(:disabled) {
+          border-color: var(--accent-line); background: var(--accent-dim);
+        }
+        .sequence-step-controls button:disabled { opacity: .28; cursor: default; }
+        .sequence-actions {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; margin-top: 16px;
+        }
+        .sequence-submit, .sequence-skip {
+          min-height: 43px; border-radius: 999px; padding: 0 19px;
+          font: 750 13px/1 inherit; cursor: pointer;
+        }
+        .sequence-submit {
+          border: 0; background: var(--navy); color: #fff;
+          box-shadow: 0 9px 22px rgba(27,36,66,.22);
+        }
+        .sequence-submit:hover:not(:disabled) { background: #253566; transform: translateY(-1px); }
+        .sequence-skip {
+          border: 1px solid var(--border); background: rgba(255,255,255,.64);
+          color: var(--muted);
+        }
+        .sequence-submit:disabled, .sequence-skip:disabled { opacity: .55; cursor: default; }
 
         /* Feedback */
         .feedback-bar {
@@ -1702,6 +1884,10 @@ export default function AssessPage() {
           .selection-grid, .nt-scope-grid, .nt-results-grid { grid-template-columns: 1fr; }
           .milestone-banner { align-items: stretch; flex-direction: column; }
           .milestone-actions { display: grid; grid-template-columns: 1fr 1fr; }
+          .sequence-item { grid-template-columns: 30px 34px minmax(0,1fr); padding: 9px; gap: 8px; }
+          .sequence-step-controls { grid-column: 2 / -1; justify-content: flex-end; }
+          .sequence-actions { align-items: stretch; flex-direction: column-reverse; }
+          .sequence-submit, .sequence-skip { width: 100%; }
         }
       `}</style>
 
@@ -1926,25 +2112,78 @@ export default function AssessPage() {
 
             <p className="card-prompt">{question.prompt}</p>
 
-            <div className="choices">
-              {visibleChoices.map((choice, index) => (
-                <button
-                  key={choice.id}
-                  type="button"
-                  className={`choice ${phase === "feedback" ? choiceLabel(choice.id) : ""}`}
-                  onClick={(e) => {
-                    if (phase !== "question" || isSubmittingAnswer) return;
-                    pendingSpawnRef.current = { x: e.clientX, y: e.clientY };
-                    if (assessmentMode === "NT") submitNtAnswer(choice.id);
-                    else submitAnswer(choice.id);
-                  }}
-                  disabled={phase === "feedback" || isSubmittingAnswer}
+            {isSequenceQuestion ? (
+              <div className="sequence-question">
+                <p className="sequence-instruction">Drag the events into order, earliest first.</p>
+                <DndContext
+                  sensors={sequenceSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSequenceDragEnd}
                 >
-                  <span className="choice-letter">{choice.id === IDK_CHOICE_ID ? "E" : choice.id || String.fromCharCode(65 + index)}</span>
-                  {choice.text}
-                </button>
-              ))}
-            </div>
+                  <SortableContext
+                    items={sequenceOrder.map(item => item.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="sequence-list" aria-label="Events in chronological order">
+                      {sequenceOrder.map((item, index) => (
+                        <SortableSequenceItem
+                          key={item.id}
+                          item={item}
+                          index={index}
+                          disabled={phase === "feedback" || isSubmittingAnswer}
+                          isFirst={index === 0}
+                          isLast={index === sequenceOrder.length - 1}
+                          onMove={moveSequenceItem}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+                {phase === "question" && (
+                  <div className="sequence-actions">
+                    <button
+                      className="sequence-skip"
+                      type="button"
+                      disabled={isSubmittingAnswer}
+                      onClick={() => submitAnswer(IDK_CHOICE_ID)}
+                    >
+                      I don&apos;t know - skip
+                    </button>
+                    <button
+                      className="sequence-submit"
+                      type="button"
+                      disabled={isSubmittingAnswer || sequenceOrder.length === 0}
+                      onClick={(event) => {
+                        pendingSpawnRef.current = { x: event.clientX, y: event.clientY };
+                        submitSequenceOrder();
+                      }}
+                    >
+                      Submit order
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="choices">
+                {visibleChoices.map((choice, index) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className={`choice ${phase === "feedback" ? choiceLabel(choice.id) : ""}`}
+                    onClick={(e) => {
+                      if (phase !== "question" || isSubmittingAnswer) return;
+                      pendingSpawnRef.current = { x: e.clientX, y: e.clientY };
+                      if (assessmentMode === "NT") submitNtAnswer(choice.id);
+                      else submitAnswer(choice.id);
+                    }}
+                    disabled={phase === "feedback" || isSubmittingAnswer}
+                  >
+                    <span className="choice-letter">{choice.id === IDK_CHOICE_ID ? "E" : choice.id || String.fromCharCode(65 + index)}</span>
+                    {choice.text}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {phase === "feedback" && (
               <>

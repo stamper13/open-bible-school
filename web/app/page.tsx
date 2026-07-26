@@ -1696,7 +1696,7 @@ export default function HomePage() {
         }
         .progress-detail {
           position: relative; z-index: 1;
-          display: grid; grid-template-columns: minmax(150px,1.2fr) repeat(3,minmax(80px,.65fr));
+          display: grid; grid-template-columns: minmax(150px,1.2fr) repeat(3,minmax(80px,.65fr)) auto;
           gap: 14px; align-items: center; margin-top: 14px; padding-top: 15px;
           border-top: 1px solid rgba(148,163,184,.17);
         }
@@ -1710,6 +1710,18 @@ export default function HomePage() {
           font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
         }
         .progress-stat strong { color: #fff; font-size: 13px; font-weight: 750; }
+        .progress-review-link {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-height: 34px; padding: 0 13px; border-radius: 999px;
+          border: 1px solid rgba(111,218,221,.28);
+          background: rgba(111,218,221,.08); color: rgba(238,254,255,.92);
+          font-size: 11px; font-weight: 800; text-decoration: none; white-space: nowrap;
+          transition: background .15s ease, border-color .15s ease;
+        }
+        .progress-review-link:hover, .progress-review-link:focus-visible {
+          background: rgba(111,218,221,.16); border-color: rgba(111,218,221,.52);
+          outline: none;
+        }
         .progress-note {
           position: relative; z-index: 1; margin-top: 13px;
           color: rgba(226,232,240,.52); font-size: 10.5px; line-height: 1.4;
@@ -2227,9 +2239,19 @@ export default function HomePage() {
         .recommended-title { font-family: "Crimson Pro", Georgia, serif; font-size: 26px; font-weight: 650; color: var(--navy); line-height: 1.05; }
         .recommended-books { margin-top: 5px; font-size: 13px; color: var(--muted); font-weight: 650; }
         .recommended-focus { margin-top: 13px; font-size: 14px; line-height: 1.55; color: rgba(27,36,66,.76); max-width: 660px; }
+        .recommended-side { display: flex; flex-direction: column; align-items: flex-end; }
         .recommended-priority { font-size: 12.5px; line-height: 1.45; color: var(--muted); max-width: 260px; }
-        .recommended-action { display: flex; align-items: center; gap: 8px; justify-self: end; margin-top: 12px; color: var(--navy); font-size: 13px; font-weight: 800; text-decoration: none; }
+        .recommended-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; margin-top: 12px; }
+        .recommended-action { display: flex; align-items: center; gap: 8px; color: var(--navy); font-size: 13px; font-weight: 800; text-decoration: none; }
         .recommended-action svg { width: 16px; height: 16px; }
+        .recommended-review {
+          display: inline-flex; align-items: center; gap: 7px;
+          color: #0a6e6e; font-size: 12px; font-weight: 800; text-decoration: none;
+        }
+        .recommended-review:hover, .recommended-review:focus-visible {
+          color: var(--navy); outline: none; text-decoration: underline;
+          text-underline-offset: 3px;
+        }
         .retest-modal-backdrop {
           position: fixed; inset: 0; z-index: 90;
           background: rgba(7,12,28,.66); backdrop-filter: blur(8px);
@@ -2573,6 +2595,7 @@ export default function HomePage() {
           .progress-chart { min-width: 560px; }
           .progress-detail { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 12px; }
           .progress-detail-primary { grid-column: 1 / -1; }
+          .progress-review-link { grid-column: 1 / -1; }
           .breakdown-head { flex-direction: column; align-items: flex-start; }
           .breakdown-tabs { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
           .breakdown-tab { padding-inline: 8px; }
@@ -2583,8 +2606,8 @@ export default function HomePage() {
           .domain-radar-wrap { min-height: 330px; }
           .domain-radar-svg { width: min(100%, 340px); }
           .recommended-card { grid-template-columns: 1fr; }
+          .recommended-side, .recommended-actions { align-items: flex-start; }
           .recommended-priority { max-width: none; }
-          .recommended-action { justify-self: start; }
           .retest-modal { padding: 24px 22px; }
           .retest-modal-actions { align-items: stretch; flex-direction: column-reverse; }
           .retest-modal-primary,
@@ -3052,6 +3075,9 @@ export default function HomePage() {
                     <strong>{formatScoreChange(activeProgressPoint.score_change)}</strong>
                     <span>From prior snapshot</span>
                   </div>
+                  <Link className="progress-review-link" href={`/results/${activeProgressPoint.attempt_id}`}>
+                    Review assessment
+                  </Link>
                 </div>
               )}
               <p className="progress-note">
@@ -3164,12 +3190,12 @@ export default function HomePage() {
 
         <section className="recommended-card" aria-label="Recommended reading">
           <div>
-            <p className="recommended-eyebrow">Recommended next</p>
+            <p className="recommended-eyebrow">Recommendation &amp; review</p>
             <h2 className="recommended-title">{recommendedStudy.label}</h2>
             <p className="recommended-books">{recommendedStudy.books}</p>
             <p className="recommended-focus">{recommendedStudy.focus}</p>
           </div>
-          <div>
+          <div className="recommended-side">
             <p className="recommended-priority">{recommendedStudy.priority}</p>
             {backendRecommendation && (
               <button
@@ -3186,12 +3212,19 @@ export default function HomePage() {
                 View learning details
               </button>
             )}
-            <Link className="recommended-action" href={recommendedStudy.actionHref} onClick={handleRecommendedAction}>
-              {recommendedStudy.actionLabel}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
-              </svg>
-            </Link>
+            <div className="recommended-actions">
+              <Link className="recommended-action" href={recommendedStudy.actionHref} onClick={handleRecommendedAction}>
+                {recommendedStudy.actionLabel}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
+                </svg>
+              </Link>
+              {progressHistory[0]?.attempt_id && (
+                <Link className="recommended-review" href={`/results/${progressHistory[0].attempt_id}`}>
+                  Review recent assessment <span aria-hidden="true">›</span>
+                </Link>
+              )}
+            </div>
           </div>
         </section>
 

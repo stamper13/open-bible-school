@@ -80,6 +80,18 @@ function titleCase(value: string) {
     .replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
+function AnswerDisplay({ value, ordered = false }: { value: string; ordered?: boolean }) {
+  const items = ordered
+    ? value.split(" -> ").map(item => item.trim()).filter(Boolean)
+    : [];
+  if (items.length < 2) return <span>{value}</span>;
+  return (
+    <ol className="sequence-review-list">
+      {items.map((item, index) => <li key={`${index}:${item}`}>{item}</li>)}
+    </ol>
+  );
+}
+
 export default function AttemptResultsPage() {
   const params = useParams();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -324,6 +336,25 @@ export default function AttemptResultsPage() {
         .answer-line { display: grid; grid-template-columns: 112px minmax(0,1fr); gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.5; }
         .answer-line strong { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
         .answer-line.correct-answer span { color: var(--correct); font-weight: 700; }
+        .sequence-review-list {
+          list-style: none; display: grid; gap: 7px; margin: 0; padding: 0;
+          counter-reset: sequence-review;
+        }
+        .sequence-review-list li {
+          counter-increment: sequence-review; display: grid;
+          grid-template-columns: 23px minmax(0,1fr); align-items: start; gap: 8px;
+          color: var(--navy); font-weight: 600;
+        }
+        .sequence-review-list li::before {
+          content: counter(sequence-review); width: 21px; height: 21px;
+          display: grid; place-items: center; border-radius: 50%;
+          background: rgba(27,36,66,.08); color: var(--navy);
+          font-size: 10px; font-weight: 800;
+        }
+        .correct-answer .sequence-review-list li { color: var(--correct); }
+        .correct-answer .sequence-review-list li::before {
+          background: rgba(8,120,95,.10); color: var(--correct);
+        }
         .explanation { color: var(--muted); }
         .empty-review { color: var(--muted); font-size: 13px; padding: 30px 26px; }
         .results-state {
@@ -455,6 +486,7 @@ export default function AttemptResultsPage() {
                 ) : filteredRows.map(row => {
                   const state = row.is_idk ? "skipped" : row.is_correct ? "correct" : "missed";
                   const isOpen = expandedAnswerId === row.answer_id;
+                  const isSequence = row.selected_choice_id?.startsWith("__ORDER__:") ?? false;
                   return (
                     <article className="review-row" key={row.answer_id}>
                       <button
@@ -477,11 +509,17 @@ export default function AttemptResultsPage() {
                         <div className="review-detail">
                           <div className="answer-line">
                             <strong>Your answer</strong>
-                            <span>{row.is_idk ? "I don't know / skipped" : row.selected_choice_text || row.selected_choice_id || "No answer recorded"}</span>
+                            <AnswerDisplay
+                              ordered={isSequence}
+                              value={row.is_idk ? "I don't know / skipped" : row.selected_choice_text || row.selected_choice_id || "No answer recorded"}
+                            />
                           </div>
                           <div className="answer-line correct-answer">
                             <strong>Correct answer</strong>
-                            <span>{row.correct_choice_text || row.correct_choice_id}</span>
+                            <AnswerDisplay
+                              ordered={isSequence}
+                              value={row.correct_choice_text || row.correct_choice_id}
+                            />
                           </div>
                           {row.source_ref && (
                             <div className="answer-line">
