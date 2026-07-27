@@ -249,6 +249,32 @@ function detailTargetForScore(score: ScopeScore): ScopeDetailTarget {
   return { scopeType: "SECTION", scopeKey: score.label, label: score.label, subtitle: score.subtitle };
 }
 
+function assessmentHrefForScore(score: ScopeScore): string | null {
+  if (score.kind === "canon") return "/assess?testament=OT";
+
+  const params = new URLSearchParams({
+    mode: "scope",
+    label: score.label,
+    target: score.kind === "book" ? "15" : "20",
+  });
+
+  if (score.kind === "book") {
+    params.set("scope", score.key.replace("book:", ""));
+    return `/assess?${params.toString()}`;
+  }
+
+  const sectionKey = {
+    Torah: "TORAH",
+    "Former Prophets": "FORMER",
+    "Latter Prophets": "LATTER",
+    Writings: "WRITINGS",
+  }[score.label];
+
+  if (!sectionKey) return null;
+  params.set("scope", sectionKey);
+  return `/assess?${params.toString()}`;
+}
+
 function dimensionDisplayName(key: string): string {
   return DOMAIN_META.find(domain => domain.backendKey === key)?.label
     ?? key.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
@@ -447,6 +473,7 @@ export default function HomePage() {
   const [sectionScores, setSectionScores] = useState<Record<string, {pct: number, total: number, weighted_pct: number}>>({});
   const [scopeScores, setScopeScores] = useState<{sections: ScopeScore[]; books: ScopeScore[]; domains: ScopeScore[]}>(() => buildScopeScores([], []));
   const [activeBreakdownTab, setActiveBreakdownTab] = useState<BreakdownTab>("sections");
+  const [prophetsExpanded, setProphetsExpanded] = useState(false);
   const [showBliTooltip, setShowBliTooltip] = useState(false);
   const [showEvidenceTooltip, setShowEvidenceTooltip] = useState(false);
   const [expandedConeLayer, setExpandedConeLayer] = useState<string | null>(null);
@@ -545,10 +572,15 @@ export default function HomePage() {
     };
   })() : getRecommendedStudy(sectionScores, !!assessmentData, scopeScores.books);
   const visibleBreakdownScores = useMemo(() => {
-    if (activeBreakdownTab === "sections") return scopeScores.sections;
+    if (activeBreakdownTab === "sections") {
+      return scopeScores.sections.filter(score => (
+        prophetsExpanded
+        || (score.key !== "former" && score.key !== "latter")
+      ));
+    }
     if (activeBreakdownTab === "domains") return scopeScores.domains;
     return scopeScores.books;
-  }, [activeBreakdownTab, scopeScores]);
+  }, [activeBreakdownTab, prophetsExpanded, scopeScores]);
   const scriptureConnectionsUnlocked = useMemo(() => {
     const torah = scopeScores.sections.find(score => score.label === "Torah");
     const former = scopeScores.sections.find(score => score.label === "Former Prophets");
@@ -2458,12 +2490,19 @@ export default function HomePage() {
           border-radius: 16px; padding: 20px 22px;
           box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
           position: relative; overflow: hidden; opacity: .75;
-          width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer;
+          width: 100%; color: inherit; font: inherit; text-align: left;
           transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
         }
-        .section-card:hover, .section-card:focus-visible {
+        .section-card:hover, .section-card:focus-within {
           transform: translateY(-2px); border-color: rgba(10,163,163,.32);
           box-shadow: 0 13px 30px rgba(0,0,0,.22); outline: none;
+        }
+        .section-card.prophet-child {
+          animation: prophetChildIn .24s cubic-bezier(.22,.72,.18,1) both;
+        }
+        @keyframes prophetChildIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .section-card.has-score { opacity: 1; }
         .section-card.low-evidence { opacity: .82; }
@@ -2481,17 +2520,38 @@ export default function HomePage() {
         .section-card.domain-speech::before { background: linear-gradient(90deg,#7c3aed,#a78bfa); }
         .section-card.domain-law::before { background: linear-gradient(90deg,#b45309,#f59e0b); }
         .section-card.domain-numbers::before { background: linear-gradient(90deg,#566070,#9aa3b2); }
+        .section-card-main {
+          display: block; width: 100%; border: 0; padding: 0;
+          color: inherit; background: transparent; font: inherit;
+          text-align: left; cursor: pointer;
+        }
+        .section-card-main:focus-visible { outline: 2px solid rgba(10,163,163,.58); outline-offset: 6px; border-radius: 8px; }
         .sc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
         .sc-name { font-size: 15px; font-weight: 650; color: var(--navy); }
         .sc-books { font-size: 12px; color: var(--muted); margin-top: 2px; }
         .sc-pct-empty { font-family: "Crimson Pro",Georgia,serif; font-size: 24px; font-weight: 700; color: rgba(27,36,66,.18); line-height: 1; }
         .sc-bar-track { height: 6px; border-radius: 999px; background: rgba(27,36,66,.07); margin-bottom: 12px; }
-        .sc-chip-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .sc-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .sc-chip-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
         .sc-chip-empty { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: rgba(27,36,66,.05); border: 1px solid var(--border); color: var(--muted); }
         .sc-chip-empty.evidence-high,
         .sc-chip-empty.evidence-moderate { background: var(--accent-dim); border-color: var(--accent-line); color: #0a6e6e; }
         .sc-chip-empty.evidence-low { background: #fef3c7; border-color: #fde68a; color: #92400e; }
         .sc-chip-empty.evidence-none { background: rgba(27,36,66,.05); border-color: var(--border); color: var(--muted); }
+        .sc-test-link {
+          flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+          min-height: 30px; padding: 6px 10px; border: 1px solid rgba(27,36,66,.14);
+          border-radius: 999px; color: var(--navy); background: rgba(255,255,255,.66);
+          font: inherit; font-size: 11px; font-weight: 800; text-decoration: none; cursor: pointer;
+          transition: color .16s ease, background .16s ease, border-color .16s ease, transform .16s ease;
+        }
+        .sc-test-link:hover, .sc-test-link:focus-visible {
+          color: #fff; background: var(--navy); border-color: var(--navy);
+          transform: translateX(1px); outline: none;
+        }
+        .sc-test-link svg { width: 13px; height: 13px; }
+        .sc-expand-icon { transition: transform .18s ease; }
+        .sc-test-link[aria-expanded="true"] .sc-expand-icon { transform: rotate(180deg); }
         .scope-drawer-backdrop {
           position: fixed; inset: 0; z-index: 120; display: flex; justify-content: flex-end;
           background: rgba(3,8,20,.58); backdrop-filter: blur(5px);
@@ -3370,6 +3430,9 @@ export default function HomePage() {
           <div className={`sections-grid ${activeBreakdownTab}`}>
             {visibleBreakdownScores.map(s => {
               const hasScore = s.rawScore !== null && s.answered > 0;
+              const isProphetsParent = activeBreakdownTab === "sections" && s.key === "prophets";
+              const isProphetsChild = activeBreakdownTab === "sections" && (s.key === "former" || s.key === "latter");
+              const assessmentHref = assessmentHrefForScore(s);
               const fillColor = s.className === "torah" ? "linear-gradient(90deg,#d4a017,#f5c842)"
                 : s.className === "former" ? "linear-gradient(90deg,#0e8c6a,#34d399)"
                 : s.className === "latter" ? "linear-gradient(90deg,#2563c4,#60a5fa)"
@@ -3378,37 +3441,70 @@ export default function HomePage() {
                 : s.className === "ot" ? "linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed)"
                 : "linear-gradient(90deg,#0aa3a3,#67e8f9)";
               return (
-                <button
-                  type="button"
+                <article
                   key={s.key}
-                  className={`section-card ${s.className} ${hasScore ? "has-score" : ""} ${s.confidence === "low" || s.confidence === "none" ? "low-evidence" : ""}`}
-                  onClick={() => void openScopeDetail(detailTargetForScore(s))}
+                  className={`section-card ${s.className} ${isProphetsChild ? "prophet-child" : ""} ${hasScore ? "has-score" : ""} ${s.confidence === "low" || s.confidence === "none" ? "low-evidence" : ""}`}
                 >
-                  <div className="sc-top">
-                    <div>
-                      <div className="sc-name">{s.label}</div>
-                      <div className="sc-books">{s.subtitle}</div>
+                  <button
+                    type="button"
+                    className="section-card-main"
+                    aria-expanded={isProphetsParent ? prophetsExpanded : undefined}
+                    onClick={() => {
+                      if (isProphetsParent) {
+                        setProphetsExpanded(expanded => !expanded);
+                        return;
+                      }
+                      void openScopeDetail(detailTargetForScore(s));
+                    }}
+                  >
+                    <div className="sc-top">
+                      <div>
+                        <div className="sc-name">{s.label}</div>
+                        <div className="sc-books">{s.subtitle}</div>
+                      </div>
+                      <div className="sc-pct-empty" style={{color: hasScore ? "#1b2442" : undefined}}>
+                        {hasScore ? s.displayScore : "--"}
+                      </div>
                     </div>
-                    <div className="sc-pct-empty" style={{color: hasScore ? "#1b2442" : undefined}}>
-                      {hasScore ? s.displayScore : "--"}
+                    <div className="sc-bar-track">
+                      {hasScore && (
+                        <div className="sc-bar-fill" style={{
+                          width: `${Math.max(3, Math.min(100, s.rawScore ?? 0))}%`,
+                          background: fillColor,
+                          height: "100%", borderRadius: 999, transition: "width 1s ease"
+                        }} />
+                      )}
                     </div>
-                  </div>
-                  <div className="sc-bar-track">
-                    {hasScore && (
-                      <div className="sc-bar-fill" style={{
-                        width: `${Math.max(3, Math.min(100, s.rawScore ?? 0))}%`,
-                        background: fillColor,
-                        height: "100%", borderRadius: 999, transition: "width 1s ease"
-                      }} />
+                  </button>
+                  <div className="sc-card-footer">
+                    <div className="sc-chip-row">
+                      <span className={`sc-chip-empty evidence-${s.confidence}`}>
+                        {hasScore ? `${s.answered} answered` : "Not yet assessed"}
+                      </span>
+                      {hasScore && <span className={`sc-chip-empty evidence-${s.confidence}`}>{evidenceLabel(s)}</span>}
+                    </div>
+                    {assessmentHref ? (
+                      <Link className="sc-test-link" href={assessmentHref}>
+                        {hasScore ? "Retest" : "Test"}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
+                        </svg>
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="sc-test-link"
+                        aria-expanded={prophetsExpanded}
+                        onClick={() => setProphetsExpanded(expanded => !expanded)}
+                      >
+                        {prophetsExpanded ? "Hide sections" : "Choose section"}
+                        <svg className="sc-expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="m6 9 6 6 6-6"/>
+                        </svg>
+                      </button>
                     )}
                   </div>
-                  <div className="sc-chip-row">
-                    <span className={`sc-chip-empty evidence-${s.confidence}`}>
-                      {hasScore ? `${s.answered} answered` : "Not yet assessed"}
-                    </span>
-                    {hasScore && <span className={`sc-chip-empty evidence-${s.confidence}`}>{evidenceLabel(s)}</span>}
-                  </div>
-                </button>
+                </article>
               );
             })}
           </div>

@@ -103,6 +103,7 @@ type NtAssessmentStatusRow = {
 };
 type OtAssessmentRequest = {
   unitKey: string | null;
+  scopeKey: string | null;
   bookCode: string | null;
   startChapter: number | null;
   endChapter: number | null;
@@ -363,6 +364,7 @@ export default function AssessPage() {
   const [scoreEvidence, setScoreEvidence] = useState<BliEvidence | null>(null);
   const [otRequest, setOtRequest] = useState<OtAssessmentRequest>({
     unitKey: null,
+    scopeKey: null,
     bookCode: null,
     startChapter: null,
     endChapter: null,
@@ -393,12 +395,14 @@ export default function AssessPage() {
       };
       const requestedTarget = parseChapter(params.get("target"));
       const isFocused = params.get("mode") === "focus";
+      const isScopeTest = params.get("mode") === "scope";
       setOtRequest({
         unitKey: isFocused ? params.get("unit") : null,
+        scopeKey: isScopeTest ? params.get("scope")?.toUpperCase() ?? null : null,
         bookCode: isFocused ? params.get("book")?.toUpperCase() ?? null : null,
         startChapter: isFocused ? parseChapter(params.get("start")) : null,
         endChapter: isFocused ? parseChapter(params.get("end")) : null,
-        label: isFocused ? params.get("label") : null,
+        label: isFocused || isScopeTest ? params.get("label") : null,
         dimensionKey: isFocused ? params.get("dimension") : null,
         targetQuestionCount: Math.min(50, Math.max(1, requestedTarget ?? TOTAL_INITIAL)),
       });
@@ -973,15 +977,22 @@ export default function AssessPage() {
         const uid = await ensureAssessmentSession();
         await loadScoreEvidence(uid, "OT");
 
-        const { data, error } = await supabase.rpc("obs_start_or_resume_ot_assessment_v2", {
-          p_unit_key: otRequest.unitKey,
-          p_book_code: otRequest.bookCode,
-          p_start_chapter: otRequest.startChapter,
-          p_end_chapter: otRequest.endChapter,
-          p_target_question_count: otRequest.targetQuestionCount,
-          p_force_new: false,
-          p_dimension_key: otRequest.dimensionKey,
-        });
+        const { data, error } = otRequest.scopeKey
+          ? await supabase.rpc("obs_start_or_resume_ot_scope_assessment", {
+              p_scope_key: otRequest.scopeKey,
+              p_label: otRequest.label,
+              p_target_question_count: otRequest.targetQuestionCount,
+              p_force_new: false,
+            })
+          : await supabase.rpc("obs_start_or_resume_ot_assessment_v2", {
+              p_unit_key: otRequest.unitKey,
+              p_book_code: otRequest.bookCode,
+              p_start_chapter: otRequest.startChapter,
+              p_end_chapter: otRequest.endChapter,
+              p_target_question_count: otRequest.targetQuestionCount,
+              p_force_new: false,
+              p_dimension_key: otRequest.dimensionKey,
+            });
         if (error) throw error;
 
         const attempt = ((data ?? [])[0] as OtAssessmentStartRow | undefined) ?? null;
@@ -1201,19 +1212,23 @@ export default function AssessPage() {
     ? Math.min(100, Math.max(0, (answeredCount / ntProgressEnd) * 100))
     : 0;
   const isInitialPhase = answeredCount < otTargetCount;
+  const isScopeOtAssessment = Boolean(otRequest.scopeKey);
+  const isTargetedOtAssessment = otAssessment?.assessment_kind === "ot_focused" || isScopeOtAssessment;
   const nextMilestone = answeredCount < otTargetCount ? otTargetCount : Math.ceil((answeredCount + 1) / 10) * 10;
   const progressStart = isInitialPhase ? 0 : nextMilestone - 10;
   const progressEnd = isInitialPhase ? otTargetCount : nextMilestone;
   const progressPct = Math.min(100, Math.max(0, ((answeredCount - progressStart) / Math.max(1, progressEnd - progressStart)) * 100));
   const hasBrowserSavedProgress = !isSignedIn && answeredCount > 0;
   const navPhaseLabel = isInitialPhase
-    ? (otAssessment?.assessment_kind === "ot_focused"
-      ? "Focused Retest"
+    ? (isTargetedOtAssessment
+      ? isScopeOtAssessment
+        ? otAssessment?.book_code ? "Book Test" : "Section Test"
+        : "Focused Retest"
       : isSignedIn ? "BLI Baseline" : hasBrowserSavedProgress ? "Saved Baseline" : "Initial Assessment")
     : (isSignedIn ? "BLI Refinement" : "Browser-Saved Practice");
   const navSubLabel = isInitialPhase
-    ? (otAssessment?.assessment_kind === "ot_focused"
-      ? `${otAssessment.label} · ${answeredCount} of ${otTargetCount}`
+    ? (isTargetedOtAssessment
+      ? `${otAssessment?.label ?? otRequest.label ?? "Targeted assessment"} · ${answeredCount} of ${otTargetCount}`
       : hasBrowserSavedProgress
         ? `${answeredCount} of ${otTargetCount} answered in this browser`
         : `${Math.max(0, otTargetCount - answeredCount)} questions until first BLI snapshot`)
@@ -2076,11 +2091,11 @@ export default function AssessPage() {
                 <span className="loc-pill" style={{ color: "#566070", background: "rgba(27,36,66,.05)", borderColor: "rgba(27,36,66,.09)" }}>
                   {assessmentMode === "NT" ? ((question as NtPilotQuestion).book_name || question.book_code) : BOOK_NAMES[question.book_code] || question.book_code}
                 </span>
-                {assessmentMode === "OT" && otAssessment?.assessment_kind === "ot_focused" && (
+                {assessmentMode === "OT" && isTargetedOtAssessment && (
                   <>
                     <span className="loc-sep">·</span>
                     <span className="loc-pill" style={{ color: "#087f7f", background: "rgba(10,163,163,.10)", borderColor: "rgba(10,163,163,.22)" }}>
-                      {otAssessment.label}
+                      {otAssessment?.label ?? otRequest.label ?? "Targeted assessment"}
                     </span>
                   </>
                 )}
@@ -2227,8 +2242,10 @@ export default function AssessPage() {
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 20v-6"/><path d="M6 20v-3"/><path d="M18 20v-9"/><path d="M3 3h18"/>
                       </svg>
-                      {otAssessment?.assessment_kind === "ot_focused"
-                        ? `${otAssessment.label} retest complete. Your recommendation is being recalculated.`
+                      {isTargetedOtAssessment
+                        ? isScopeOtAssessment
+                          ? `${otAssessment?.label ?? "Targeted"} test complete. Your BLI has been updated.`
+                          : `${otAssessment?.label} retest complete. Your recommendation is being recalculated.`
                         : "Your BLI snapshot is ready."}
                     </span>
                     <span className="milestone-actions">
@@ -2260,18 +2277,20 @@ export default function AssessPage() {
           <div className="card center-card">
             <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
             <div className="card-heading">
-              {otAssessment?.assessment_kind === "ot_focused"
-                ? `${otAssessment.label} retest complete`
+              {isTargetedOtAssessment
+                ? `${otAssessment?.label ?? "Targeted"} ${isScopeOtAssessment ? "test" : "retest"} complete`
                 : "Assessment complete"}
             </div>
             <p className="card-sub">
-              {otAssessment?.assessment_kind === "ot_focused"
-                ? "Your new evidence has been added to your BLI. The dashboard will now recalculate this learning unit and your next recommendation."
+              {isTargetedOtAssessment
+                ? isScopeOtAssessment
+                  ? "Your new evidence has been added to your BLI and the dashboard will reflect this book or section."
+                  : "Your new evidence has been added to your BLI. The dashboard will now recalculate this learning unit and your next recommendation."
                 : `You answered ${correctCount} of ${answeredCount} questions correctly.`}
             </p>
             {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
             <Link className="btn-primary" href="/">View your dashboard</Link>
-            {otAssessment?.assessment_kind !== "ot_focused" && (
+            {!isTargetedOtAssessment && (
               <Link className="btn-secondary" href="/assess">Keep going</Link>
             )}
           </div>
