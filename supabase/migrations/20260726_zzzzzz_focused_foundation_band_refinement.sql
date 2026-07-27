@@ -75,6 +75,26 @@ immutable
 parallel safe
 as $$
   select case
+    when lower(coalesce(p_payload->>'retest_stage', '')) in (
+        'foundation',
+        'easy',
+        '1'
+      )
+      then 1
+    when lower(coalesce(p_payload->>'retest_stage', '')) in (
+        'core',
+        'core knowledge',
+        'medium',
+        '2'
+      )
+      then 2
+    when lower(coalesce(p_payload->>'retest_stage', '')) in (
+        'detail',
+        'detail and synthesis',
+        'hard',
+        '3'
+      )
+      then 3
     when coalesce(p_question_type, '') = 'book_orientation_mcq_v1'
       or lower(coalesce(p_payload->>'assessment_role', '')) in (
         'book_orientation',

@@ -109,6 +109,26 @@ immutable
 parallel safe
 as $$
   select case
+    when lower(coalesce(p_payload->>'retest_stage', '')) in (
+        'foundation',
+        'easy',
+        '1'
+      )
+      then 1
+    when lower(coalesce(p_payload->>'retest_stage', '')) in (
+        'core',
+        'core knowledge',
+        'medium',
+        '2'
+      )
+      then 2
+    when lower(coalesce(p_payload->>'retest_stage', '')) in (
+        'detail',
+        'detail and synthesis',
+        'hard',
+        '3'
+      )
+      then 3
     when coalesce(p_question_type, '') = 'book_orientation_mcq_v1'
       or lower(coalesce(p_payload->>'assessment_role', '')) in (
         'book_orientation',
@@ -499,6 +519,10 @@ as $$
           event.irt_b::double precision
         )
       ) as difficulty_stage,
+      public.obs_effective_item_irt_b(
+        question.payload,
+        event.irt_b::double precision
+      ) as effective_irt_b,
       coalesce(history.times_answered, 0) as times_answered,
       history.last_answered_at,
       exists (
@@ -603,6 +627,10 @@ as $$
     from candidate_base candidate
     cross join desired
     where not candidate.answered_in_attempt
+      and (
+        desired.difficulty_stage <> 3
+        or candidate.difficulty_stage = 3
+      )
       and not exists (
         select 1
         from public.assessment_answers prior
@@ -630,6 +658,7 @@ as $$
       end,
       candidate.times_answered,
       candidate.last_answered_at nulls first,
+      candidate.effective_irt_b,
       coalesce(
         candidate.importance_conceptual,
         candidate.routing_score,
