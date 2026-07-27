@@ -150,6 +150,7 @@ type AnswerRow = {
   generated_question_id: string | null;
   is_correct: boolean;
   is_idk?: boolean | null;
+  scoring_eligible?: boolean | null;
 };
 type BackendRecommendation = {
   unit_key: string;
@@ -291,7 +292,11 @@ function scoreEvidence(rows: { isCorrect: boolean; weight: number }[]) {
 function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
   const bankById = new Map(bankRows.map(row => [row.generated_question_id, row]));
   const evidence = answerRows
-    .filter(answer => answer.generated_question_id && !answer.is_idk)
+    .filter(answer => (
+      answer.generated_question_id
+      && !answer.is_idk
+      && answer.scoring_eligible !== false
+    ))
     .map(answer => {
       const bank = bankById.get(answer.generated_question_id!);
       if (!bank || !bank.book_code) return null;
@@ -907,7 +912,9 @@ export default function HomePage() {
           loadDimensionAwareQuestionBank(),
           supabase
             .from("assessment_answers")
-            .select("generated_question_id,is_correct,is_idk")
+            .select(
+              "generated_question_id,is_correct,is_idk,scoring_eligible"
+            )
             .eq("user_id", session.user.id),
           supabase.rpc("obs_get_user_recommendation_v2", { p_user_id: session.user.id }),
           supabase.rpc("obs_get_bli_uncertainty", {
