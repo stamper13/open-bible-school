@@ -2365,6 +2365,10 @@ export default function HomePage() {
         .sections-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .sections-grid.books { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .sections-grid.domains { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .sections-grid.sections.is-prophets-expanded > .section-card.prophets-parent,
+        .sections-grid.sections.is-prophets-expanded > .section-card.writings {
+          grid-column: 1 / -1;
+        }
         .domain-radar-card {
           position: relative; overflow: hidden;
           background:
@@ -2500,6 +2504,10 @@ export default function HomePage() {
         .section-card.prophet-child {
           animation: prophetChildIn .24s cubic-bezier(.22,.72,.18,1) both;
         }
+        .section-card.prophets-parent.is-expanded {
+          border-color: rgba(10,163,163,.34);
+          box-shadow: 0 12px 30px rgba(0,0,0,.20), inset 0 -24px 40px rgba(10,163,163,.04);
+        }
         @keyframes prophetChildIn {
           from { opacity: 0; transform: translateY(-8px); }
           to { opacity: 1; transform: translateY(0); }
@@ -2527,6 +2535,15 @@ export default function HomePage() {
         }
         .section-card-main:focus-visible { outline: 2px solid rgba(10,163,163,.58); outline-offset: 6px; border-radius: 8px; }
         .sc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .sc-parent-label {
+          display: inline-flex; align-items: center; gap: 6px; margin-bottom: 5px;
+          color: #087979; font-size: 9px; font-weight: 850;
+          letter-spacing: .1em; text-transform: uppercase;
+        }
+        .sc-parent-label::before {
+          content: ""; width: 13px; height: 2px; border-radius: 999px;
+          background: linear-gradient(90deg,#0e8c6a,#2563c4);
+        }
         .sc-name { font-size: 15px; font-weight: 650; color: var(--navy); }
         .sc-books { font-size: 12px; color: var(--muted); margin-top: 2px; }
         .sc-pct-empty { font-family: "Crimson Pro",Georgia,serif; font-size: 24px; font-weight: 700; color: rgba(27,36,66,.18); line-height: 1; }
@@ -2552,6 +2569,36 @@ export default function HomePage() {
         .sc-test-link svg { width: 13px; height: 13px; }
         .sc-expand-icon { transition: transform .18s ease; }
         .sc-test-link[aria-expanded="true"] .sc-expand-icon { transform: rotate(180deg); }
+        @media (min-width: 641px) {
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophets-parent,
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child {
+            overflow: visible;
+          }
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophets-parent::after {
+            content: ""; position: absolute; z-index: 2; top: 100%; left: 50%;
+            width: 2px; height: 14px; transform: translateX(-1px);
+            background: linear-gradient(180deg,rgba(10,163,163,.72),rgba(37,99,196,.56));
+            pointer-events: none;
+          }
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child {
+            margin-top: 24px;
+          }
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child::after {
+            content: ""; position: absolute; z-index: 2; top: -25px; height: 25px;
+            border-top: 2px solid rgba(10,163,163,.52);
+            pointer-events: none;
+          }
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child.former::after {
+            left: 50%; right: -7px;
+            border-left: 2px solid rgba(14,140,106,.58);
+            border-top-left-radius: 10px;
+          }
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child.latter::after {
+            left: -7px; right: 50%;
+            border-right: 2px solid rgba(37,99,196,.58);
+            border-top-right-radius: 10px;
+          }
+        }
         .scope-drawer-backdrop {
           position: fixed; inset: 0; z-index: 120; display: flex; justify-content: flex-end;
           background: rgba(3,8,20,.58); backdrop-filter: blur(5px);
@@ -2669,6 +2716,10 @@ export default function HomePage() {
           .sections-grid,
           .sections-grid.books,
           .sections-grid.domains { grid-template-columns: 1fr; }
+          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child {
+            width: calc(100% - 18px); margin-left: 18px;
+            border-left: 3px solid rgba(10,163,163,.42);
+          }
           .domain-radar-card { grid-template-columns: 1fr; padding: 22px 18px; }
           .domain-radar-wrap { min-height: 330px; }
           .domain-radar-svg { width: min(100%, 340px); }
@@ -3427,7 +3478,7 @@ export default function HomePage() {
             </section>
           );
         })() : (
-          <div className={`sections-grid ${activeBreakdownTab}`}>
+          <div className={`sections-grid ${activeBreakdownTab} ${activeBreakdownTab === "sections" && prophetsExpanded ? "is-prophets-expanded" : ""}`}>
             {visibleBreakdownScores.map(s => {
               const hasScore = s.rawScore !== null && s.answered > 0;
               const isProphetsParent = activeBreakdownTab === "sections" && s.key === "prophets";
@@ -3443,7 +3494,7 @@ export default function HomePage() {
               return (
                 <article
                   key={s.key}
-                  className={`section-card ${s.className} ${isProphetsChild ? "prophet-child" : ""} ${hasScore ? "has-score" : ""} ${s.confidence === "low" || s.confidence === "none" ? "low-evidence" : ""}`}
+                  className={`section-card ${s.className} ${isProphetsParent ? "prophets-parent" : ""} ${isProphetsParent && prophetsExpanded ? "is-expanded" : ""} ${isProphetsChild ? "prophet-child" : ""} ${hasScore ? "has-score" : ""} ${s.confidence === "low" || s.confidence === "none" ? "low-evidence" : ""}`}
                 >
                   <button
                     type="button"
@@ -3459,6 +3510,7 @@ export default function HomePage() {
                   >
                     <div className="sc-top">
                       <div>
+                        {isProphetsChild && <div className="sc-parent-label">Prophets</div>}
                         <div className="sc-name">{s.label}</div>
                         <div className="sc-books">{s.subtitle}</div>
                       </div>
