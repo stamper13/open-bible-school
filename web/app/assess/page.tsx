@@ -147,6 +147,22 @@ const REPORT_OPTIONS: { value: ReportCategory; label: string }[] = [
   { value: "poorly_worded", label: "Poorly worded" },
   { value: "other", label: "Other" },
 ];
+
+function promptAsksForBookAnswer(question: Pick<Question, "prompt" | "question_type">) {
+  if (
+    question.question_type === "book_orientation_mcq_v1"
+    || question.question_type.includes("book_identification")
+  ) {
+    return true;
+  }
+
+  const prompt = question.prompt.trim().toLowerCase();
+  return (
+    /\b(?:which|what)\s+(?:[a-z]+\s+){0,3}book\b/.test(prompt)
+    || /\b(?:in|from)\s+(?:which|what)\s+book\b/.test(prompt)
+    || /\b(?:name|identify)\s+(?:the\s+)?(?:biblical\s+)?book\b/.test(prompt)
+  );
+}
 const SECTION_COLORS: Record<string, string> = {
   "Torah": "#d4a017",
   "Former Prophets": "#0e8c6a",
@@ -1205,6 +1221,7 @@ export default function AssessPage() {
     : [];
   const isSequenceQuestion = assessmentMode === "OT"
     && question?.question_type === "sequence_order_v1";
+  const concealsBookAnswer = question ? promptAsksForBookAnswer(question) : false;
   const isSkipped = selectedChoice === IDK_CHOICE_ID;
   const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
   const ntProgressEnd = assessmentMode === "NT" ? Math.max(ntTargetCount, 1) : Math.max(otTargetCount, 1);
@@ -2087,11 +2104,15 @@ export default function AssessPage() {
                   />
                   {assessmentMode === "NT" ? "New Testament Pilot" : question.section}
                 </span>
-                <span className="loc-sep">·</span>
-                <span className="loc-pill" style={{ color: "#566070", background: "rgba(27,36,66,.05)", borderColor: "rgba(27,36,66,.09)" }}>
-                  {assessmentMode === "NT" ? ((question as NtPilotQuestion).book_name || question.book_code) : BOOK_NAMES[question.book_code] || question.book_code}
-                </span>
-                {assessmentMode === "OT" && isTargetedOtAssessment && (
+                {!concealsBookAnswer && (
+                  <>
+                    <span className="loc-sep">·</span>
+                    <span className="loc-pill" style={{ color: "#566070", background: "rgba(27,36,66,.05)", borderColor: "rgba(27,36,66,.09)" }}>
+                      {assessmentMode === "NT" ? ((question as NtPilotQuestion).book_name || question.book_code) : BOOK_NAMES[question.book_code] || question.book_code}
+                    </span>
+                  </>
+                )}
+                {assessmentMode === "OT" && isTargetedOtAssessment && !concealsBookAnswer && (
                   <>
                     <span className="loc-sep">·</span>
                     <span className="loc-pill" style={{ color: "#087f7f", background: "rgba(10,163,163,.10)", borderColor: "rgba(10,163,163,.22)" }}>
