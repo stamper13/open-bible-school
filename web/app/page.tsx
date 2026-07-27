@@ -2287,7 +2287,12 @@ export default function HomePage() {
           display: inline-flex; align-items: center; gap: 7px;
           color: #0a6e6e; font-size: 12px; font-weight: 800; text-decoration: none;
         }
-        .recommended-review:hover, .recommended-review:focus-visible {
+        .recommended-map {
+          display: inline-flex; align-items: center; gap: 7px;
+          color: var(--navy); font-size: 12px; font-weight: 800; text-decoration: none;
+        }
+        .recommended-review:hover, .recommended-review:focus-visible,
+        .recommended-map:hover, .recommended-map:focus-visible {
           color: var(--navy); outline: none; text-decoration: underline;
           text-underline-offset: 3px;
         }
@@ -3336,6 +3341,9 @@ export default function HomePage() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
                 </svg>
+              </Link>
+              <Link className="recommended-map" href="/knowledge-map#recommended-next">
+                View on knowledge map <span aria-hidden="true">›</span>
               </Link>
               {progressHistory[0]?.attempt_id && (
                 <Link className="recommended-review" href={`/results/${progressHistory[0].attempt_id}`}>

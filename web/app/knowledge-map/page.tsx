@@ -1,22 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { levelForScore, toDisplayScore } from "@/lib/bli";
+import {
+  BIBLE_BOOKS,
+  BOOK_NAMES,
+  SECTION_BOOKS,
+  type OldTestamentSectionName,
+} from "@/lib/bibleTaxonomy";
 import { supabase } from "@/lib/supabase/client";
-import { loadPublicQuestionMetadata, type PublicQuestionMetadataRow } from "@/lib/supabase/questionMetadata";
-import { sectionForBook, type OldTestamentSectionName } from "@/lib/bibleTaxonomy";
+import {
+  loadPublicQuestionMetadata,
+  type PublicQuestionMetadataRow,
+} from "@/lib/supabase/questionMetadata";
 
 type SectionKey = OldTestamentSectionName;
-type DimensionKey = "characters" | "events" | "geography" | "commands" | "speech" | "significance" | "structure";
-type MapMode = "mastery" | "tier" | "evidence";
-
-type BankRow = PublicQuestionMetadataRow;
+type DimensionKey =
+  | "characters_lineage"
+  | "events_timeline"
+  | "geography_nations"
+  | "law_commands"
+  | "promise_prophecy"
+  | "theological_reasoning"
+  | "structure_cross_ref";
 
 type AnswerRow = {
   generated_question_id: string | null;
   is_correct: boolean | null;
+  is_idk: boolean | null;
+  scoring_eligible: boolean | null;
 };
+
 type BackendRecommendation = {
   unit_key: string;
   label: string;
@@ -40,414 +55,965 @@ type BackendRecommendation = {
   dimension_focus_text: string | null;
 };
 
-type Node = {
-  id: string;
+type EvidenceRow = {
+  bookCode: string;
   section: SectionKey;
   dimension: DimensionKey;
-  label: string;
-  x: number;
-  y: number;
-  tier: 1 | 2 | 3;
-  bankCount: number;
-  answered: number;
-  correct: number;
+  isCorrect: boolean;
+  weight: number;
 };
 
-const SECTIONS: Array<{ key: SectionKey; books: string; color: string; x: number; y: number }> = [
-  { key: "Torah", books: "Genesis - Deuteronomy", color: "#d4a017", x: 130, y: 210 },
-  { key: "Former Prophets", books: "Joshua - Kings", color: "#0e8c6a", x: 360, y: 210 },
-  { key: "Latter Prophets", books: "Isaiah - Malachi", color: "#2563c4", x: 590, y: 210 },
-  { key: "Writings", books: "Psalms, Wisdom, Scrolls", color: "#7c3aed", x: 360, y: 410 },
+type KnowledgeScore = {
+  key: string;
+  label: string;
+  bookCode?: string;
+  answered: number;
+  correct: number;
+  bankCount: number;
+  rawScore: number | null;
+  displayScore: number | null;
+};
+
+type KnowledgeState = {
+  key: "untested" | "early" | "review" | "developing" | "established" | "strong";
+  label: string;
+  color: string;
+  copy: string;
+};
+
+const SECTIONS: Array<{
+  key: SectionKey;
+  className: string;
+  color: string;
+  books: string[];
+  range: string;
+  role: string;
+  description: string;
+}> = [
+  {
+    key: "Torah",
+    className: "torah",
+    color: "#d4a017",
+    books: SECTION_BOOKS.Torah,
+    range: "Genesis - Deuteronomy",
+    role: "Foundation",
+    description: "Creation, covenant, exodus, Sinai, law, and wilderness form the base for everything that follows.",
+  },
+  {
+    key: "Former Prophets",
+    className: "former",
+    color: "#0e8c6a",
+    books: SECTION_BOOKS["Former Prophets"],
+    range: "Joshua - Kings",
+    role: "Narrative spine",
+    description: "Land, judges, monarchy, division, decline, and exile extend the Torah story into Israel's history.",
+  },
+  {
+    key: "Latter Prophets",
+    className: "latter",
+    color: "#2563c4",
+    books: SECTION_BOOKS["Latter Prophets"],
+    range: "Isaiah - Malachi",
+    role: "Prophetic interpretation",
+    description: "The prophets interpret covenant failure and announce judgment, restoration, and future hope.",
+  },
+  {
+    key: "Writings",
+    className: "writings",
+    color: "#7c3aed",
+    books: SECTION_BOOKS.Writings,
+    range: "Psalms, Wisdom, Scrolls",
+    role: "Wisdom and reflection",
+    description: "Poetry, worship, wisdom, suffering, and post-exilic reflection deepen the established narrative.",
+  },
 ];
 
-const DIMENSIONS: Array<{ key: DimensionKey; label: string; short: string }> = [
-  { key: "characters", label: "Characters & Lineage", short: "Who" },
-  { key: "events", label: "Events & Timeline", short: "Event" },
-  { key: "geography", label: "Geography & Nations", short: "Geo" },
-  { key: "commands", label: "Law & Commands", short: "Law" },
-  { key: "speech", label: "Promise & Prophecy", short: "Promise" },
-  { key: "significance", label: "Theological Reasoning", short: "Reason" },
-  { key: "structure", label: "Structure & Cross Ref", short: "Struct" },
+const DIMENSIONS: Array<{
+  key: DimensionKey;
+  label: string;
+  short: string;
+  description: string;
+}> = [
+  {
+    key: "characters_lineage",
+    label: "Characters & Lineage",
+    short: "Who",
+    description: "People, relationships, ancestry, and personal roles.",
+  },
+  {
+    key: "events_timeline",
+    label: "Events & Timeline",
+    short: "What & when",
+    description: "Narrative movement, sequence, chronology, and duration.",
+  },
+  {
+    key: "geography_nations",
+    label: "Geography & Nations",
+    short: "Where",
+    description: "Places, regions, peoples, kingdoms, and geopolitical setting.",
+  },
+  {
+    key: "law_commands",
+    label: "Law & Commands",
+    short: "Rules & stakes",
+    description: "Commands, covenant obligations, and their stated consequences.",
+  },
+  {
+    key: "promise_prophecy",
+    label: "Promise & Prophecy",
+    short: "Divine declarations",
+    description: "Promises, warnings, prophetic verdicts, and future hope.",
+  },
+  {
+    key: "theological_reasoning",
+    label: "Theological Reasoning",
+    short: "Meaning",
+    description: "The text's theological reflection, logic, and interpretation.",
+  },
+  {
+    key: "structure_cross_ref",
+    label: "Structure & Cross Ref",
+    short: "Connections",
+    description: "Book structure, literary placement, and backward textual connections.",
+  },
 ];
 
-function dimensionForType(questionType: string | null): DimensionKey {
-  const q = (questionType ?? "").toLowerCase();
-  if (q.includes("relationship") || q.includes("role") || q.includes("oppressor") || q.includes("entity") || q.includes("lineage") || q.includes("genealogy")) return "characters";
-  if (q.includes("geography") || q.includes("location") || q.includes("nation") || q.includes("empire")) return "geography";
-  if (q.includes("command") || q.includes("law") || q.includes("covenant_curse")) return "commands";
-  if (q.includes("speech") || q.includes("promise") || q.includes("prophecy") || q.includes("prophetic")) return "speech";
-  if (q.includes("outline") || q.includes("structure") || q.includes("scripture_connection") || q.includes("cross_ref") || q.includes("intertextual")) return "structure";
-  if (q.includes("significance") || q.includes("concept") || q.includes("wisdom") || q.includes("theological")) return "significance";
-  if (q.includes("chronology") || q.includes("sequence") || q.includes("numeric") || q.includes("detail")) return "events";
-  return "events";
+const SECTION_SCOPE_KEYS: Record<SectionKey, string> = {
+  Torah: "TORAH",
+  "Former Prophets": "FORMER",
+  "Latter Prophets": "LATTER",
+  Writings: "WRITINGS",
+};
+
+const OT_BOOKS = BIBLE_BOOKS.filter((book) => book.testament === "OT");
+
+function dimensionForRow(row: PublicQuestionMetadataRow): DimensionKey {
+  const key = row.dimension_key as DimensionKey | null;
+  if (key && DIMENSIONS.some((dimension) => dimension.key === key)) return key;
+
+  const questionType = (row.question_type ?? "").toLowerCase();
+  if (questionType.includes("relationship") || questionType.includes("lineage") || questionType.includes("genealogy") || questionType.includes("character")) return "characters_lineage";
+  if (questionType.includes("geography") || questionType.includes("location") || questionType.includes("nation") || questionType.includes("empire")) return "geography_nations";
+  if (questionType.includes("command") || questionType.includes("law") || questionType.includes("covenant_curse")) return "law_commands";
+  if (questionType.includes("promise") || questionType.includes("prophecy") || questionType.includes("prophetic") || questionType.includes("speech")) return "promise_prophecy";
+  if (questionType.includes("structure") || questionType.includes("cross_ref") || questionType.includes("intertextual")) return "structure_cross_ref";
+  if (questionType.includes("significance") || questionType.includes("concept") || questionType.includes("wisdom") || questionType.includes("theological")) return "theological_reasoning";
+  return "events_timeline";
 }
 
-function dimensionForRow(row: BankRow): DimensionKey {
-  if (row.dimension_key === "characters_lineage") return "characters";
-  if (row.dimension_key === "events_timeline") return "events";
-  if (row.dimension_key === "geography_nations") return "geography";
-  if (row.dimension_key === "law_commands") return "commands";
-  if (row.dimension_key === "promise_prophecy") return "speech";
-  if (row.dimension_key === "theological_reasoning") return "significance";
-  if (row.dimension_key === "structure_cross_ref") return "structure";
-  return dimensionForType(row.question_type);
+function scoreEvidence(rows: EvidenceRow[]) {
+  const possible = rows.reduce((sum, row) => sum + row.weight, 0);
+  if (possible <= 0) return null;
+  const earned = rows.reduce(
+    (sum, row) => sum + row.weight * (row.isCorrect ? 1 : 0),
+    0,
+  );
+  const observed = earned / possible;
+  return Math.max(0, Math.min(100, ((observed - 0.25) / 0.75) * 100));
 }
 
-function mapDimensionKey(dimensionKey: string | null): DimensionKey | null {
-  if (dimensionKey === "characters_lineage") return "characters";
-  if (dimensionKey === "events_timeline") return "events";
-  if (dimensionKey === "geography_nations") return "geography";
-  if (dimensionKey === "law_commands") return "commands";
-  if (dimensionKey === "promise_prophecy") return "speech";
-  if (dimensionKey === "theological_reasoning") return "significance";
-  if (dimensionKey === "structure_cross_ref") return "structure";
-  return null;
-}
-
-async function loadDimensionAwareQuestionBank() {
-  return loadPublicQuestionMetadata();
-}
-
-function tierFor(row: BankRow): 1 | 2 | 3 {
-  const layer = Number(row.question_layer);
-  if (layer === 1 || layer === 2 || layer === 3) return layer as 1 | 2 | 3;
-  const score = Number(row.routing_score ?? 0);
-  if (score >= 72) return 1;
-  if (score >= 54) return 2;
-  return 3;
-}
-
-function nodeStatus(node: Node) {
-  if (node.answered === 0) return { label: "No evidence", pct: null, color: "#8a94a6" };
-  const pct = Math.round((node.correct / node.answered) * 100);
-  if (pct >= 80 && node.answered >= 3) return { label: "Stable", pct, color: "#0e8c6a" };
-  if (pct >= 60) return { label: "Developing", pct, color: "#0aa3a3" };
-  if (pct >= 35) return { label: "Fragile", pct, color: "#d4a017" };
-  return { label: "Weak", pct, color: "#c2410c" };
-}
-
-function nodeColor(node: Node, mode: MapMode) {
-  if (mode === "tier") return node.tier === 1 ? "#d4a017" : node.tier === 2 ? "#0aa3a3" : "#6b7f8a";
-  if (mode === "evidence") return node.answered > 0 ? "#1b2442" : "#9aa3b2";
-  return nodeStatus(node).color;
-}
-
-function nodeRadius(node: Node) {
-  const tierBase = node.tier === 1 ? 17 : node.tier === 2 ? 14 : 11;
-  return tierBase + Math.min(6, Math.sqrt(node.bankCount));
-}
-
-function buildNodes(bankRows: BankRow[], answerRows: AnswerRow[]) {
-  const answerMap = new Map<string, { answered: number; correct: number }>();
-  answerRows.forEach((answer) => {
-    if (!answer.generated_question_id) return;
-    const current = answerMap.get(answer.generated_question_id) ?? { answered: 0, correct: 0 };
-    current.answered += 1;
-    if (answer.is_correct) current.correct += 1;
-    answerMap.set(answer.generated_question_id, current);
-  });
-
-  const grouped = new Map<string, Node>();
-  bankRows.forEach((row) => {
-    const book = (row.book_code ?? "").toUpperCase();
-    const mappedSection = sectionForBook(book);
-    const section = SECTIONS.some((item) => item.key === mappedSection)
-      ? mappedSection as SectionKey
-      : null;
-    if (!section) return;
-    const dimension = dimensionForRow(row);
-    const id = `${section}:${dimension}`;
-    const sectionConfig = SECTIONS.find((item) => item.key === section)!;
-    const dimIndex = DIMENSIONS.findIndex((item) => item.key === dimension);
-    const ring = dimIndex < 4 ? 82 : 132;
-    const angle = (-130 + (dimIndex % 4) * 72 + (dimIndex > 3 ? 28 : 0)) * Math.PI / 180;
-    const existing = grouped.get(id) ?? {
-      id,
-      section,
-      dimension,
-      label: DIMENSIONS.find((item) => item.key === dimension)?.label ?? dimension,
-      x: sectionConfig.x + Math.cos(angle) * ring,
-      y: sectionConfig.y + Math.sin(angle) * ring,
-      tier: 3,
-      bankCount: 0,
-      answered: 0,
-      correct: 0,
+function knowledgeState(score: KnowledgeScore): KnowledgeState {
+  if (score.answered === 0 || score.displayScore === null) {
+    return {
+      key: "untested",
+      label: "Untested",
+      color: "#7b8493",
+      copy: "There is not enough evidence to place this area yet.",
     };
-    const rowTier = tierFor(row);
-    existing.tier = Math.min(existing.tier, rowTier) as 1 | 2 | 3;
-    existing.bankCount += 1;
-    const answer = answerMap.get(row.generated_question_id);
-    if (answer) {
-      existing.answered += answer.answered;
-      existing.correct += answer.correct;
-    }
-    grouped.set(id, existing);
-  });
+  }
+  if (score.answered < 3) {
+    return {
+      key: "early",
+      label: "Early evidence",
+      color: "#6b7f8a",
+      copy: "A few answers are present, but the result is still uncertain.",
+    };
+  }
+  if (score.displayScore < 313) {
+    return {
+      key: "review",
+      label: "Needs review",
+      color: "#c2410c",
+      copy: "Current evidence suggests that the basic shape of this area needs rebuilding.",
+    };
+  }
+  if (score.displayScore < 513) {
+    return {
+      key: "developing",
+      label: "Developing",
+      color: "#d4a017",
+      copy: "Important knowledge is present, but the connections are not stable yet.",
+    };
+  }
+  if (score.displayScore < 633) {
+    return {
+      key: "established",
+      label: "Established",
+      color: "#0e8c6a",
+      copy: "The core material is established well enough to support later learning.",
+    };
+  }
+  return {
+    key: "strong",
+    label: "Strong",
+    color: "#2563c4",
+    copy: "Current evidence shows strong command of this area.",
+  };
+}
 
-  return [...grouped.values()];
+function makeScore(
+  key: string,
+  label: string,
+  rows: EvidenceRow[],
+  bankCount: number,
+  bookCode?: string,
+): KnowledgeScore {
+  const rawScore = scoreEvidence(rows);
+  return {
+    key,
+    label,
+    bookCode,
+    answered: rows.length,
+    correct: rows.filter((row) => row.isCorrect).length,
+    bankCount,
+    rawScore,
+    displayScore: rawScore === null ? null : toDisplayScore(rawScore),
+  };
+}
+
+function sectionAssessmentHref(section: SectionKey) {
+  const params = new URLSearchParams({
+    mode: "scope",
+    label: section,
+    target: "20",
+    scope: SECTION_SCOPE_KEYS[section],
+  });
+  return `/assess?${params.toString()}`;
+}
+
+function bookAssessmentHref(bookCode: string) {
+  const params = new URLSearchParams({
+    mode: "scope",
+    label: BOOK_NAMES[bookCode] ?? bookCode,
+    target: "15",
+    scope: bookCode,
+  });
+  return `/assess?${params.toString()}`;
+}
+
+function recommendationAssessmentHref(recommendation: BackendRecommendation) {
+  const params = new URLSearchParams({
+    mode: "focus",
+    unit: recommendation.unit_key,
+    book: recommendation.book_code,
+    start: String(recommendation.start_chapter),
+    end: String(recommendation.end_chapter),
+    label: recommendation.label,
+    target: String(recommendation.retest_question_target),
+  });
+  if (recommendation.dimension_key) params.set("dimension", recommendation.dimension_key);
+  return `/assess?${params.toString()}`;
 }
 
 export default function KnowledgeMapPage() {
-  const [bankRows, setBankRows] = useState<BankRow[]>([]);
+  const [bankRows, setBankRows] = useState<PublicQuestionMetadataRow[]>([]);
   const [answerRows, setAnswerRows] = useState<AnswerRow[]>([]);
-  const [selectedDimension, setSelectedDimension] = useState<DimensionKey | "all">("all");
-  const [selectedSection, setSelectedSection] = useState<SectionKey | "all">("all");
-  const [mode, setMode] = useState<MapMode>("mastery");
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [recommendation, setRecommendation] = useState<BackendRecommendation | null>(null);
+  const [selectedSection, setSelectedSection] = useState<SectionKey>("Torah");
+  const [selectedBookCode, setSelectedBookCode] = useState("GEN");
+  const [signedIn, setSignedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [recommendation, setRecommendation] = useState<BackendRecommendation | null>(null);
+  const recommendationCenteredRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+
     async function loadMap() {
       setLoading(true);
       setLoadError(null);
-      let bank: BankRow[] = [];
+
       try {
-        bank = (await loadDimensionAwareQuestionBank()) as BankRow[];
-      } catch (error) {
+        const bank = await loadPublicQuestionMetadata();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData.session?.user?.id ?? null;
+        let answers: AnswerRow[] = [];
+        let nextRecommendation: BackendRecommendation | null = null;
+
+        if (userId) {
+          const [
+            { data: answerData, error: answerError },
+            { data: recommendationData, error: recommendationError },
+          ] = await Promise.all([
+            supabase
+              .from("assessment_answers")
+              .select("generated_question_id,is_correct,is_idk,scoring_eligible")
+              .eq("user_id", userId),
+            supabase.rpc("obs_get_user_recommendation_v2", {
+              p_user_id: userId,
+            }),
+          ]);
+
+          if (answerError) throw answerError;
+          if (recommendationError) throw recommendationError;
+          answers = (answerData ?? []) as AnswerRow[];
+          nextRecommendation =
+            ((recommendationData ?? [])[0] as BackendRecommendation | undefined)
+            ?? null;
+        }
+
         if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "Could not load question bank.");
+          setBankRows(bank);
+          setAnswerRows(answers);
+          setRecommendation(nextRecommendation);
+          setSignedIn(Boolean(userId));
           setLoading(false);
         }
-        return;
-      }
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const session = sessionData.session;
-      if (!cancelled) setUserEmail(session?.user?.email ?? null);
-
-      let answers: AnswerRow[] = [];
-      if (session?.user?.id) {
-        const [{ data: answerData }, { data: recommendationData }] = await Promise.all([
-          supabase
-            .from("assessment_answers")
-            .select("generated_question_id,is_correct")
-            .eq("user_id", session.user.id),
-          supabase.rpc("obs_get_user_recommendation_v2", {
-            p_user_id: session.user.id,
-          }),
-        ]);
-        answers = (answerData ?? []) as AnswerRow[];
+      } catch (error) {
         if (!cancelled) {
-          setRecommendation(
-            ((recommendationData ?? [])[0] as BackendRecommendation | undefined) ?? null,
-          );
+          setLoadError(error instanceof Error ? error.message : "The knowledge map could not be loaded.");
+          setLoading(false);
         }
       }
-
-      if (!cancelled) {
-        setBankRows((bank ?? []) as BankRow[]);
-        setAnswerRows(answers);
-        setLoading(false);
-      }
     }
-    loadMap();
-    return () => { cancelled = true; };
+
+    void loadMap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const nodes = useMemo(() => buildNodes(bankRows, answerRows), [bankRows, answerRows]);
-  const filteredNodes = nodes.filter((node) =>
-    (selectedDimension === "all" || node.dimension === selectedDimension) &&
-    (selectedSection === "all" || node.section === selectedSection)
+  const evidence = useMemo(() => {
+    const bankById = new Map(
+      bankRows.map((row) => [row.generated_question_id, row]),
+    );
+
+    return answerRows
+      .filter((answer) => (
+        answer.generated_question_id
+        && !answer.is_idk
+        && answer.scoring_eligible !== false
+      ))
+      .map((answer) => {
+        const bank = bankById.get(answer.generated_question_id!);
+        const bookCode = bank?.book_code?.toUpperCase();
+        const book = OT_BOOKS.find((item) => item.code === bookCode);
+        if (!bank || !book) return null;
+
+        return {
+          bookCode: book.code,
+          section: book.section as SectionKey,
+          dimension: dimensionForRow(bank),
+          isCorrect: Boolean(answer.is_correct),
+          weight: Math.max(
+            1,
+            Number(
+              bank.routing_score
+              ?? bank.importance_conceptual
+              ?? bank.importance_context
+              ?? 50,
+            ),
+          ),
+        } satisfies EvidenceRow;
+      })
+      .filter((row): row is EvidenceRow => Boolean(row));
+  }, [answerRows, bankRows]);
+
+  const sectionScores = useMemo(
+    () => SECTIONS.map((section) => makeScore(
+      section.key,
+      section.key,
+      evidence.filter((row) => row.section === section.key),
+      bankRows.filter((row) => section.books.includes((row.book_code ?? "").toUpperCase())).length,
+    )),
+    [bankRows, evidence],
   );
-  const selectedNode = filteredNodes.find((node) => node.id === selectedNodeId) ?? filteredNodes[0] ?? null;
-  const totalAnswered = nodes.reduce((sum, node) => sum + node.answered, 0);
-  const fragileTierOne = nodes.filter((node) => node.tier === 1 && (node.answered === 0 || (node.correct / Math.max(1, node.answered)) < 0.6));
-  const recommendedSection = recommendation
-    ? SECTIONS.find(section => section.key === recommendation.section) ?? null
-    : null;
-  const recommendedDimension = mapDimensionKey(recommendation?.dimension_key ?? null);
-  const recommendedNodeId = recommendedSection && recommendedDimension
-    ? `${recommendedSection.key}:${recommendedDimension}`
-    : null;
+
+  const bookScores = useMemo(
+    () => OT_BOOKS.map((book) => makeScore(
+      `book:${book.code}`,
+      book.name,
+      evidence.filter((row) => row.bookCode === book.code),
+      bankRows.filter((row) => row.book_code?.toUpperCase() === book.code).length,
+      book.code,
+    )),
+    [bankRows, evidence],
+  );
+
+  const selectedSectionDefinition =
+    SECTIONS.find((section) => section.key === selectedSection) ?? SECTIONS[0];
+  const visibleBookScores = selectedSectionDefinition.books
+    .map((bookCode) => bookScores.find((score) => score.bookCode === bookCode))
+    .filter((score): score is KnowledgeScore => Boolean(score));
+  const selectedBook =
+    bookScores.find((score) => score.bookCode === selectedBookCode)
+    ?? visibleBookScores[0]
+    ?? null;
+
+  const dimensionScores = useMemo(() => {
+    if (!selectedBook?.bookCode) return [];
+    return DIMENSIONS.map((dimension) => makeScore(
+      `dimension:${selectedBook.bookCode}:${dimension.key}`,
+      dimension.label,
+      evidence.filter((row) => (
+        row.bookCode === selectedBook.bookCode
+        && row.dimension === dimension.key
+      )),
+      bankRows.filter((row) => (
+        row.book_code?.toUpperCase() === selectedBook.bookCode
+        && dimensionForRow(row) === dimension.key
+      )).length,
+    ));
+  }, [bankRows, evidence, selectedBook?.bookCode]);
+
+  useEffect(() => {
+    if (!recommendation || recommendationCenteredRef.current) return;
+    const section = SECTIONS.find((item) => item.key === recommendation.section);
+    if (!section || !section.books.includes(recommendation.book_code)) return;
+    recommendationCenteredRef.current = true;
+    setSelectedSection(section.key);
+    setSelectedBookCode(recommendation.book_code);
+  }, [recommendation]);
+
+  useEffect(() => {
+    if (selectedSectionDefinition.books.includes(selectedBookCode)) return;
+    setSelectedBookCode(selectedSectionDefinition.books[0]);
+  }, [selectedBookCode, selectedSectionDefinition]);
+
   const recommendationHref = recommendation
-    ? (() => {
-      const params = new URLSearchParams({
-        mode: "focus",
-        unit: recommendation.unit_key,
-        book: recommendation.book_code,
-        start: String(recommendation.start_chapter),
-        end: String(recommendation.end_chapter),
-        label: recommendation.label,
-        target: String(recommendation.retest_question_target),
-      });
-      if (recommendation.dimension_key) {
-        params.set("dimension", recommendation.dimension_key);
-      }
-      return `/assess?${params.toString()}`;
-    })()
+    ? recommendationAssessmentHref(recommendation)
     : "/assess";
+  const recommendedTitle = recommendation
+    ? recommendation.dimension_short_label
+      ? `${recommendation.dimension_short_label} in ${recommendation.label}`
+      : recommendation.label
+    : "Take your first assessment";
+  const recommendedCopy = recommendation
+    ? recommendation.dimension_focus_text ?? recommendation.focus_text
+    : "Your first BLI snapshot will identify the earliest important gap and place it on this learning path.";
+
+  const bookStateCounts = bookScores.reduce(
+    (counts, score) => {
+      const state = knowledgeState(score);
+      if (state.key === "strong" || state.key === "established") counts.established += 1;
+      else if (state.key === "review" || state.key === "developing") counts.review += 1;
+      else counts.unknown += 1;
+      return counts;
+    },
+    { established: 0, review: 0, unknown: 0 },
+  );
+
+  const focusRecommendation = () => {
+    if (!recommendation) return;
+    const section = SECTIONS.find((item) => item.key === recommendation.section);
+    if (section) setSelectedSection(section.key);
+    setSelectedBookCode(recommendation.book_code);
+    window.setTimeout(() => {
+      document.getElementById("recommended-book")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 80);
+  };
 
   return (
     <>
       <style>{`
         :root {
-          --ink: #f8fbff; --muted: rgba(226,236,248,.68); --navy: #eaf4ff;
-          --accent: #72e7ff; --card: rgba(5,8,18,.72);
-          --border: rgba(210,232,255,.18); --shadow: 0 22px 58px rgba(0,0,0,.46), 0 4px 14px rgba(0,0,0,.28);
+          --navy: #1b2442;
+          --muted: #596477;
+          --accent: #0aa3a3;
+          --paper: rgba(248,250,252,.95);
+          --line: rgba(209,224,235,.30);
+          --shadow: 0 18px 46px rgba(0,0,0,.28);
         }
         *, *::before, *::after { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
         body {
-          margin: 0; color: var(--ink); font-family: "Inter", system-ui, -apple-system, sans-serif;
+          margin: 0; min-height: 100vh; color: #edf4fb;
+          font-family: "Inter", system-ui, -apple-system, sans-serif;
           background:
-            radial-gradient(circle at 18% 22%, rgba(110,201,255,.26) 0 1px, transparent 2px),
-            radial-gradient(circle at 73% 18%, rgba(255,207,139,.30) 0 1px, transparent 2px),
-            radial-gradient(circle at 82% 62%, rgba(255,118,99,.24) 0 1px, transparent 2px),
-            radial-gradient(ellipse at 68% 42%, rgba(199,91,61,.34), transparent 42%),
-            radial-gradient(ellipse at 28% 36%, rgba(50,131,154,.28), transparent 45%),
-            linear-gradient(145deg, #020611 0%, #0c1326 38%, #261411 68%, #050712 100%);
+            radial-gradient(circle at 18% 16%, rgba(255,255,255,.68) 0 1px, transparent 1.6px),
+            radial-gradient(circle at 72% 28%, rgba(114,231,255,.54) 0 1px, transparent 1.7px),
+            radial-gradient(circle at 88% 68%, rgba(255,208,115,.46) 0 1px, transparent 1.8px),
+            linear-gradient(145deg,#080d1d 0%,#101a31 52%,#071323 100%);
+          background-size: 121px 107px, 173px 149px, 223px 197px, auto;
           background-attachment: fixed;
         }
-        body::before {
-          content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -1;
-          background-image:
-            radial-gradient(circle, rgba(255,255,255,.92) 0 1px, transparent 1.8px),
-            radial-gradient(circle, rgba(116,213,255,.72) 0 1px, transparent 1.8px),
-            radial-gradient(circle, rgba(255,171,118,.65) 0 1px, transparent 1.8px);
-          background-size: 97px 83px, 151px 137px, 211px 181px;
-          background-position: 0 0, 31px 53px, 91px 19px;
-          opacity: .72;
-        }
+        button, a { font: inherit; }
         .nav {
-          position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between;
-          padding: 10px 32px; background: rgba(0,0,0,.72); backdrop-filter: blur(14px);
-          border-bottom: 2px solid rgba(226,236,248,.36);
-          box-shadow: 0 12px 28px rgba(0,0,0,.42);
+          position: sticky; top: 0; z-index: 20;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 13px 32px;
+          background: rgba(8,13,29,.86);
+          border-bottom: 1px solid rgba(255,255,255,.10);
+          backdrop-filter: blur(16px);
         }
-        .nav-brand { font-family: "Crimson Pro", Georgia, serif; font-size: 18px; font-weight: 650; color: #fff; text-decoration: none; text-shadow: 0 2px 12px rgba(114,231,255,.32); }
-        .nav-links { display: flex; align-items: center; gap: 8px; }
-        .nav-link { color: rgba(255,255,255,.68); text-decoration: none; font-size: 13px; font-weight: 760; padding: 8px 13px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; }
-        .nav-link:hover, .nav-link.active { color: #fff; background: rgba(255,255,255,.10); }
-        .page { width: min(1440px, 100%); margin: 0 auto; padding: 22px 18px 34px; }
-        .topbar {
-          display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; margin-bottom: 14px;
-          min-height: 94px; padding: 15px 22px 15px 24px; position: relative;
-          background: linear-gradient(180deg, rgba(0,0,0,.78), rgba(0,0,0,.48));
-          border-top: 2px solid rgba(255,255,255,.48); border-bottom: 2px solid rgba(255,255,255,.32);
-          box-shadow: 0 18px 42px rgba(0,0,0,.38);
+        .nav-brand {
+          color: #fff; text-decoration: none;
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: 18px; font-weight: 700;
         }
-        .topbar::after {
-          content: "Dependency Star Chart"; position: absolute; left: 50%; bottom: -34px; transform: translateX(-50%);
-          min-width: 340px; text-align: center; color: #fff; font-family: "Crimson Pro", Georgia, serif;
-          font-size: 24px; font-weight: 700; padding: 8px 42px 10px;
-          background: rgba(0,0,0,.68); border: 2px solid rgba(255,255,255,.30);
-          clip-path: polygon(0 0, 100% 0, 86% 100%, 14% 100%);
-          text-shadow: 0 2px 10px rgba(0,0,0,.8);
+        .nav-links { display: flex; align-items: center; gap: 7px; }
+        .nav-link {
+          color: rgba(255,255,255,.67); text-decoration: none;
+          padding: 8px 12px; border-radius: 6px;
+          font-size: 12px; font-weight: 800;
         }
-        .title { font-family: "Crimson Pro", Georgia, serif; font-size: clamp(34px, 5vw, 56px); color: #fff; line-height: .95; margin: 0; text-shadow: 0 4px 18px rgba(0,0,0,.86); }
-        .subtitle { margin: 11px 0 0; color: rgba(238,246,255,.78); line-height: 1.45; max-width: 760px; font-size: 14px; text-shadow: 0 2px 12px rgba(0,0,0,.72); }
-        .summary { display: grid; grid-template-columns: repeat(3, minmax(112px, 1fr)); gap: 10px; min-width: 380px; }
-        .summary-item { background: rgba(5,8,18,.70); border: 1px solid rgba(226,236,248,.22); border-radius: 4px; padding: 11px 14px; box-shadow: inset 0 0 18px rgba(114,231,255,.06), 0 8px 24px rgba(0,0,0,.28); }
-        .summary-value { display: block; font-family: "Crimson Pro", Georgia, serif; font-size: 32px; color: #fff; font-weight: 800; line-height: 1; text-shadow: 0 0 12px rgba(114,231,255,.22); }
-        .summary-label { display: block; margin-top: 4px; color: rgba(238,246,255,.70); font-size: 10px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
-        .shell { display: grid; grid-template-columns: 282px minmax(0, 1fr) 292px; gap: 0; align-items: stretch; margin-top: 42px; min-height: calc(100vh - 205px); }
-        .panel { background: rgba(4,7,16,.66); border: 1px solid rgba(226,236,248,.20); border-radius: 0; box-shadow: var(--shadow); overflow: hidden; backdrop-filter: blur(10px); }
-        .panel-pad { padding: 17px; }
-        .panel-title { font-size: 12px; color: rgba(238,246,255,.72); font-weight: 900; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 12px; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
-        .control-group { display: grid; gap: 7px; margin-bottom: 18px; }
-        .control-btn {
-          width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px;
-          border: 1px solid rgba(226,236,248,.14); background: rgba(255,255,255,.05); color: rgba(238,246,255,.84);
-          border-radius: 3px; padding: 10px 11px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 760;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+        .nav-link:hover, .nav-link.active {
+          color: #fff; background: rgba(255,255,255,.09);
         }
-        .control-btn:hover { background: rgba(255,255,255,.10); color: #fff; }
-        .control-btn.active { border-color: rgba(114,231,255,.52); background: rgba(114,231,255,.13); color: #fff; box-shadow: 0 0 18px rgba(114,231,255,.10), inset 0 0 16px rgba(114,231,255,.08); }
-        .dot-key { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--key-color); }
-        .mode-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: rgba(255,255,255,.08); padding: 4px; border-radius: 3px; }
-        .mode-tabs button { border: 0; border-radius: 2px; background: transparent; color: rgba(238,246,255,.62); font: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 900; padding: 9px 6px; cursor: pointer; }
-        .mode-tabs button.active { background: rgba(255,255,255,.92); color: #111827; box-shadow: 0 2px 8px rgba(0,0,0,.28); }
-        .map-panel {
-          position: relative; min-height: 690px; border-left: 0; border-right: 0;
+        .page { width: min(1240px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 70px; }
+        .page-head {
+          display: grid; grid-template-columns: minmax(0,1fr) auto;
+          gap: 28px; align-items: end; margin-bottom: 24px;
+        }
+        .eyebrow {
+          margin: 0 0 8px; color: #7de5e5;
+          font-size: 10px; font-weight: 900;
+          letter-spacing: .13em; text-transform: uppercase;
+        }
+        .title {
+          margin: 0; color: #fff;
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: clamp(32px,4vw,48px); line-height: 1;
+          letter-spacing: 0;
+        }
+        .subtitle {
+          max-width: 720px; margin: 10px 0 0;
+          color: rgba(237,244,251,.68); font-size: 14px; line-height: 1.55;
+        }
+        .summary {
+          display: grid; grid-template-columns: repeat(3,minmax(92px,1fr));
+          gap: 8px; min-width: 330px;
+        }
+        .summary-item {
+          min-height: 66px; padding: 11px 13px;
+          border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
+          background: rgba(255,255,255,.055);
+        }
+        .summary-value {
+          display: block; color: #fff;
+          font-family: "Crimson Pro", Georgia, serif;
+          font-size: 25px; font-weight: 750; line-height: 1;
+        }
+        .summary-label {
+          display: block; margin-top: 6px;
+          color: rgba(237,244,251,.56); font-size: 9px;
+          font-weight: 850; letter-spacing: .08em; text-transform: uppercase;
+        }
+        .next-band {
+          position: relative; display: grid;
+          grid-template-columns: minmax(0,1fr) auto;
+          gap: 24px; align-items: center;
+          margin-bottom: 22px; padding: 20px 22px 20px 27px;
+          border: 1px solid rgba(114,231,255,.34); border-radius: 8px;
           background:
-            radial-gradient(circle at 42% 35%, rgba(255,255,255,.26) 0 2px, transparent 3px),
-            radial-gradient(circle at 78% 18%, rgba(114,231,255,.30) 0 1px, transparent 2px),
-            radial-gradient(circle at 22% 70%, rgba(255,190,134,.30) 0 1px, transparent 2px),
-            radial-gradient(ellipse at 62% 48%, rgba(161,73,58,.28), transparent 48%),
-            rgba(0,0,0,.36);
+            linear-gradient(105deg,rgba(10,163,163,.17),rgba(255,255,255,.06) 56%,rgba(212,160,23,.09));
+          box-shadow: 0 18px 42px rgba(0,0,0,.24);
+          overflow: hidden;
         }
-        .map-panel::before {
-          content: ""; position: absolute; inset: 0; pointer-events: none;
-          background-image:
-            linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
-          background-size: 76px 76px;
-          mask-image: radial-gradient(ellipse at center, black, transparent 76%);
+        .next-band::before {
+          content: ""; position: absolute; inset: 0 auto 0 0; width: 5px;
+          background: linear-gradient(180deg,#72e7ff,#d4a017);
         }
-        .map-toolbar { position: absolute; left: 18px; top: 15px; z-index: 2; display: flex; gap: 8px; align-items: center; color: rgba(238,246,255,.76); font-size: 12px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
-        .map-canvas { width: 100%; height: 690px; display: block; filter: drop-shadow(0 0 18px rgba(114,231,255,.12)); }
-        .dep-line { stroke: rgba(244,249,255,.60); stroke-width: 2.6; fill: none; marker-end: url(#arrow); filter: drop-shadow(0 0 8px rgba(255,255,255,.30)); }
-        .support-line { stroke: rgba(210,232,255,.18); stroke-width: 1.2; filter: drop-shadow(0 0 6px rgba(114,231,255,.16)); }
-        .node-btn { cursor: pointer; }
-        .node-btn:hover .node-ring, .node-btn.active .node-ring { stroke-width: 4; stroke: rgba(255,255,255,.96); filter: drop-shadow(0 0 12px rgba(255,255,255,.70)); }
-        .node-label { pointer-events: none; font-size: 10px; font-weight: 900; fill: #fff; text-anchor: middle; dominant-baseline: middle; text-shadow: 0 2px 8px #000; }
-        .section-label { font-family: "Crimson Pro", Georgia, serif; font-size: 17px; font-weight: 800; fill: #fff; text-anchor: middle; text-shadow: 0 2px 8px #000; }
-        .section-books { font-size: 9px; font-weight: 800; fill: rgba(238,246,255,.70); text-anchor: middle; }
-        .recommendation-halo {
-          fill: none; stroke: #72e7ff; stroke-width: 5; stroke-dasharray: 8 7;
-          filter: drop-shadow(0 0 11px rgba(114,231,255,.88));
-          animation: recommendation-pulse 2.4s ease-in-out infinite;
+        .next-kicker {
+          margin: 0 0 5px; color: #8debf5;
+          font-size: 10px; font-weight: 900;
+          letter-spacing: .12em; text-transform: uppercase;
         }
-        .recommendation-label {
-          fill: #b9f3ff; font-size: 9px; font-weight: 950; letter-spacing: .13em;
-          text-anchor: middle; text-transform: uppercase;
+        .next-title {
+          margin: 0; color: #fff; font-family: "Crimson Pro",Georgia,serif;
+          font-size: 26px; line-height: 1.05;
         }
-        @keyframes recommendation-pulse {
-          0%, 100% { opacity: .52; stroke-width: 4; }
-          50% { opacity: 1; stroke-width: 6; }
+        .next-copy {
+          max-width: 720px; margin: 7px 0 0;
+          color: rgba(237,244,251,.70); font-size: 13px; line-height: 1.5;
         }
-        .empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-weight: 700; }
-        .detail-stat { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 0; border-bottom: 1px solid rgba(226,236,248,.12); font-size: 13px; color: var(--muted); }
-        .detail-stat strong { color: #fff; }
-        .detail-heading { font-family: "Crimson Pro", Georgia, serif; font-size: 30px; color: #fff; line-height: 1; margin: 6px 0 10px; text-shadow: 0 3px 16px rgba(0,0,0,.72); }
-        .status-pill { display: inline-flex; align-items: center; gap: 7px; border-radius: 3px; padding: 7px 10px; font-size: 10px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; background: rgba(255,255,255,.08); color: #fff; }
-        .status-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--status); }
-        .next-list { display: grid; gap: 9px; margin-top: 14px; }
-        .next-item { border: 1px solid rgba(226,236,248,.16); border-radius: 4px; padding: 10px; background: rgba(255,255,255,.06); color: #fff; cursor: pointer; text-align: left; }
-        .next-item:hover { background: rgba(114,231,255,.10); border-color: rgba(114,231,255,.34); }
-        .next-item strong { display: block; color: #fff; font-size: 13px; margin-bottom: 3px; }
-        .next-item span { color: var(--muted); font-size: 12px; line-height: 1.4; display: block; }
-        .recommended-unit {
-          margin-bottom: 18px; padding: 14px; border: 1px solid rgba(114,231,255,.48);
-          background: linear-gradient(145deg, rgba(114,231,255,.15), rgba(255,255,255,.04));
-          box-shadow: inset 0 0 24px rgba(114,231,255,.07), 0 0 24px rgba(114,231,255,.08);
+        .next-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+        .btn-primary, .btn-secondary {
+          display: inline-flex; min-height: 40px; align-items: center; justify-content: center;
+          gap: 7px; padding: 9px 14px; border-radius: 6px;
+          font-size: 12px; font-weight: 850; text-decoration: none; cursor: pointer;
         }
-        .recommended-kicker {
-          margin: 0 0 7px; color: #9ceeff; font-size: 9px; font-weight: 950;
-          letter-spacing: .14em; text-transform: uppercase;
+        .btn-primary {
+          border: 1px solid #cff9ff; background: #b9f3ff; color: #07111d;
         }
-        .recommended-name {
-          margin: 0 0 5px; color: #fff; font-family: "Crimson Pro", Georgia, serif;
-          font-size: 24px; line-height: 1.05;
+        .btn-secondary {
+          border: 1px solid rgba(255,255,255,.18);
+          background: rgba(255,255,255,.07); color: #fff;
         }
-        .recommended-copy { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-        .recommended-action {
-          display: flex; align-items: center; justify-content: center; min-height: 42px;
-          color: #07111d; background: #b9f3ff; border: 1px solid #e8fbff; border-radius: 3px;
-          text-decoration: none; font-size: 12px; font-weight: 900;
-          box-shadow: 0 8px 22px rgba(0,0,0,.28);
+        button.btn-secondary { appearance: none; }
+        .path-panel {
+          position: relative; padding: 23px;
+          border: 1px solid rgba(255,255,255,.13); border-radius: 8px;
+          background: rgba(4,8,20,.48); box-shadow: var(--shadow);
+          backdrop-filter: blur(10px);
         }
-        .recommended-action:hover { background: #fff; }
-        .legend { display: grid; gap: 9px; color: var(--muted); font-size: 12px; line-height: 1.45; }
-        .legend-row { display: flex; align-items: center; gap: 8px; }
-        .tier-mark { border-radius: 50%; border: 2px solid rgba(238,246,255,.50); background: rgba(255,255,255,.10); box-shadow: 0 0 12px rgba(114,231,255,.18); }
-        @media (max-width: 980px) {
-          .topbar, .shell { grid-template-columns: 1fr; }
-          .summary { min-width: 0; }
-          .topbar::after { position: static; transform: none; display: block; grid-column: 1 / -1; margin-top: 14px; min-width: 0; }
-          .map-panel { min-height: 560px; }
-          .map-canvas { height: 560px; }
+        .panel-head {
+          display: flex; justify-content: space-between; align-items: flex-end;
+          gap: 20px; margin-bottom: 21px;
         }
-        @media (max-width: 620px) {
+        .panel-title {
+          margin: 0; color: #fff;
+          font-family: "Crimson Pro",Georgia,serif;
+          font-size: 25px; line-height: 1;
+        }
+        .panel-copy {
+          max-width: 620px; margin: 7px 0 0;
+          color: rgba(237,244,251,.60); font-size: 12.5px; line-height: 1.5;
+        }
+        .legend { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+        .legend-item {
+          display: inline-flex; align-items: center; gap: 6px;
+          color: rgba(237,244,251,.62); font-size: 10px; font-weight: 750;
+        }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--state); }
+        .path-grid {
+          display: grid;
+          grid-template-columns: minmax(190px,1fr) 62px minmax(190px,1fr) 76px minmax(190px,1fr);
+          grid-template-rows: minmax(142px,auto) minmax(142px,auto);
+          gap: 14px 0; align-items: stretch;
+        }
+        .section-node {
+          --section-color: #0aa3a3;
+          appearance: none; position: relative; width: 100%;
+          min-width: 0; padding: 17px 18px;
+          border: 1px solid rgba(255,255,255,.14); border-top: 3px solid var(--section-color);
+          border-radius: 8px; background: rgba(248,250,252,.92);
+          color: var(--navy); text-align: left; cursor: pointer;
+          box-shadow: 0 12px 26px rgba(0,0,0,.20);
+          transition: transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+          overflow: hidden;
+        }
+        .section-node:hover, .section-node:focus-visible {
+          transform: translateY(-2px); outline: none;
+          border-color: color-mix(in srgb,var(--section-color) 52%,white);
+          box-shadow: 0 17px 34px rgba(0,0,0,.27);
+        }
+        .section-node.active {
+          box-shadow: 0 0 0 3px color-mix(in srgb,var(--section-color) 28%,transparent),0 18px 38px rgba(0,0,0,.30);
+        }
+        .section-node.recommended::after {
+          content: "Next"; position: absolute; top: 11px; right: 11px;
+          border-radius: 999px; padding: 4px 8px;
+          color: #086567; background: rgba(10,163,163,.12);
+          border: 1px solid rgba(10,163,163,.26);
+          font-size: 8px; font-weight: 950; letter-spacing: .1em; text-transform: uppercase;
+        }
+        .section-node.torah { grid-column: 1; grid-row: 1 / 3; }
+        .section-node.former { grid-column: 3; grid-row: 1 / 3; }
+        .section-node.latter { grid-column: 5; grid-row: 1; }
+        .section-node.writings { grid-column: 5; grid-row: 2; }
+        .section-node.torah, .section-node.former {
+          align-self: center; min-height: 220px;
+        }
+        .node-role {
+          margin: 0 0 7px; color: color-mix(in srgb,var(--section-color) 82%,#17213d);
+          font-size: 9px; font-weight: 900; letter-spacing: .10em; text-transform: uppercase;
+        }
+        .node-name {
+          display: block; padding-right: 42px;
+          font-family: "Crimson Pro",Georgia,serif;
+          font-size: 22px; font-weight: 750; line-height: 1.05;
+        }
+        .node-range { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+        .node-description {
+          display: block; margin-top: 12px; color: #566070;
+          font-size: 11.5px; line-height: 1.45;
+        }
+        .node-score-row {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; margin-top: 14px; padding-top: 12px;
+          border-top: 1px solid rgba(27,36,66,.09);
+        }
+        .state-pill {
+          display: inline-flex; align-items: center; gap: 6px;
+          color: var(--state); font-size: 9px; font-weight: 900;
+          letter-spacing: .06em; text-transform: uppercase;
+        }
+        .state-pill::before {
+          content: ""; width: 8px; height: 8px; flex: 0 0 auto;
+          border-radius: 50%; background: var(--state);
+        }
+        .node-score {
+          color: var(--navy); font-family: "Crimson Pro",Georgia,serif;
+          font-size: 20px; font-weight: 750;
+        }
+        .book-spark-row {
+          display: flex; align-items: center; gap: 4px;
+          min-height: 8px; margin-top: 10px; overflow: hidden;
+        }
+        .book-spark {
+          height: 6px; min-width: 5px; flex: 1 1 0;
+          border-radius: 999px; background: var(--book-state);
+          opacity: .88;
+        }
+        .book-spark.is-recommended {
+          height: 8px; outline: 2px solid #0aa3a3; outline-offset: 1px;
+        }
+        .connector { position: relative; pointer-events: none; }
+        .connector.straight { grid-column: 2; grid-row: 1 / 3; }
+        .connector.branch { grid-column: 4; grid-row: 1 / 3; }
+        .connector.straight::before,
+        .connector.straight::after,
+        .connector.branch::before,
+        .connector.branch::after {
+          content: ""; position: absolute; background: var(--line);
+        }
+        .connector.straight::before {
+          left: 0; right: 0; top: 50%; height: 2px;
+        }
+        .connector.straight::after {
+          right: 1px; top: calc(50% - 5px); width: 10px; height: 10px;
+          border-top: 2px solid rgba(209,224,235,.64);
+          border-right: 2px solid rgba(209,224,235,.64);
+          background: transparent; transform: rotate(45deg);
+        }
+        .connector.branch::before {
+          left: 0; width: 50%; top: 50%; height: 2px;
+        }
+        .connector.branch::after {
+          left: 50%; top: 25%; bottom: 25%; width: 50%;
+          background: transparent;
+          border-left: 2px solid var(--line);
+          border-top: 2px solid var(--line);
+          border-bottom: 2px solid var(--line);
+          border-radius: 8px 0 0 8px;
+        }
+        .branch-arrow {
+          position: absolute; right: 0; width: 50%; height: 2px;
+          background: var(--line);
+        }
+        .branch-arrow.top { top: 25%; }
+        .branch-arrow.bottom { bottom: 25%; }
+        .branch-arrow::after {
+          content: ""; position: absolute; right: 1px; top: -4px;
+          width: 9px; height: 9px;
+          border-top: 2px solid rgba(209,224,235,.64);
+          border-right: 2px solid rgba(209,224,235,.64);
+          transform: rotate(45deg);
+        }
+        .explore {
+          margin-top: 24px; padding-top: 24px;
+          border-top: 1px solid rgba(255,255,255,.12);
+        }
+        .explore-head {
+          display: flex; justify-content: space-between; align-items: flex-end;
+          gap: 20px; margin-bottom: 14px;
+        }
+        .section-context {
+          display: inline-flex; align-items: center; gap: 7px; margin-bottom: 7px;
+          color: var(--section-color); font-size: 10px; font-weight: 900;
+          letter-spacing: .11em; text-transform: uppercase;
+        }
+        .section-context::before {
+          content: ""; width: 18px; height: 3px; border-radius: 999px; background: var(--section-color);
+        }
+        .explore-title {
+          margin: 0; color: #fff; font-family: "Crimson Pro",Georgia,serif;
+          font-size: 28px; line-height: 1;
+        }
+        .explore-copy {
+          max-width: 690px; margin: 7px 0 0;
+          color: rgba(237,244,251,.62); font-size: 12.5px; line-height: 1.5;
+        }
+        .book-grid {
+          display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px;
+        }
+        .book-card {
+          position: relative; min-width: 0;
+          border: 1px solid rgba(255,255,255,.13); border-radius: 7px;
+          background: rgba(248,250,252,.93); overflow: hidden;
+          box-shadow: 0 9px 22px rgba(0,0,0,.17);
+        }
+        .book-card.active {
+          border-color: var(--section-color);
+          box-shadow: 0 0 0 2px color-mix(in srgb,var(--section-color) 28%,transparent),0 12px 26px rgba(0,0,0,.22);
+        }
+        .book-card.recommended {
+          border-color: #0aa3a3;
+          box-shadow: 0 0 0 2px rgba(10,163,163,.22),0 12px 27px rgba(0,0,0,.24);
+        }
+        .book-main {
+          appearance: none; width: 100%; border: 0; padding: 13px 13px 11px;
+          background: transparent; color: var(--navy); text-align: left; cursor: pointer;
+        }
+        .book-main:focus-visible { outline: 2px solid var(--section-color); outline-offset: -3px; }
+        .book-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+        .book-name { font-size: 13px; font-weight: 800; line-height: 1.2; }
+        .book-score {
+          color: var(--navy); font-family: "Crimson Pro",Georgia,serif;
+          font-size: 18px; font-weight: 750; line-height: 1;
+        }
+        .book-meta { margin-top: 6px; color: var(--muted); font-size: 9.5px; font-weight: 700; }
+        .book-bar {
+          height: 5px; margin-top: 10px; border-radius: 999px;
+          background: rgba(27,36,66,.08); overflow: hidden;
+        }
+        .book-bar-fill { height: 100%; border-radius: inherit; background: var(--state); }
+        .book-footer {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 8px; padding: 8px 11px;
+          border-top: 1px solid rgba(27,36,66,.08);
+        }
+        .book-footer .state-pill { font-size: 8px; }
+        .book-test {
+          color: var(--navy); font-size: 9px; font-weight: 900;
+          text-decoration: none; text-transform: uppercase; letter-spacing: .06em;
+        }
+        .book-test:hover { color: #087979; }
+        .recommended-tag {
+          display: inline-flex; margin: 0 11px 9px; padding: 4px 7px;
+          border-radius: 999px; color: #087979; background: rgba(10,163,163,.10);
+          font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+        }
+        .book-detail {
+          --section-color: #0aa3a3;
+          display: grid; grid-template-columns: minmax(230px,.72fr) minmax(0,1.5fr);
+          gap: 25px; margin-top: 15px; padding: 22px;
+          border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+          background: rgba(248,250,252,.94); color: var(--navy);
+          box-shadow: 0 14px 32px rgba(0,0,0,.22);
+        }
+        .detail-kicker {
+          margin: 0 0 7px; color: var(--section-color);
+          font-size: 9px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase;
+        }
+        .detail-title {
+          margin: 0; font-family: "Crimson Pro",Georgia,serif;
+          font-size: 30px; line-height: 1;
+        }
+        .detail-level { margin-top: 5px; color: var(--muted); font-size: 12px; }
+        .detail-score-row {
+          display: grid; grid-template-columns: repeat(3,1fr);
+          gap: 8px; margin-top: 17px;
+        }
+        .detail-stat {
+          padding: 9px; border-left: 2px solid rgba(27,36,66,.12);
+        }
+        .detail-stat strong {
+          display: block; font-family: "Crimson Pro",Georgia,serif;
+          font-size: 22px; line-height: 1;
+        }
+        .detail-stat span {
+          display: block; margin-top: 4px; color: var(--muted);
+          font-size: 8px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase;
+        }
+        .detail-state-copy {
+          margin: 14px 0 0; color: #566070; font-size: 12px; line-height: 1.5;
+        }
+        .detail-actions { display: flex; align-items: center; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
+        .detail-actions .btn-primary { color: #fff; background: var(--navy); border-color: var(--navy); }
+        .detail-actions .btn-secondary { color: var(--navy); background: #fff; border-color: rgba(27,36,66,.14); }
+        .dimension-head {
+          display: flex; align-items: flex-end; justify-content: space-between;
+          gap: 12px; margin-bottom: 10px;
+        }
+        .dimension-title { margin: 0; font-size: 12px; font-weight: 900; }
+        .dimension-note { color: var(--muted); font-size: 9px; }
+        .dimension-list { display: grid; gap: 7px; }
+        .dimension-row {
+          display: grid; grid-template-columns: minmax(135px,.9fr) minmax(110px,1fr) 54px;
+          gap: 10px; align-items: center; min-height: 38px; padding: 7px 9px;
+          border-bottom: 1px solid rgba(27,36,66,.08);
+        }
+        .dimension-row:last-child { border-bottom: 0; }
+        .dimension-name { min-width: 0; }
+        .dimension-name strong { display: block; font-size: 11px; }
+        .dimension-name span { display: block; margin-top: 2px; color: var(--muted); font-size: 8.5px; }
+        .dimension-track { height: 6px; border-radius: 999px; background: rgba(27,36,66,.08); overflow: hidden; }
+        .dimension-fill { height: 100%; border-radius: inherit; background: var(--state); }
+        .dimension-value { text-align: right; font-family: "Crimson Pro",Georgia,serif; font-size: 16px; font-weight: 750; }
+        .unit-branch {
+          position: relative; grid-column: 1 / -1; margin-top: 1px; padding: 17px 18px 17px 24px;
+          border: 1px solid rgba(10,163,163,.30); border-radius: 7px;
+          background: linear-gradient(100deg,rgba(10,163,163,.09),rgba(212,160,23,.07));
+        }
+        .unit-branch::before {
+          content: ""; position: absolute; left: 34px; bottom: 100%;
+          width: 2px; height: 17px; background: rgba(10,163,163,.42);
+        }
+        .unit-branch-grid {
+          display: grid; grid-template-columns: minmax(0,1fr) auto;
+          gap: 18px; align-items: center;
+        }
+        .unit-title {
+          margin: 0; font-family: "Crimson Pro",Georgia,serif;
+          font-size: 22px; line-height: 1.05;
+        }
+        .unit-copy { margin: 6px 0 0; color: #566070; font-size: 11.5px; line-height: 1.5; }
+        .unit-reason { margin-top: 7px; color: #087979; font-size: 10px; font-weight: 800; }
+        .loading, .error {
+          display: grid; place-items: center; min-height: 260px;
+          border: 1px solid rgba(255,255,255,.13); border-radius: 8px;
+          color: rgba(237,244,251,.70); background: rgba(4,8,20,.44);
+        }
+        @media (max-width: 1000px) {
+          .page-head { grid-template-columns: 1fr; align-items: start; }
+          .summary { width: 100%; min-width: 0; }
+          .path-grid {
+            grid-template-columns: minmax(170px,1fr) 44px minmax(170px,1fr);
+            grid-template-rows: repeat(2,minmax(142px,auto));
+          }
+          .section-node.torah { grid-column: 1; grid-row: 1 / 3; }
+          .section-node.former { grid-column: 3; grid-row: 1 / 3; }
+          .section-node.latter { grid-column: 1; grid-row: 4; margin-top: 36px; }
+          .section-node.writings { grid-column: 3; grid-row: 4; margin-top: 36px; }
+          .connector.straight { grid-column: 2; }
+          .connector.branch {
+            grid-column: 1 / 4; grid-row: 3; height: 36px;
+          }
+          .connector.branch::before {
+            left: 50%; top: 0; width: 2px; height: 18px;
+          }
+          .connector.branch::after {
+            left: 25%; right: 25%; top: 18px; bottom: auto; width: 50%; height: 18px;
+            border: 2px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0;
+          }
+          .branch-arrow { display: none; }
+          .book-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+        }
+        @media (max-width: 760px) {
           .nav { padding: 12px 16px; }
-          .nav-links .nav-link:not(.active) { display: none; }
-          .page { padding: 26px 14px 60px; }
-          .summary { grid-template-columns: 1fr; }
-          .map-panel { overflow-x: auto; }
-          .map-canvas { width: 780px; }
+          .nav-link:not(.active) { display: none; }
+          .page { width: min(100% - 22px,620px); padding-top: 24px; }
+          .page-head { margin-bottom: 18px; }
+          .summary { grid-template-columns: repeat(3,1fr); }
+          .next-band { grid-template-columns: 1fr; padding: 19px 18px 19px 23px; }
+          .next-actions { justify-content: flex-start; }
+          .panel-head, .explore-head { align-items: flex-start; flex-direction: column; }
+          .legend { justify-content: flex-start; }
+          .path-panel { padding: 16px; }
+          .path-grid { display: flex; flex-direction: column; gap: 0; }
+          .section-node { min-height: 0; }
+          .section-node.torah,
+          .section-node.former,
+          .section-node.latter,
+          .section-node.writings { margin: 0; }
+          .connector { width: 2px; height: 25px; margin-left: 28px; background: var(--line); }
+          .connector.straight::before, .connector.straight::after,
+          .connector.branch::before, .connector.branch::after,
+          .branch-arrow { display: none; }
+          .connector.branch::after {
+            display: block; content: ""; position: absolute;
+            left: 0; top: 0; width: 2px; height: 25px;
+            border: 0; background: var(--line);
+          }
+          .section-node.writings { margin-top: 9px; }
+          .book-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+          .book-detail { grid-template-columns: 1fr; padding: 18px; }
+          .unit-branch { grid-column: 1; }
+          .unit-branch-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 430px) {
+          .summary-label { font-size: 8px; }
+          .book-grid { grid-template-columns: 1fr; }
+          .dimension-row { grid-template-columns: minmax(125px,1fr) 76px 42px; gap: 7px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          html { scroll-behavior: auto; }
+          *, *::before, *::after { transition: none !important; }
         }
       `}</style>
 
@@ -461,203 +1027,292 @@ export default function KnowledgeMapPage() {
       </nav>
 
       <main className="page">
-        <header className="topbar">
+        <header className="page-head">
           <div>
-            <h1 className="title">Knowledge Map</h1>
+            <p className="eyebrow">Old Testament learning path</p>
+            <h1 className="title">Your Knowledge Map</h1>
             <p className="subtitle">
-              A dependency view of Old Testament literacy: Torah foundations, historical development, prophetic interpretation, and dimension-level evidence from the question bank.
+              The map separates firm foundations from developing, uncertain, and untested areas. Its hierarchy also explains why one reading recommendation comes before another.
             </p>
           </div>
-          <div className="summary" aria-label="Map summary">
+          <div className="summary" aria-label="Knowledge map summary">
             <div className="summary-item">
-              <span className="summary-value">{nodes.length || "--"}</span>
-              <span className="summary-label">Map nodes</span>
+              <span className="summary-value">{bookStateCounts.established}</span>
+              <span className="summary-label">Established books</span>
             </div>
             <div className="summary-item">
-              <span className="summary-value">{bankRows.length || "--"}</span>
-              <span className="summary-label">Questions</span>
+              <span className="summary-value">{bookStateCounts.review}</span>
+              <span className="summary-label">Review areas</span>
             </div>
             <div className="summary-item">
-              <span className="summary-value">{totalAnswered || "--"}</span>
-              <span className="summary-label">{userEmail ? "Your evidence" : "Signed out"}</span>
+              <span className="summary-value">{bookStateCounts.unknown}</span>
+              <span className="summary-label">Still uncertain</span>
             </div>
           </div>
         </header>
 
-        <div className="shell">
-          <aside className="panel panel-pad" aria-label="Map controls">
-            <p className="panel-title">View</p>
-            <div className="mode-tabs" role="tablist" aria-label="Map color mode">
-              {(["mastery", "tier", "evidence"] as MapMode[]).map((item) => (
-                <button key={item} className={mode === item ? "active" : ""} onClick={() => setMode(item)}>
-                  {item}
-                </button>
-              ))}
-            </div>
+        {loadError ? (
+          <div className="error">The map could not load: {loadError}</div>
+        ) : loading ? (
+          <div className="loading">Building your knowledge path...</div>
+        ) : (
+          <>
+            <section className="next-band" id="recommended-next" aria-label="Recommended next step">
+              <div>
+                <p className="next-kicker">{recommendation ? "Recommended next" : "Recommendation pending"}</p>
+                <h2 className="next-title">{recommendedTitle}</h2>
+                <p className="next-copy">{recommendedCopy}</p>
+              </div>
+              <div className="next-actions">
+                {recommendation ? (
+                  <>
+                    <button className="btn-secondary" type="button" onClick={focusRecommendation}>
+                      Show on map
+                    </button>
+                    <Link className="btn-primary" href={recommendationHref}>
+                      Retest after reading <span aria-hidden="true">→</span>
+                    </Link>
+                  </>
+                ) : (
+                  <Link className="btn-primary" href="/assess">
+                    {signedIn ? "Start assessment" : "Take an assessment"} <span aria-hidden="true">→</span>
+                  </Link>
+                )}
+              </div>
+            </section>
 
-            <p className="panel-title" style={{ marginTop: 20 }}>Sections</p>
-            <div className="control-group">
-              <button className={`control-btn ${selectedSection === "all" ? "active" : ""}`} onClick={() => setSelectedSection("all")}>
-                All sections <span>{nodes.length}</span>
-              </button>
-              {SECTIONS.map((section) => (
-                <button key={section.key} className={`control-btn ${selectedSection === section.key ? "active" : ""}`} onClick={() => setSelectedSection(section.key)}>
-                  <span><span className="dot-key" style={{ "--key-color": section.color } as CSSProperties} /> {section.key}</span>
-                  <span>{nodes.filter((node) => node.section === section.key).length}</span>
-                </button>
-              ))}
-            </div>
-
-            <p className="panel-title">Dimensions</p>
-            <div className="control-group">
-              <button className={`control-btn ${selectedDimension === "all" ? "active" : ""}`} onClick={() => setSelectedDimension("all")}>
-                All dimensions <span>{nodes.length}</span>
-              </button>
-              {DIMENSIONS.map((dimension) => (
-                <button key={dimension.key} className={`control-btn ${selectedDimension === dimension.key ? "active" : ""}`} onClick={() => setSelectedDimension(dimension.key)}>
-                  {dimension.label}
-                  <span>{nodes.filter((node) => node.dimension === dimension.key).length}</span>
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <section className="panel map-panel" aria-label="User knowledge dependency map">
-            <div className="map-toolbar">
-              <span>{loading ? "Loading map..." : `${filteredNodes.length} visible nodes`}</span>
-              {loadError && <span>{loadError}</span>}
-            </div>
-            {loading ? <div className="empty-state">Building map</div> : null}
-            <svg className="map-canvas" viewBox="0 0 720 560" role="img" aria-label="Lines and dots knowledge map">
-              <defs>
-                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L0,6 L9,3 z" fill="rgba(244,249,255,.74)" />
-                </marker>
-              </defs>
-              <path className="dep-line" d="M170 210 C230 166, 260 166, 320 210" />
-              <path className="dep-line" d="M400 210 C460 166, 490 166, 550 210" />
-              <path className="dep-line" d="M360 255 C336 302, 336 350, 360 372" />
-              {SECTIONS.map((section) => (
-                <g key={section.key} opacity={selectedSection === "all" || selectedSection === section.key ? 1 : .18}>
-                  {recommendedSection?.key === section.key && !recommendedNodeId && (
-                    <>
-                      <circle className="recommendation-halo" cx={section.x} cy={section.y} r="72" />
-                      <text className="recommendation-label" x={section.x} y={section.y - 81}>Recommended next</text>
-                    </>
-                  )}
-                  <circle cx={section.x} cy={section.y} r="63" fill={section.color} opacity=".16" />
-                  <circle cx={section.x} cy={section.y} r="47" fill="rgba(5,8,18,.70)" stroke={section.color} strokeWidth="4" />
-                  <text className="section-label" x={section.x} y={section.y - 3}>{section.key}</text>
-                  <text className="section-books" x={section.x} y={section.y + 18}>{section.books}</text>
-                </g>
-              ))}
-              {filteredNodes.map((node) => {
-                const section = SECTIONS.find((item) => item.key === node.section)!;
-                return (
-                  <line
-                    key={`${node.id}-support`}
-                    className="support-line"
-                    x1={section.x}
-                    y1={section.y}
-                    x2={node.x}
-                    y2={node.y}
-                  />
-                );
-              })}
-              {filteredNodes.map((node) => {
-                const color = nodeColor(node, mode);
-                const radius = nodeRadius(node);
-                const isActive = selectedNode?.id === node.id;
-                const isRecommended = recommendedNodeId === node.id;
-                return (
-                  <g
-                    key={node.id}
-                    className={`node-btn ${isActive ? "active" : ""}`}
-                    onClick={() => setSelectedNodeId(node.id)}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`${node.section} ${node.label}`}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") setSelectedNodeId(node.id);
-                    }}
-                  >
-                    {isRecommended && (
-                      <>
-                        <circle className="recommendation-halo" cx={node.x} cy={node.y} r={radius + 17} />
-                        <text className="recommendation-label" x={node.x} y={node.y - radius - 25}>Recommended</text>
-                      </>
-                    )}
-                    <circle className="node-ring" cx={node.x} cy={node.y} r={radius + 7} fill={color} opacity=".18" stroke={color} strokeWidth="2" />
-                    <circle cx={node.x} cy={node.y} r={radius} fill={color} stroke="rgba(255,255,255,.86)" strokeWidth="2.5" />
-                    <text className="node-label" x={node.x} y={node.y}>{DIMENSIONS.find((item) => item.key === node.dimension)?.short}</text>
-                  </g>
-                );
-              })}
-            </svg>
-          </section>
-
-          <aside className="panel panel-pad" aria-label="Node details">
-            {recommendation && (
-              <section className="recommended-unit" aria-label="Recommended next learning unit">
-                <p className="recommended-kicker">Your next step</p>
-                <h2 className="recommended-name">
-                  {recommendation.dimension_short_label
-                    ? `${recommendation.dimension_short_label} in ${recommendation.label}`
-                    : recommendation.label}
-                </h2>
-                <p className="recommended-copy">
-                  {recommendation.dimension_focus_text ?? recommendation.focus_text}
-                  {" "}
-                  {recommendation.dimension_display_score != null
-                    ? `${recommendation.dimension_display_score} BLI in this skill. ${recommendation.reason}`
-                    : recommendation.display_score === null
-                    ? recommendation.reason
-                    : `${recommendation.display_score} BLI here. ${recommendation.reason}`}
-                </p>
-                <Link className="recommended-action" href={recommendationHref}>
-                  I reread this - retest me
-                </Link>
-              </section>
-            )}
-            <p className="panel-title">Selected node</p>
-            {selectedNode ? (
-              <>
-                <span className="status-pill" style={{ "--status": nodeStatus(selectedNode).color } as CSSProperties}>
-                  {nodeStatus(selectedNode).label}
-                </span>
-                <h2 className="detail-heading">{selectedNode.label}</h2>
-                <div className="detail-stat"><span>Section</span><strong>{selectedNode.section}</strong></div>
-                <div className="detail-stat"><span>Importance tier</span><strong>Tier {selectedNode.tier}</strong></div>
-                <div className="detail-stat"><span>Question-bank coverage</span><strong>{selectedNode.bankCount}</strong></div>
-                <div className="detail-stat"><span>Your answers</span><strong>{selectedNode.answered}</strong></div>
-                <div className="detail-stat">
-                  <span>Accuracy</span>
-                  <strong>{nodeStatus(selectedNode).pct === null ? "No evidence" : `${nodeStatus(selectedNode).pct}%`}</strong>
+            <section className="path-panel" aria-label="Old Testament knowledge hierarchy">
+              <div className="panel-head">
+                <div>
+                  <h2 className="panel-title">The learning hierarchy</h2>
+                  <p className="panel-copy">
+                    Torah supplies the foundation. Former Prophets extends its narrative. Latter Prophets and Writings interpret, proclaim, worship, and reflect on that established history.
+                  </p>
                 </div>
-              </>
-            ) : (
-              <p className="subtitle">No nodes match the current filters.</p>
-            )}
+                <div className="legend" aria-label="Knowledge status legend">
+                  {[
+                    { label: "Established", color: "#0e8c6a" },
+                    { label: "Developing", color: "#d4a017" },
+                    { label: "Needs review", color: "#c2410c" },
+                    { label: "Untested", color: "#7b8493" },
+                  ].map((item) => (
+                    <span className="legend-item" key={item.label}>
+                      <span className="legend-dot" style={{ "--state": item.color } as CSSProperties} />
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
 
-            <p className="panel-title" style={{ marginTop: 24 }}>Priority foundations</p>
-            <div className="next-list">
-              {fragileTierOne.slice(0, 4).map((node) => (
-                <button key={node.id} className="next-item" onClick={() => setSelectedNodeId(node.id)}>
-                  <strong>{node.section}: {node.label}</strong>
-                  <span>{node.answered === 0 ? "No user evidence yet" : `${node.correct}/${node.answered} correct`} · Tier {node.tier}</span>
-                </button>
-              ))}
-            </div>
+              <div className="path-grid">
+                {SECTIONS.map((section) => {
+                  const score = sectionScores.find((item) => item.key === section.key)!;
+                  const state = knowledgeState(score);
+                  const hasRecommendation = recommendation?.section === section.key;
+                  return (
+                    <button
+                      key={section.key}
+                      type="button"
+                      className={`section-node ${section.className} ${selectedSection === section.key ? "active" : ""} ${hasRecommendation ? "recommended" : ""}`}
+                      style={{ "--section-color": section.color } as CSSProperties}
+                      aria-pressed={selectedSection === section.key}
+                      onClick={() => setSelectedSection(section.key)}
+                    >
+                      <span className="node-role">{section.role}</span>
+                      <span className="node-name">{section.key}</span>
+                      <span className="node-range">{section.range}</span>
+                      <span className="node-description">{section.description}</span>
+                      <span className="node-score-row">
+                        <span className="state-pill" style={{ "--state": state.color } as CSSProperties}>
+                          {state.label}
+                        </span>
+                        <span className="node-score">{score.displayScore ?? "--"}</span>
+                      </span>
+                      <span className="book-spark-row" aria-label={`${section.key} book statuses`}>
+                        {section.books.map((bookCode) => {
+                          const bookScore = bookScores.find((item) => item.bookCode === bookCode)!;
+                          const bookState = knowledgeState(bookScore);
+                          return (
+                            <span
+                              key={bookCode}
+                              className={`book-spark ${recommendation?.book_code === bookCode ? "is-recommended" : ""}`}
+                              style={{ "--book-state": bookState.color } as CSSProperties}
+                              title={`${BOOK_NAMES[bookCode]}: ${bookState.label}`}
+                            />
+                          );
+                        })}
+                      </span>
+                    </button>
+                  );
+                })}
+                <div className="connector straight" aria-hidden="true" />
+                <div className="connector branch" aria-hidden="true">
+                  <span className="branch-arrow top" />
+                  <span className="branch-arrow bottom" />
+                </div>
+              </div>
 
-            <p className="panel-title" style={{ marginTop: 24 }}>Legend</p>
-            <div className="legend">
-              <span className="legend-row"><span className="tier-mark" style={{ width: 28, height: 28 }} /> Tier 1 foundations</span>
-              <span className="legend-row"><span className="tier-mark" style={{ width: 22, height: 22 }} /> Tier 2 connectors</span>
-              <span className="legend-row"><span className="tier-mark" style={{ width: 17, height: 17 }} /> Tier 3 detail</span>
-              <span>Lines show prerequisite flow and supporting dimensions, not BLI score math.</span>
-            </div>
-          </aside>
-        </div>
+              <section
+                className="explore"
+                style={{ "--section-color": selectedSectionDefinition.color } as CSSProperties}
+                aria-label={`${selectedSection} books`}
+              >
+                <div className="explore-head">
+                  <div>
+                    <span className="section-context">{selectedSectionDefinition.role}</span>
+                    <h2 className="explore-title">{selectedSection}</h2>
+                    <p className="explore-copy">{selectedSectionDefinition.description}</p>
+                  </div>
+                  <Link className="btn-secondary" href={sectionAssessmentHref(selectedSection)}>
+                    Test this section <span aria-hidden="true">→</span>
+                  </Link>
+                </div>
+
+                <div className="book-grid">
+                  {visibleBookScores.map((bookScore) => {
+                    const state = knowledgeState(bookScore);
+                    const isRecommended = recommendation?.book_code === bookScore.bookCode;
+                    return (
+                      <article
+                        className={`book-card ${selectedBook?.bookCode === bookScore.bookCode ? "active" : ""} ${isRecommended ? "recommended" : ""}`}
+                        id={isRecommended ? "recommended-book" : undefined}
+                        key={bookScore.key}
+                      >
+                        <button
+                          type="button"
+                          className="book-main"
+                          onClick={() => setSelectedBookCode(bookScore.bookCode!)}
+                          aria-pressed={selectedBook?.bookCode === bookScore.bookCode}
+                        >
+                          <span className="book-card-top">
+                            <span className="book-name">{bookScore.label}</span>
+                            <span className="book-score">{bookScore.displayScore ?? "--"}</span>
+                          </span>
+                          <span className="book-meta">
+                            {bookScore.answered > 0
+                              ? `${bookScore.answered} answered · ${bookScore.bankCount} available`
+                              : `${bookScore.bankCount} questions available`}
+                          </span>
+                          <span className="book-bar">
+                            <span
+                              className="book-bar-fill"
+                              style={{
+                                "--state": state.color,
+                                width: `${Math.max(bookScore.displayScore ? 3 : 0, (bookScore.displayScore ?? 0) / 8)}%`,
+                              } as CSSProperties}
+                            />
+                          </span>
+                        </button>
+                        {isRecommended && <span className="recommended-tag">Recommended next</span>}
+                        <div className="book-footer">
+                          <span className="state-pill" style={{ "--state": state.color } as CSSProperties}>{state.label}</span>
+                          <Link className="book-test" href={bookAssessmentHref(bookScore.bookCode!)}>
+                            {bookScore.answered > 0 ? "Retest" : "Test"} <span aria-hidden="true">→</span>
+                          </Link>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                {selectedBook && (() => {
+                  const state = knowledgeState(selectedBook);
+                  const selectedBookIsRecommended = recommendation?.book_code === selectedBook.bookCode;
+                  return (
+                    <section
+                      className="book-detail"
+                      style={{ "--section-color": selectedSectionDefinition.color } as CSSProperties}
+                      aria-label={`${selectedBook.label} knowledge details`}
+                    >
+                      <div>
+                        <p className="detail-kicker">Book profile</p>
+                        <h3 className="detail-title">{selectedBook.label}</h3>
+                        <p className="detail-level">
+                          {selectedBook.displayScore === null
+                            ? "Not yet placed"
+                            : `${levelForScore(selectedBook.displayScore)} · BLI ${selectedBook.displayScore}`}
+                        </p>
+                        <div className="detail-score-row">
+                          <div className="detail-stat">
+                            <strong>{selectedBook.displayScore ?? "--"}</strong>
+                            <span>BLI</span>
+                          </div>
+                          <div className="detail-stat">
+                            <strong>{selectedBook.answered}</strong>
+                            <span>Answers</span>
+                          </div>
+                          <div className="detail-stat">
+                            <strong>{selectedBook.bankCount}</strong>
+                            <span>Available</span>
+                          </div>
+                        </div>
+                        <p className="detail-state-copy">{state.copy}</p>
+                        <div className="detail-actions">
+                          <Link className="btn-primary" href={bookAssessmentHref(selectedBook.bookCode!)}>
+                            {selectedBook.answered > 0 ? "Retest book" : "Test book"} <span aria-hidden="true">→</span>
+                          </Link>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="dimension-head">
+                          <h3 className="dimension-title">Knowledge inside {selectedBook.label}</h3>
+                          <span className="dimension-note">0-800 BLI · evidence varies by dimension</span>
+                        </div>
+                        <div className="dimension-list">
+                          {dimensionScores.map((dimensionScore) => {
+                            const dimension = DIMENSIONS.find((item) => dimensionScore.key.endsWith(item.key))!;
+                            const dimensionState = knowledgeState(dimensionScore);
+                            const isRecommendedDimension =
+                              selectedBookIsRecommended
+                              && recommendation?.dimension_key === dimension.key;
+                            return (
+                              <div
+                                className="dimension-row"
+                                key={dimensionScore.key}
+                                style={{
+                                  "--state": isRecommendedDimension ? "#0aa3a3" : dimensionState.color,
+                                } as CSSProperties}
+                              >
+                                <div className="dimension-name">
+                                  <strong>{dimension.label}{isRecommendedDimension ? " · Next" : ""}</strong>
+                                  <span>{dimension.short} · {dimensionScore.answered} answers</span>
+                                </div>
+                                <div className="dimension-track">
+                                  <div
+                                    className="dimension-fill"
+                                    style={{ width: `${Math.max(dimensionScore.displayScore ? 3 : 0, (dimensionScore.displayScore ?? 0) / 8)}%` }}
+                                  />
+                                </div>
+                                <div className="dimension-value">{dimensionScore.displayScore ?? "--"}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {selectedBookIsRecommended && recommendation && (
+                        <section className="unit-branch" aria-label="Recommended reading unit">
+                          <div className="unit-branch-grid">
+                            <div>
+                              <p className="detail-kicker">Your next reading unit</p>
+                              <h3 className="unit-title">{recommendedTitle}</h3>
+                              <p className="unit-copy">{recommendedCopy}</p>
+                              <p className="unit-reason">{recommendation.reason}</p>
+                            </div>
+                            <Link className="btn-primary" href={recommendationHref}>
+                              Retest after reading <span aria-hidden="true">→</span>
+                            </Link>
+                          </div>
+                        </section>
+                      )}
+                    </section>
+                  );
+                })()}
+              </section>
+            </section>
+          </>
+        )}
       </main>
     </>
   );
