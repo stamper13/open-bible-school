@@ -14,6 +14,9 @@ import {
   loadPublicQuestionMetadata,
   type PublicQuestionMetadataRow,
 } from "@/lib/supabase/questionMetadata";
+import SemanticKnowledgeGraph, {
+  type KnowledgeEvidenceRow,
+} from "./SemanticKnowledgeGraph";
 
 type SectionKey = OldTestamentSectionName;
 type DimensionKey =
@@ -318,7 +321,9 @@ function recommendationAssessmentHref(recommendation: BackendRecommendation) {
 export default function KnowledgeMapPage() {
   const [bankRows, setBankRows] = useState<PublicQuestionMetadataRow[]>([]);
   const [answerRows, setAnswerRows] = useState<AnswerRow[]>([]);
+  const [knowledgeEvidenceRows, setKnowledgeEvidenceRows] = useState<KnowledgeEvidenceRow[]>([]);
   const [recommendation, setRecommendation] = useState<BackendRecommendation | null>(null);
+  const [recommendationFocusVersion, setRecommendationFocusVersion] = useState(0);
   const [selectedSection, setSelectedSection] = useState<SectionKey>("Torah");
   const [selectedBookCode, setSelectedBookCode] = useState("GEN");
   const [signedIn, setSignedIn] = useState(false);
@@ -338,6 +343,7 @@ export default function KnowledgeMapPage() {
         const { data: sessionData } = await supabase.auth.getSession();
         const userId = sessionData.session?.user?.id ?? null;
         let answers: AnswerRow[] = [];
+        let knowledgeEvidence: KnowledgeEvidenceRow[] = [];
         let nextRecommendation: BackendRecommendation | null = null;
 
         if (userId) {
@@ -360,11 +366,21 @@ export default function KnowledgeMapPage() {
           nextRecommendation =
             ((recommendationData ?? [])[0] as BackendRecommendation | undefined)
             ?? null;
+
+          const { data: knowledgeEvidenceData, error: knowledgeEvidenceError } =
+            await supabase.rpc("obs_get_user_knowledge_evidence", {
+              p_user_id: userId,
+            });
+          if (!knowledgeEvidenceError) {
+            knowledgeEvidence =
+              (knowledgeEvidenceData ?? []) as KnowledgeEvidenceRow[];
+          }
         }
 
         if (!cancelled) {
           setBankRows(bank);
           setAnswerRows(answers);
+          setKnowledgeEvidenceRows(knowledgeEvidence);
           setRecommendation(nextRecommendation);
           setSignedIn(Boolean(userId));
           setLoading(false);
@@ -508,8 +524,9 @@ export default function KnowledgeMapPage() {
     const section = SECTIONS.find((item) => item.key === recommendation.section);
     if (section) setSelectedSection(section.key);
     setSelectedBookCode(recommendation.book_code);
+    setRecommendationFocusVersion((version) => version + 1);
     window.setTimeout(() => {
-      document.getElementById("recommended-book")?.scrollIntoView({
+      document.getElementById("semantic-knowledge-map")?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
@@ -1091,10 +1108,10 @@ export default function KnowledgeMapPage() {
                 </div>
                 <div className="legend" aria-label="Knowledge status legend">
                   {[
-                    { label: "Established", color: "#0e8c6a" },
-                    { label: "Developing", color: "#d4a017" },
-                    { label: "Needs review", color: "#c2410c" },
-                    { label: "Untested", color: "#7b8493" },
+                    { label: "Direct evidence", color: "#f8fbff" },
+                    { label: "Likely known", color: "#d4a017" },
+                    { label: "Observed gap", color: "#c2410c" },
+                    { label: "Unknown", color: "#7b8493" },
                   ].map((item) => (
                     <span className="legend-item" key={item.label}>
                       <span className="legend-dot" style={{ "--state": item.color } as CSSProperties} />
@@ -1104,53 +1121,15 @@ export default function KnowledgeMapPage() {
                 </div>
               </div>
 
-              <div className="path-grid">
-                {SECTIONS.map((section) => {
-                  const score = sectionScores.find((item) => item.key === section.key)!;
-                  const state = knowledgeState(score);
-                  const hasRecommendation = recommendation?.section === section.key;
-                  return (
-                    <button
-                      key={section.key}
-                      type="button"
-                      className={`section-node ${section.className} ${selectedSection === section.key ? "active" : ""} ${hasRecommendation ? "recommended" : ""}`}
-                      style={{ "--section-color": section.color } as CSSProperties}
-                      aria-pressed={selectedSection === section.key}
-                      onClick={() => setSelectedSection(section.key)}
-                    >
-                      <span className="node-role">{section.role}</span>
-                      <span className="node-name">{section.key}</span>
-                      <span className="node-range">{section.range}</span>
-                      <span className="node-description">{section.description}</span>
-                      <span className="node-score-row">
-                        <span className="state-pill" style={{ "--state": state.color } as CSSProperties}>
-                          {state.label}
-                        </span>
-                        <span className="node-score">{score.displayScore ?? "--"}</span>
-                      </span>
-                      <span className="book-spark-row" aria-label={`${section.key} book statuses`}>
-                        {section.books.map((bookCode) => {
-                          const bookScore = bookScores.find((item) => item.bookCode === bookCode)!;
-                          const bookState = knowledgeState(bookScore);
-                          return (
-                            <span
-                              key={bookCode}
-                              className={`book-spark ${recommendation?.book_code === bookCode ? "is-recommended" : ""}`}
-                              style={{ "--book-state": bookState.color } as CSSProperties}
-                              title={`${BOOK_NAMES[bookCode]}: ${bookState.label}`}
-                            />
-                          );
-                        })}
-                      </span>
-                    </button>
-                  );
-                })}
-                <div className="connector straight" aria-hidden="true" />
-                <div className="connector branch" aria-hidden="true">
-                  <span className="branch-arrow top" />
-                  <span className="branch-arrow bottom" />
-                </div>
-              </div>
+              <SemanticKnowledgeGraph
+                sectionScores={sectionScores}
+                bookScores={bookScores}
+                evidenceRows={knowledgeEvidenceRows}
+                recommendation={recommendation}
+                focusRecommendationVersion={recommendationFocusVersion}
+                onSectionChange={setSelectedSection}
+                onBookChange={setSelectedBookCode}
+              />
 
               <section
                 className="explore"
