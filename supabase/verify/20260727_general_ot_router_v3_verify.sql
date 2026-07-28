@@ -97,6 +97,8 @@ begin
      or selector_definition not like '%effective_target_stage%'
      or selector_definition not like '%spine_mastery%'
      or selector_definition not like '%scoring_eligible%'
+     or selector_definition not like '%sequence_answered%'
+     or selector_definition not like '%answered_total >= 4%'
      or selector_definition not like '%ot_generated_questions%'
      or selector_definition like '%obs_admin_question_bank_audit%'
      or selector_definition like '%random()%'

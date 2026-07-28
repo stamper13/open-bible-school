@@ -293,6 +293,7 @@ as $$
       answer.answered_at,
       question.book_code,
       question.dimension_key,
+      question.question_type,
       nullif(question.payload->>'stem_family', '') as stem_family,
       nullif(
         lower(btrim(question.payload->>'question_family')),
@@ -436,7 +437,10 @@ as $$
         where recency_rank <= 5
           and is_correct
           and not is_idk
-      )::integer as recent_correct
+      )::integer as recent_correct,
+      count(*) filter (
+        where question_type = 'sequence_order_v1'
+      )::integer as sequence_answered
     from answer_history
   ),
   router_state as (
@@ -586,6 +590,8 @@ as $$
           event.irt_b::double precision
         )
       ) as candidate_stage,
+      state.answered_total,
+      state.sequence_answered,
       state.target_stage,
       greatest(
         state.target_stage,
@@ -807,6 +813,14 @@ as $$
   from ranked
   order by
     route_priority,
+    case
+      when sequence_answered = 0
+        and answered_total >= 4
+        and question_type = 'sequence_order_v1'
+        and candidate_stage = effective_target_stage
+        then 0
+      else 1
+    end,
     abs(candidate_stage - effective_target_stage),
     adaptive_score desc,
     times_answered,
