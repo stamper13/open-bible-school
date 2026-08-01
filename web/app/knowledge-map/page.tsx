@@ -329,6 +329,7 @@ export default function KnowledgeMapPage() {
   const [signedIn, setSignedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const recommendationCenteredRef = useRef(false);
 
   useEffect(() => {
@@ -375,8 +376,10 @@ export default function KnowledgeMapPage() {
           setLoading(false);
         }
       } catch (error) {
+        // Log the underlying cause; show the user a recoverable message.
+        console.error("Knowledge map load failed:", error);
         if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "The knowledge map could not be loaded.");
+          setLoadError("The knowledge map could not be loaded. This is usually a temporary connection problem.");
           setLoading(false);
         }
       }
@@ -386,7 +389,7 @@ export default function KnowledgeMapPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadToken]);
 
   const evidence = useMemo(() => {
     const bankById = new Map(
@@ -1009,10 +1012,21 @@ export default function KnowledgeMapPage() {
         .unit-copy { margin: 6px 0 0; color: #566070; font-size: 11.5px; line-height: 1.5; }
         .unit-reason { margin-top: 7px; color: #087979; font-size: 10px; font-weight: 800; }
         .loading, .error {
-          display: grid; place-items: center; min-height: 260px;
+          display: grid; place-items: center; gap: 14px; min-height: 260px;
+          padding: 24px; text-align: center;
           border: 1px solid rgba(255,255,255,.13); border-radius: 8px;
           color: rgba(237,244,251,.70); background: rgba(4,8,20,.44);
         }
+        .state-line { margin: 0; max-width: 460px; line-height: 1.6; }
+        .retry-btn {
+          min-height: 44px; padding: 11px 22px; border-radius: 999px; cursor: pointer;
+          font: 650 13.5px var(--font-inter), system-ui, sans-serif;
+          color: #fff; background: rgba(255,255,255,.09);
+          border: 1px solid rgba(255,255,255,.22);
+          transition: background .15s;
+        }
+        .retry-btn:hover { background: rgba(255,255,255,.16); }
+        .retry-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
         @media (max-width: 1000px) {
           .page-head { grid-template-columns: 1fr; align-items: start; }
           .summary { width: 100%; min-width: 0; }
@@ -1116,9 +1130,16 @@ export default function KnowledgeMapPage() {
         </header>
 
         {loadError ? (
-          <div className="error">The map could not load: {loadError}</div>
+          <div className="error" role="alert">
+            <p className="state-line">{loadError}</p>
+            <button type="button" className="retry-btn" onClick={() => setReloadToken(token => token + 1)}>
+              Try again
+            </button>
+          </div>
         ) : loading ? (
-          <div className="loading">Building your knowledge path...</div>
+          <div className="loading" role="status" aria-live="polite">
+            Building your knowledge path...
+          </div>
         ) : (
           <>
             <section className="next-band" id="recommended-next" aria-label="Recommended next step">

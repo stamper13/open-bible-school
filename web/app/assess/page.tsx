@@ -192,6 +192,22 @@ const NT_SECTION_RPC_VALUES: Record<NtSectionKey, string> = {
   GENERAL: "General",
   APOCALYPSE: "Apocalypse",
 };
+// Deterministic per-index pseudo-random: star #29 always looks like star #29.
+function nebHash(i: number) {
+  const s = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+const NEBULA_STAGE_NAMES = ["Wisp", "Nebula", "Ignition", "Stellar nursery", "Deep field"];
+
+function nebulaStageIndex(n: number) {
+  if (n < 20) return 0;
+  if (n < 50) return 1;
+  if (n < 100) return 2;
+  if (n < 200) return 3;
+  return 4;
+}
+
 const EVIDENCE_VISUAL_STRENGTH: Record<BliEvidence["evidence_level"], number> = {
   "Very limited": 18,
   "Limited": 36,
@@ -216,7 +232,25 @@ function ntScopeFromKey(scopeKey: string, books: NtBookMetadata[]): NtScopeOptio
       kind: "all",
       value: "ALL",
       label: "All New Testament",
-      description: "Preview questions across all 27 New Testament books.",
+      description: "Adaptive questions across all 27 New Testament books.",
+    };
+  }
+  if (normalized === "GOSPELS") {
+    return {
+      kind: "section",
+      value: "GOSPELS",
+      rpcValue: "Gospels",
+      label: "Gospels",
+      description: "Matthew, Mark, Luke, and John",
+    };
+  }
+  if (normalized === "ACTS") {
+    return {
+      kind: "section",
+      value: "ACTS",
+      rpcValue: "Acts",
+      label: "Acts",
+      description: "Acts of the Apostles",
     };
   }
   const section = normalizeNtSection(normalized);
@@ -241,7 +275,7 @@ function ntScopeFromKey(scopeKey: string, books: NtBookMetadata[]): NtScopeOptio
         kind: "all",
         value: "ALL",
         label: "All New Testament",
-        description: "Preview questions across all 27 New Testament books.",
+        description: "Adaptive questions across all 27 New Testament books.",
       };
 }
 
@@ -338,6 +372,9 @@ export default function AssessPage() {
   const travelersRef = useRef<Array<{ sx: number; sy: number; cx: number; cy: number; t: number; dur: number }>>([]);
   const nebulaPulseRef = useRef(-999);
   const evidenceStrengthRef = useRef(0);
+  const answeredCountRef = useRef(0);
+  const flareMilestoneRef = useRef(-1);
+  const flareFrameRef = useRef(-999);
   const pendingSpawnRef = useRef<{ x: number; y: number } | null>(null);
   const transitioningRef = useRef(false);
 
@@ -358,6 +395,8 @@ export default function AssessPage() {
   const [answeredCount, setAnsweredCount] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
+  // Non-fatal notice, e.g. a duplicate submission whose first answer was kept.
+  const [retryNotice, setRetryNotice] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [showSavePrompt] = useState(false);
   const [email, setEmail] = useState("");
@@ -372,9 +411,10 @@ export default function AssessPage() {
   const [reportError, setReportError] = useState("");
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [ntBooks, setNtBooks] = useState<NtBookMetadata[]>([]);
-  const [ntScope, setNtScope] = useState<NtScopeOption>({ kind: "all", value: "ALL", label: "All New Testament", description: "Preview questions across all 27 New Testament books." });
+  const [ntScope, setNtScope] = useState<NtScopeOption>({ kind: "all", value: "ALL", label: "All New Testament", description: "Adaptive questions across all 27 New Testament books." });
   const [ntTargetCount, setNtTargetCount] = useState(NT_PILOT_TARGET);
-  const [ntLoading, setNtLoading] = useState(false);
+  const [ntRequestedScopeKey, setNtRequestedScopeKey] = useState("NT");
+  const [ntRequestedTargetCount, setNtRequestedTargetCount] = useState(NT_PILOT_TARGET);
   const [ntMetadataLoaded, setNtMetadataLoaded] = useState(false);
   const [ntError, setNtError] = useState("");
   const [scoreEvidence, setScoreEvidence] = useState<BliEvidence | null>(null);
@@ -397,27 +437,31 @@ export default function AssessPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const parsePositiveInteger = (value: string | null) => {
+      if (!value || !/^\d+$/.test(value)) return null;
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    };
     if (params.get("choose") === "1") {
       setAssessmentMode("select");
       setPhase("starting");
     } else if (params.get("testament") === "NT") {
       setAssessmentMode(NT_PILOT_ENABLED ? "NT" : "select");
+      setNtRequestedScopeKey(params.get("scope")?.trim().toUpperCase() || "NT");
+      setNtRequestedTargetCount(
+        Math.min(50, Math.max(5, parsePositiveInteger(params.get("target")) ?? NT_PILOT_TARGET))
+      );
       setPhase("starting");
     } else {
-      const parseChapter = (value: string | null) => {
-        if (!value || !/^\d+$/.test(value)) return null;
-        const parsed = Number(value);
-        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-      };
-      const requestedTarget = parseChapter(params.get("target"));
+      const requestedTarget = parsePositiveInteger(params.get("target"));
       const isFocused = params.get("mode") === "focus";
       const isScopeTest = params.get("mode") === "scope";
       setOtRequest({
         unitKey: isFocused ? params.get("unit") : null,
         scopeKey: isScopeTest ? params.get("scope")?.toUpperCase() ?? null : null,
         bookCode: isFocused ? params.get("book")?.toUpperCase() ?? null : null,
-        startChapter: isFocused ? parseChapter(params.get("start")) : null,
-        endChapter: isFocused ? parseChapter(params.get("end")) : null,
+        startChapter: isFocused ? parsePositiveInteger(params.get("start")) : null,
+        endChapter: isFocused ? parsePositiveInteger(params.get("end")) : null,
         label: isFocused || isScopeTest ? params.get("label") : null,
         dimensionKey: isFocused ? params.get("dimension") : null,
         targetQuestionCount: Math.min(50, Math.max(1, requestedTarget ?? TOTAL_INITIAL)),
@@ -433,6 +477,10 @@ export default function AssessPage() {
       ? EVIDENCE_VISUAL_STRENGTH[scoreEvidence.evidence_level]
       : 0;
   }, [scoreEvidence]);
+  useEffect(() => {
+    // Lifetime responses drive the nebula; the attempt counter resets each session.
+    answeredCountRef.current = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
+  }, [answeredCount, scoreEvidence]);
   useEffect(() => { transitioningRef.current = isDashboardTransitioning; }, [isDashboardTransitioning]);
 
   const spawnTraveler = useCallback(() => {
@@ -461,6 +509,8 @@ export default function AssessPage() {
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
     const SKY_OVERSCAN = 2.35;
     const random = createSeededRandom(getOrCreateSkySeed());
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     function resize() {
       if (!canvas) return;
       const skyWidth = window.innerWidth * SKY_OVERSCAN;
@@ -489,13 +539,24 @@ export default function AssessPage() {
       { core: "245,240,255", glow: "124,58,237" },
     ];
     const createShootingStar = (startFrame: number) => {
-      const fromLeft = random() > 0.28;
       const palette = shootingPalettes[Math.floor(random() * shootingPalettes.length)];
+      // Enter from any of the four edges, exit across the sky at a random angle.
+      const edge = Math.floor(random() * 4);
+      let x = 0;
+      let y = 0;
+      let dx = 0;
+      let dy = 0;
+      const speed = 1.35 + random() * 0.5;
+      const drift = (random() - 0.5) * 1.1;
+      if (edge === 0) { x = -0.2; y = random(); dx = speed; dy = drift; }
+      else if (edge === 1) { x = 1.2; y = random(); dx = -speed; dy = drift; }
+      else if (edge === 2) { x = random(); y = -0.2; dy = speed; dx = drift; }
+      else { x = random(); y = 1.2; dy = -speed; dx = drift; }
       return {
-        x: fromLeft ? -0.22 : 1.08,
-        y: 0.02 + random() * 0.48,
-        dx: (fromLeft ? 1 : -1) * (0.26 + random() * 0.20),
-        dy: 0.08 + random() * 0.24,
+        x,
+        y,
+        dx,
+        dy,
         startFrame,
         duration: 104 + Math.floor(random() * 64),
         length: (105 + random() * 95) * DPR,
@@ -503,11 +564,34 @@ export default function AssessPage() {
         palette,
       };
     };
-    const shootingStars = Array.from({ length: 3 }, () => createShootingStar(120 + Math.floor(random() * 900)));
+
+    // Satellites: slow, tailless, steady points that blink as they cross.
+    const createSatellite = (startFrame: number) => {
+      const horizontal = random() > 0.45;
+      const speed = 1.25 + random() * 0.25;
+      const drift = (random() - 0.5) * 0.35;
+      const forward = random() > 0.5 ? 1 : -1;
+      return {
+        x: horizontal ? (forward > 0 ? -0.08 : 1.08) : random(),
+        y: horizontal ? random() * 0.9 + 0.05 : (forward > 0 ? -0.08 : 1.08),
+        dx: horizontal ? forward * speed : drift,
+        dy: horizontal ? drift : forward * speed,
+        startFrame,
+        duration: 900 + Math.floor(random() * 700),
+        r: (0.9 + random() * 0.7) * DPR,
+        blink: 0.03 + random() * 0.05,
+        warm: random() > 0.6,
+      };
+    };
+    const shootingStars = Array.from({ length: 4 }, () => createShootingStar(60 + Math.floor(random() * 420)));
+    const satellites = Array.from({ length: 2 }, () => createSatellite(90 + Math.floor(random() * 500)));
 
     let frame = 0;
     function resetShootingStar(star: (typeof shootingStars)[number]) {
-      Object.assign(star, createShootingStar(frame + 420 + Math.floor(random() * 1100)));
+      Object.assign(star, createShootingStar(frame + 260 + Math.floor(random() * 700)));
+    }
+    function resetSatellite(sat: (typeof satellites)[number]) {
+      Object.assign(sat, createSatellite(frame + 500 + Math.floor(random() * 1400)));
     }
 
     function draw() {
@@ -538,6 +622,29 @@ export default function AssessPage() {
         ctx.arc(sx, sy, star.r, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(255,255,255,${opacity})`;
         ctx.fill();
+      });
+
+      satellites.forEach(sat => {
+        const progress = (frame - sat.startFrame) / sat.duration;
+        if (progress > 1) {
+          resetSatellite(sat);
+          return;
+        }
+        if (progress < 0) return;
+        const fade = Math.min(1, Math.sin(progress * Math.PI) * 2.4);
+        const blink = 0.45 + 0.55 * Math.pow(Math.abs(Math.sin(frame * sat.blink)), 3);
+        const px3 = sat.x * w + progress * w * sat.dx + ox * 0.06;
+        const py3 = sat.y * h + progress * h * sat.dy + oy * 0.06;
+        ctx.save();
+        ctx.shadowColor = sat.warm ? "rgba(255,214,150,.7)" : "rgba(200,235,255,.7)";
+        ctx.shadowBlur = 6 * DPR;
+        ctx.fillStyle = sat.warm
+          ? `rgba(255,226,176,${0.72 * fade * blink})`
+          : `rgba(226,244,255,${0.72 * fade * blink})`;
+        ctx.beginPath();
+        ctx.arc(px3, py3, sat.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       });
 
       shootingStars.forEach(star => {
@@ -589,28 +696,115 @@ export default function AssessPage() {
         const ax = toCX(vw - 110);
         const ay = toCY(vh - 130);
         const evidenceStrength = evidenceStrengthRef.current;
-        if (evidenceStrength > 0) {
+        const nAns = answeredCountRef.current;
+        if (nAns > 0) {
           const pulseAge = frame - nebulaPulseRef.current;
           const pulse = pulseAge >= 0 && pulseAge < 36 ? Math.sin((pulseAge / 36) * Math.PI) : 0;
-          const baseR = (60 + evidenceStrength * 4.6) * DPR * (1 + pulse * 0.14);
-          const alpha = (0.13 + evidenceStrength * 0.0075) * (1 + pulse * 0.9);
-          const layerCols = ["10,163,163", "124,58,237", "217,70,160", "212,160,23", "173,232,255"];
-          for (let i = 0; i < 5; i++) {
+
+          // Stage drives structure; growth stays logarithmic so nothing ever freezes.
+          const stage = nebulaStageIndex(nAns);
+          const growth = Math.log(1 + nAns) / Math.log(1001);
+          const evidenceBoost = 0.74 + (evidenceStrength / 96) * 0.46;
+
+          // One-time flare each 100 answers; skipped on first paint so reloads stay calm.
+          const milestone = Math.floor(nAns / 100);
+          if (flareMilestoneRef.current < 0) {
+            flareMilestoneRef.current = milestone;
+          } else if (milestone > flareMilestoneRef.current) {
+            flareMilestoneRef.current = milestone;
+            flareFrameRef.current = frame;
+          }
+          const flareAge = frame - flareFrameRef.current;
+          const flare = flareAge >= 0 && flareAge < 90 ? 1 - flareAge / 90 : 0;
+
+          const baseR = (52 + 206 * growth) * DPR * (1 + pulse * 0.14 + flare * 0.1);
+          const alpha = (0.16 + 0.72 * growth) * evidenceBoost * (1 + pulse * 0.9);
+
+          // Cloud layers accumulate with stage; hue drifts slowly forever past stage 5.
+          const layerCount = stage === 0 ? 2 : stage === 1 ? 3 : stage === 2 ? 4 : 5;
+          const hueDrift = stage >= 4 ? ((nAns - 200) / 800) * 42 : 0;
+          const hues = [180, 265, 320, 45, 195];
+          for (let i = 0; i < layerCount; i++) {
             const wob = frame * (0.004 + i * 0.0021) + i * 1.7;
             const nx = ax + Math.cos(wob) * (8 + i * 11) * DPR;
             const ny = ay + Math.sin(wob * 0.8) * (7 + i * 9) * DPR;
             const r = baseR * (1 - i * 0.16);
+            const hue = (hues[i] + hueDrift) % 360;
             const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, r);
-            g.addColorStop(0, `rgba(${layerCols[i]},${alpha * (0.85 - i * 0.13)})`);
+            g.addColorStop(0, `hsla(${hue},78%,62%,${alpha * (0.9 - i * 0.12)})`);
             g.addColorStop(1, "transparent");
             ctx.fillStyle = g;
             ctx.beginPath();
             ctx.arc(nx, ny, r, 0, Math.PI * 2);
             ctx.fill();
           }
-          const coreR = (12 + evidenceStrength * 0.30) * DPR * (1 + pulse);
+
+          // Spiral arms tighten with log(n): loose at 200, defined by 600, wound by 1000.
+          if (stage >= 4) {
+            const winding = 1.35 + Math.log(nAns / 200 + 1) * 0.95;
+            ctx.save();
+            ctx.lineWidth = 1.2 * DPR;
+            ctx.strokeStyle = `hsla(${(196 + hueDrift) % 360},85%,76%,${0.14 + 0.1 * growth})`;
+            for (let arm = 0; arm < 2; arm++) {
+              ctx.beginPath();
+              for (let t = 0; t <= 1.001; t += 0.05) {
+                const ang = arm * Math.PI + t * Math.PI * winding + frame * 0.0016;
+                const rr = baseR * 0.2 + t * baseR * 0.7;
+                const px2 = ax + Math.cos(ang) * rr;
+                const py2 = ay + Math.sin(ang) * rr * 0.72;
+                if (t === 0) ctx.moveTo(px2, py2);
+                else ctx.lineTo(px2, py2);
+              }
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+
+          // Orbiting stars: one born per 25 answers past 100, forever (capped for perf).
+          const starCount = stage >= 3 ? Math.min(48, Math.floor((nAns - 100) / 25)) : 0;
+          for (let i = 0; i < starCount; i++) {
+            const r1 = nebHash(i);
+            const r2 = nebHash(i + 91);
+            const r3 = nebHash(i + 187);
+            const orbit = baseR * (0.3 + r1 * 0.6);
+            const ang = i * 2.399 + frame * (0.0022 + r2 * 0.0034);
+            const sx2 = ax + Math.cos(ang) * orbit;
+            const sy2 = ay + Math.sin(ang) * orbit * 0.74;
+            const tw = 0.55 + 0.45 * Math.sin(frame * 0.03 + i * 1.7);
+            const isAnchor = i < milestone;
+            const sr = (isAnchor ? 3.1 : 1.9) * DPR * (0.8 + r3 * 0.5);
+            ctx.save();
+            ctx.shadowColor = isAnchor ? "rgba(245,200,66,.9)" : "rgba(200,240,255,.8)";
+            ctx.shadowBlur = (isAnchor ? 11 : 6) * DPR;
+            ctx.fillStyle = isAnchor
+              ? `rgba(255,228,158,${0.88 * tw + flare * 0.28})`
+              : `rgba(235,250,255,${0.74 * tw})`;
+            ctx.beginPath();
+            ctx.arc(sx2, sy2, sr, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // Expanding ring on each 100-question milestone.
+          if (flare > 0) {
+            ctx.save();
+            ctx.lineWidth = 2.2 * DPR * flare;
+            ctx.strokeStyle = `rgba(255,236,182,${0.5 * flare})`;
+            ctx.shadowColor = "rgba(255,220,140,.85)";
+            ctx.shadowBlur = 14 * DPR;
+            ctx.beginPath();
+            ctx.arc(ax, ay, baseR * (0.24 + (1 - flare) * 1.1), 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          // Core ignites at stage 3 and keeps condensing.
+          const ignited = stage >= 2;
+          const coreR = (12 + 46 * growth) * DPR * (1 + pulse) * (ignited ? 1.25 : 1);
+          const breathe = ignited ? 0.9 + 0.1 * Math.sin(frame * 0.021) : 1;
           const core = ctx.createRadialGradient(ax, ay, 0, ax, ay, coreR);
-          core.addColorStop(0, `rgba(240,253,255,${0.55 + pulse * 0.4})`);
+          core.addColorStop(0, `rgba(255,252,238,${(0.5 + pulse * 0.4) * breathe + flare * 0.3})`);
+          if (ignited) core.addColorStop(0.45, `rgba(255,224,150,${0.3 * breathe})`);
           core.addColorStop(1, "transparent");
           ctx.fillStyle = core;
           ctx.beginPath();
@@ -661,7 +855,7 @@ export default function AssessPage() {
 
       frame++;
       skyFrameRef.current = frame;
-      animRef.current = requestAnimationFrame(draw);
+      if (!prefersReducedMotion) animRef.current = requestAnimationFrame(draw);
     }
     draw();
 
@@ -706,7 +900,8 @@ export default function AssessPage() {
         clearAssessmentBrowserStorage();
         setErrorMsg("Your anonymous assessment session expired after Supabase restarted. Start a fresh assessment and the questions should work again.");
       } else {
-        setErrorMsg(error.message);
+        console.error("Question load failed:", error);
+        setErrorMsg("We could not load the next question. This is usually a temporary connection problem.");
       }
       setPhase("error");
       return;
@@ -781,23 +976,6 @@ export default function AssessPage() {
     void loadNtMetadata();
   }, [assessmentMode, loadNtMetadata, modeReady]);
 
-  const ntScopeOptions: NtScopeOption[] = [
-    { kind: "all", value: "ALL", label: "All New Testament", description: "Preview questions across all 27 New Testament books." },
-    ...(["GOSPELS_ACTS", "PAULINE", "GENERAL", "APOCALYPSE"] as NtSectionKey[]).map(section => ({
-      kind: "section" as const,
-      value: section,
-      rpcValue: NT_SECTION_RPC_VALUES[section],
-      label: NT_SECTION_LABELS[section],
-      description: ntBooks.length > 0 ? `${ntBooks.filter(book => book.nt_division === section).length} New Testament books` : "New Testament section",
-    })),
-    ...ntBooks.map(book => ({
-      kind: "book" as const,
-      value: book.book_code,
-      label: book.name,
-      description: NT_SECTION_LABELS[book.nt_division],
-    })),
-  ];
-
   const ensureAssessmentSession = useCallback(async () => {
     let { data: { session } } = await supabase.auth.getSession();
     if (session?.user && !session.user.email) {
@@ -832,15 +1010,15 @@ export default function AssessPage() {
   }, []);
 
   const loadNtQuestion = useCallback(async (aid: string, scope: NtScopeOption) => {
-    setNtLoading(true);
     const { data, error } = await supabase.rpc("obs_get_next_nt_assessment_question", {
       p_attempt_id: aid,
     });
-    setNtLoading(false);
 
     if (error) {
-      setNtError(error.message);
-      setErrorMsg(error.message);
+      console.error("NT question load failed:", error);
+      const friendly = "We could not load the next question. This is usually a temporary connection problem.";
+      setNtError(friendly);
+      setErrorMsg(friendly);
       setPhase("error");
       return;
     }
@@ -897,12 +1075,14 @@ export default function AssessPage() {
     shiftSky();
   }, [shiftSky]);
 
-  const startNtPilot = useCallback(async (scope: NtScopeOption = ntScope) => {
+  const startNtPilot = useCallback(async (
+    scope: NtScopeOption = ntScope,
+    targetCount: number = ntRequestedTargetCount,
+  ) => {
     if (!NT_PILOT_ENABLED) {
-      setNtError("The New Testament pilot is not enabled right now.");
+      setNtError("The New Testament assessment is not enabled right now.");
       return;
     }
-    setNtLoading(true);
     setNtError("");
     setErrorMsg("");
     setPhase("starting");
@@ -919,7 +1099,7 @@ export default function AssessPage() {
       const { data, error } = await supabase.rpc("obs_start_nt_assessment", {
         p_section: scope.kind === "section" ? (scope.rpcValue ?? scope.value) : null,
         p_book_code: scope.kind === "book" ? scope.value : null,
-        p_target_question_count: NT_PILOT_TARGET,
+        p_target_question_count: targetCount,
       });
       if (error) throw error;
       const attempt = ((data ?? [])[0] as NtAssessmentStartRow | undefined) ?? null;
@@ -933,21 +1113,26 @@ export default function AssessPage() {
       await loadNtQuestion(attempt.attempt_id, scope);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to start the New Testament assessment";
-      setNtLoading(false);
       setNtError(message);
       setErrorMsg(message);
       setPhase("error");
     }
-  }, [ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, ntScope]);
+  }, [ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, ntRequestedTargetCount, ntScope]);
 
   useEffect(() => {
     if (!modeReady || assessmentMode !== "NT" || !ntMetadataLoaded || ntResumeStartedRef.current) return;
     ntResumeStartedRef.current = true;
     const storedAttemptId = sessionStorage.getItem(NT_ATTEMPT_ID_KEY);
-    if (!storedAttemptId) return;
+    const requestedScope = ntScopeFromKey(ntRequestedScopeKey, ntBooks);
+    const requestedBackendScope = requestedScope.kind === "all"
+      ? "NT"
+      : requestedScope.value.toUpperCase();
 
     async function resumeNtAssessment() {
-      setNtLoading(true);
+      if (!storedAttemptId) {
+        await startNtPilot(requestedScope, ntRequestedTargetCount);
+        return;
+      }
       try {
         const uid = await ensureAssessmentSession();
         await loadScoreEvidence(uid, "NT");
@@ -958,7 +1143,16 @@ export default function AssessPage() {
         const status = ((data ?? [])[0] as NtAssessmentStatusRow | undefined) ?? null;
         if (!status) {
           sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
-          setNtLoading(false);
+          await startNtPilot(requestedScope, ntRequestedTargetCount);
+          return;
+        }
+
+        if (
+          status.scope_key.toUpperCase() !== requestedBackendScope
+          || status.target_reached
+        ) {
+          sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
+          await startNtPilot(requestedScope, ntRequestedTargetCount);
           return;
         }
 
@@ -969,22 +1163,16 @@ export default function AssessPage() {
         setAnsweredCount(status.answered_count);
         setCorrectCount(status.correct_count);
         setNtTargetCount(status.target_question_count);
-        if (status.target_reached) {
-          setNtLoading(false);
-          setPhase("complete");
-          return;
-        }
         await loadNtQuestion(status.attempt_id, scope);
       } catch (err: unknown) {
         sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
-        setNtLoading(false);
         setNtError(err instanceof Error ? err.message : "Your saved New Testament attempt could not be resumed.");
         setPhase("starting");
       }
     }
 
     void resumeNtAssessment();
-  }, [assessmentMode, ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, modeReady, ntBooks, ntMetadataLoaded]);
+  }, [assessmentMode, ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, modeReady, ntBooks, ntMetadataLoaded, ntRequestedScopeKey, ntRequestedTargetCount, startNtPilot]);
 
   useEffect(() => {
     async function init() {
@@ -1039,6 +1227,13 @@ export default function AssessPage() {
     init();
   }, [assessmentMode, ensureAssessmentSession, loadQuestion, loadScoreEvidence, modeReady, otRequest]);
 
+  // The backend is first-write-wins: an exact retry returns the original
+  // result, but a *changed* retry is rejected with errcode 22023. That is not a
+  // failure the user needs to see as an error — their first answer stands, so
+  // recover by moving on rather than dead-ending the assessment.
+  const isChangedRetryRejection = (err: { code?: string; message?: string } | null) =>
+    Boolean(err && (err.code === "22023" || /already answered/i.test(err.message ?? "")));
+
   const submitAnswer = useCallback(async (choiceId: string) => {
     if (!attemptId || !userId || !question || isSubmittingAnswerRef.current) return;
     const submittedQuestionId = question.out_generated_question_id;
@@ -1068,12 +1263,19 @@ export default function AssessPage() {
     if (error) {
       isSubmittingAnswerRef.current = false;
       setIsSubmittingAnswer(false);
+      if (isChangedRetryRejection(error)) {
+        setRetryNotice("Your first answer to that question was already recorded, so it has been kept.");
+        setSelectedChoice(null);
+        await loadQuestion(attemptId);
+        return;
+      }
       if (error.message.includes("assessment_answers_user_id_fkey")) {
         await supabase.auth.signOut();
         clearAssessmentBrowserStorage();
         setErrorMsg("Your anonymous assessment session expired after Supabase restarted. Start a fresh assessment and the questions should work again.");
       } else {
-        setErrorMsg(error.message);
+        console.error("Answer submission failed:", error);
+        setErrorMsg("We could not record that answer. This is usually a temporary connection problem.");
       }
       setPhase("error");
       return;
@@ -1096,7 +1298,7 @@ export default function AssessPage() {
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setPhase("feedback");
-  }, [attemptId, userId, question, sequenceOrder, answeredCount, correctCount, loadScoreEvidence, otTargetCount, spawnTraveler]);
+  }, [attemptId, userId, question, sequenceOrder, answeredCount, correctCount, loadQuestion, loadScoreEvidence, otTargetCount, spawnTraveler]);
 
   const moveSequenceItem = useCallback((itemId: string, direction: -1 | 1) => {
     setSequenceOrder(current => {
@@ -1141,7 +1343,14 @@ export default function AssessPage() {
     if (error) {
       isSubmittingAnswerRef.current = false;
       setIsSubmittingAnswer(false);
-      setErrorMsg(error.message);
+      if (isChangedRetryRejection(error)) {
+        setRetryNotice("Your first answer to that question was already recorded, so it has been kept.");
+        setSelectedChoice(null);
+        await loadNtQuestion(attemptId, ntScope);
+        return;
+      }
+      console.error("NT answer submission failed:", error);
+      setErrorMsg("We could not record that answer. This is usually a temporary connection problem.");
       setPhase("error");
       return;
     }
@@ -1158,7 +1367,7 @@ export default function AssessPage() {
     setIsSubmittingAnswer(false);
     spawnTraveler();
     setPhase("feedback");
-  }, [answeredCount, attemptId, correctCount, loadScoreEvidence, ntTargetCount, question, spawnTraveler, userId]);
+  }, [answeredCount, attemptId, correctCount, loadNtQuestion, loadScoreEvidence, ntScope, ntTargetCount, question, spawnTraveler, userId]);
 
   const submitQuestionReport = useCallback(async () => {
     if (!question || !userId) return;
@@ -1223,6 +1432,7 @@ export default function AssessPage() {
     && question?.question_type === "sequence_order_v1";
   const concealsBookAnswer = question ? promptAsksForBookAnswer(question) : false;
   const isSkipped = selectedChoice === IDK_CHOICE_ID;
+  const nebulaCount = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
   const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
   const ntProgressEnd = assessmentMode === "NT" ? Math.max(ntTargetCount, 1) : Math.max(otTargetCount, 1);
   const ntProgressPct = assessmentMode === "NT"
@@ -1250,9 +1460,9 @@ export default function AssessPage() {
         ? `${answeredCount} of ${otTargetCount} answered in this browser`
         : `${Math.max(0, otTargetCount - answeredCount)} questions until first BLI snapshot`)
     : (isSignedIn ? "Your BLI refines after every answer" : "Sign in to preserve your BLI across devices");
-  const displayNavPhaseLabel = assessmentMode === "NT" ? "New Testament Pilot" : navPhaseLabel;
+  const displayNavPhaseLabel = assessmentMode === "NT" ? "New Testament Assessment" : navPhaseLabel;
   const displayNavSubLabel = assessmentMode === "NT"
-    ? `${ntScope.label} · developmental preview`
+    ? `${ntScope.label} · separate NT BLI`
     : navSubLabel;
   const displayProgressPct = assessmentMode === "NT" ? ntProgressPct : progressPct;
   const displayProgressEnd = assessmentMode === "NT" ? ntProgressEnd : progressEnd;
@@ -1278,7 +1488,7 @@ export default function AssessPage() {
         redirectTo: window.location.origin + "/auth/callback?anon=" + anonId,
       },
     });
-    if (error) { setSaving(false); setErrorMsg(error.message); }
+    if (error) { console.error("OAuth sign-in failed:", error); setSaving(false); setErrorMsg(error.message); }
   };
 
   const handleMagicLink = async () => {
@@ -1289,7 +1499,7 @@ export default function AssessPage() {
       options: { emailRedirectTo: window.location.origin + "/" },
     });
     setSaving(false);
-    if (error) { setErrorMsg(error.message); return; }
+    if (error) { console.error("Magic link request failed:", error); setErrorMsg(error.message); return; }
     setSaved(true);
   };
 
@@ -1319,7 +1529,7 @@ export default function AssessPage() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html { font-size: 16px; }
         body {
-          font-family: "Inter", system-ui, sans-serif;
+          font-family: var(--font-inter), system-ui, sans-serif;
           min-height: 100vh; background: #0b0f1e;
           display: flex; flex-direction: column; overflow-x: hidden;
         }
@@ -1383,7 +1593,7 @@ export default function AssessPage() {
           transition: opacity .78s ease, transform .78s ease;
         }
         .nav-brand {
-          font-family: "Crimson Pro", Georgia, serif; font-weight: 600; font-size: 17px;
+          font-family: var(--font-crimson), Georgia, serif; font-weight: 600; font-size: 17px;
           color: #fff; text-decoration: none; opacity: .85;
         }
         .brand-wrap { display: inline-flex; align-items: center; gap: 8px; }
@@ -1489,7 +1699,7 @@ export default function AssessPage() {
 
         /* Question */
         .card-prompt {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 25px; font-weight: 600; line-height: 1.42;
           color: var(--navy); margin-bottom: 30px;
         }
@@ -1585,6 +1795,21 @@ export default function AssessPage() {
         .sequence-submit:disabled, .sequence-skip:disabled { opacity: .55; cursor: default; }
 
         /* Feedback */
+        .retry-notice {
+          display: flex; align-items: flex-start; gap: 10px;
+          margin-bottom: 16px; padding: 11px 13px; border-radius: 10px;
+          background: var(--accent-dim); border: 1px solid var(--accent-line);
+          color: #0a5f5f; font-size: 13px; line-height: 1.5;
+        }
+        .retry-notice svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+        .retry-notice span { flex: 1; }
+        .retry-notice button {
+          flex-shrink: 0; width: 24px; height: 24px; border-radius: 6px;
+          border: 0; background: transparent; cursor: pointer;
+          color: #0a5f5f; font-size: 17px; line-height: 1; font-family: inherit;
+        }
+        .retry-notice button:hover { background: rgba(10,163,163,.16); }
+        .retry-notice button:focus-visible { outline: 2px solid #0aa3a3; outline-offset: 1px; }
         .feedback-bar {
           margin-top: 20px; padding: 14px 18px; border-radius: 13px;
           display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -1628,7 +1853,7 @@ export default function AssessPage() {
         .milestone-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .milestone-results, .milestone-dashboard {
           min-height: 36px; display: inline-flex; align-items: center; justify-content: center;
-          border-radius: 999px; padding: 0 14px; font: 750 12px "Inter", sans-serif;
+          border-radius: 999px; padding: 0 14px; font: 750 12px var(--font-inter), sans-serif;
           text-decoration: none; cursor: pointer; white-space: nowrap;
         }
         .milestone-results { color: #fff; background: var(--navy); border: 1px solid var(--navy); }
@@ -1728,7 +1953,7 @@ export default function AssessPage() {
         .overlay-close:hover { background: rgba(27,36,66,.12); }
         .report-card { max-width: 520px; }
         .report-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 24px; font-weight: 650; color: var(--navy); margin-bottom: 8px;
         }
         .report-desc { font-size: 13.5px; color: var(--muted); line-height: 1.55; margin-bottom: 16px; }
@@ -1780,17 +2005,17 @@ export default function AssessPage() {
           color: var(--correct); font-size: 15px; font-weight: 750;
         }
         .overlay-score {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 64px; font-weight: 700; color: var(--navy);
           line-height: 1; text-align: center; margin-bottom: 4px;
         }
         .overlay-label { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 20px; }
         .overlay-stats { display: flex; justify-content: center; gap: 28px; margin-bottom: 24px; }
         .overlay-stat { text-align: center; }
-        .overlay-stat strong { display: block; font-size: 20px; font-weight: 700; color: var(--navy); font-family: "Crimson Pro", Georgia, serif; }
+        .overlay-stat strong { display: block; font-size: 20px; font-weight: 700; color: var(--navy); font-family: var(--font-crimson), Georgia, serif; }
         .overlay-stat span { font-size: 12px; color: var(--muted); }
         .overlay-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
-        .overlay-heading { font-family: "Crimson Pro", Georgia, serif; font-size: 18px; font-weight: 600; color: var(--navy); margin-bottom: 12px; }
+        .overlay-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 18px; font-weight: 600; color: var(--navy); margin-bottom: 12px; }
         .overlay-desc { font-size: 13.5px; color: var(--muted); line-height: 1.65; margin-bottom: 16px; }
         .google-btn {
           display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -1825,8 +2050,8 @@ export default function AssessPage() {
 
         /* Center card (loading/error/complete) */
         .center-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; }
-        .big-num { font-family: "Crimson Pro", Georgia, serif; font-size: 72px; font-weight: 700; color: var(--navy); line-height: 1; }
-        .card-heading { font-family: "Crimson Pro", Georgia, serif; font-size: 26px; font-weight: 600; color: var(--navy); }
+        .big-num { font-family: var(--font-crimson), Georgia, serif; font-size: 72px; font-weight: 700; color: var(--navy); line-height: 1; }
+        .card-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; color: var(--navy); }
         .card-sub { font-size: 15px; color: var(--muted); line-height: 1.6; max-width: 400px; }
         .btn-primary {
           display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px;
@@ -1866,7 +2091,7 @@ export default function AssessPage() {
         }
         .testament-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
         .testament-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 24px; font-weight: 700; color: var(--navy);
         }
         .pilot-badge {
@@ -1912,6 +2137,19 @@ export default function AssessPage() {
         }
         .nt-result-row span { color: var(--muted); font-weight: 650; }
 
+        @media (prefers-reduced-motion: reduce) {
+          /* Keep every transition/animation functional but instant, so the
+             assessment still navigates without the slosh, spin, and fireworks. */
+          *, *::before, *::after {
+            animation-duration: .001ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: .001ms !important;
+            scroll-behavior: auto !important;
+          }
+          canvas.stars.dashboard-transition { animation: none !important; }
+          .dashboard-warp { display: none !important; }
+        }
+        .testament-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
         @media (max-width: 640px) {
           .card { padding: 30px 22px; max-width: 100%; }
           .nav { padding: 12px 16px; }
@@ -1939,7 +2177,10 @@ export default function AssessPage() {
         <div className="confidence-nebula-label" aria-hidden="true">
           <span>Evidence</span>
           <strong>{scoreEvidence?.evidence_level ?? "Gathering"}</strong>
-          <small>{scoreEvidence ? `${scoreEvidence.n_responses} responses` : "Updating estimate"}</small>
+          <small>
+            {scoreEvidence ? `${scoreEvidence.n_responses} responses` : "Updating estimate"}
+            {nebulaCount > 0 ? ` · ${NEBULA_STAGE_NAMES[nebulaStageIndex(nebulaCount)]}` : ""}
+          </small>
         </div>
       )}
       {isDashboardTransitioning && <div className="dashboard-warp" aria-hidden="true" />}
@@ -2001,7 +2242,7 @@ export default function AssessPage() {
           <div className="card center-card">
             <p className="pilot-badge">Choose assessment</p>
             <div className="card-heading">What would you like to assess?</div>
-            <p className="card-sub">The Old Testament assessment is the full adaptive BLI flow. The New Testament pilot is a developmental preview.</p>
+            <p className="card-sub">Choose an adaptive Old or New Testament assessment. Each builds its own 0-800 BLI score.</p>
             <div className="selection-grid">
               <button className="testament-card" type="button" onClick={() => window.location.href = "/assess"}>
                 <div className="testament-top">
@@ -2009,51 +2250,27 @@ export default function AssessPage() {
                 </div>
                 <p className="testament-desc">Full adaptive assessment across the Old Testament.</p>
               </button>
-              <button className="testament-card" type="button" onClick={() => window.location.href = NT_PILOT_ENABLED ? "/assess?testament=NT" : "/assess?choose=1"}>
+              <button className="testament-card" type="button" onClick={() => window.location.href = NT_PILOT_ENABLED ? "/assess?testament=NT&scope=NT" : "/assess?choose=1"}>
                 <div className="testament-top">
-                  <strong className="testament-title">New Testament Pilot</strong>
-                  <span className="pilot-badge">Pilot</span>
+                  <strong className="testament-title">New Testament Assessment</strong>
+                  <span className="pilot-badge">NT BLI</span>
                 </div>
-                <p className="testament-desc">Preview questions across all 27 New Testament books. Results are developmental and not yet credential-grade.</p>
+                <p className="testament-desc">Adaptive questions across all 27 New Testament books, scored as a separate NT BLI.</p>
               </button>
             </div>
-            {!NT_PILOT_ENABLED && <p className="card-sub">The New Testament pilot is currently unavailable.</p>}
+            {!NT_PILOT_ENABLED && <p className="card-sub">The New Testament assessment is currently unavailable.</p>}
           </div>
         )}
 
         {assessmentMode === "NT" && phase === "starting" && (
           <div className="card center-card">
-            <span className="pilot-badge">Pilot</span>
-            <div className="card-heading">New Testament Pilot</div>
-            <p className="card-sub">Choose a section or book. These results are developmental and do not affect your verified BLI credential.</p>
+            <span className="pilot-badge">NT BLI</span>
+            <div className="card-heading">Preparing {ntScopeFromKey(ntRequestedScopeKey, ntBooks).label}</div>
+            <p className="card-sub">Building an adaptive question sequence for your separate New Testament BLI.</p>
             {ntError && <p className="pilot-note">{ntError}</p>}
-            {!ntMetadataLoaded && !ntError ? (
-              <div className="spinner" />
-            ) : (
-              <>
-                <div className="nt-scope-grid" role="group" aria-label="New Testament pilot scope">
-                  {ntScopeOptions.map(option => (
-                    <button
-                      key={`${option.kind}-${option.value}`}
-                      type="button"
-                      className={`nt-scope-btn ${ntScope.kind === option.kind && ntScope.value === option.value ? "is-active" : ""}`}
-                      onClick={() => setNtScope(option)}
-                    >
-                      <strong>{option.label}</strong>
-                      <span>{option.description}</span>
-                    </button>
-                  ))}
-                </div>
-                {ntBooks.length === 0 && (
-                  <p className="pilot-note">Book metadata is not visible yet, so individual book filters are hidden. You can still start the all-NT pilot if the NT question RPC is installed.</p>
-                )}
-                <p className="pilot-note">New Testament results are currently developmental and do not affect your verified BLI credential.</p>
-                <button className="btn-primary" type="button" onClick={() => startNtPilot()} disabled={ntLoading}>
-                  {ntLoading ? "Loading..." : `Start ${ntScope.label}`}
-                </button>
-                <Link className="btn-secondary" href="/assess?choose=1">Back to assessment choices</Link>
-              </>
-            )}
+            <div className="spinner" />
+            <p className="pilot-note">Your NT answers contribute only to the NT BLI, not the OT BLI.</p>
+            <Link className="btn-secondary" href="/assess?choose=1">Back to assessment choices</Link>
           </div>
         )}
 
@@ -2069,7 +2286,7 @@ export default function AssessPage() {
             <div className="card-heading">Something went wrong</div>
             <p className="card-sub">{errorMsg}</p>
             {assessmentMode === "NT" ? (
-              <Link className="btn-primary" href="/assess?testament=NT">Explore another NT section</Link>
+              <Link className="btn-primary" href="/">Choose another NT scope from your BLI profile</Link>
             ) : (
               <button
                 className="btn-primary"
@@ -2087,6 +2304,15 @@ export default function AssessPage() {
 
         {(phase === "question" || phase === "feedback") && question && assessmentMode !== "select" && (
           <div className="card">
+            {retryNotice && (
+              <div className="retry-notice" role="status" aria-live="polite">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+                </svg>
+                <span>{retryNotice}</span>
+                <button type="button" onClick={() => setRetryNotice("")} aria-label="Dismiss notice">×</button>
+              </div>
+            )}
             {/* Location graphic */}
             <div className="question-head">
               <div className="location-bar">
@@ -2102,7 +2328,7 @@ export default function AssessPage() {
                     className="loc-dot"
                     style={{ background: SECTION_COLORS[question.section] || "#0aa3a3" }}
                   />
-                  {assessmentMode === "NT" ? "New Testament Pilot" : question.section}
+                  {assessmentMode === "NT" ? "New Testament" : question.section}
                 </span>
                 {!concealsBookAnswer && (
                   <>
@@ -2124,7 +2350,7 @@ export default function AssessPage() {
                   <>
                     <span className="loc-sep">·</span>
                     <span className="loc-pill" style={{ color: "#92400e", background: "#fef3c7", borderColor: "#fde68a" }}>
-                      Pilot
+                      NT BLI
                     </span>
                   </>
                 )}
@@ -2282,14 +2508,14 @@ export default function AssessPage() {
 
         {phase === "complete" && assessmentMode === "NT" && (
           <div className="card center-card">
-            <span className="pilot-badge">Pilot results</span>
+            <span className="pilot-badge">NT BLI</span>
             <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
-            <div className="card-heading">New Testament Pilot complete</div>
+            <div className="card-heading">New Testament assessment complete</div>
             <p className="card-sub">You answered {correctCount} of {answeredCount} questions correctly in {ntScope.label}.</p>
-            <p className="pilot-note">New Testament results are currently developmental and do not affect your verified BLI credential.</p>
+            <p className="pilot-note">Your separate NT BLI snapshot is ready. Review the session for your score and answer history.</p>
             {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
             <button className="btn-primary" type="button" onClick={() => startNtPilot(ntScope)}>Retry same scope</button>
-            <Link className="btn-secondary" href="/assess?testament=NT">Explore another NT section</Link>
+            <Link className="btn-secondary" href="/">Choose another NT scope from your BLI profile</Link>
             <Link className="btn-secondary" href="/">Back to dashboard</Link>
           </div>
         )}

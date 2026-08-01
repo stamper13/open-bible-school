@@ -799,7 +799,8 @@ export default function HomePage() {
     if (requestId !== scopeRequestRef.current) return;
 
     if (error) {
-      setScopeSummaryError(error.message || "This scope could not be loaded.");
+      console.error("Scope summary load failed:", error);
+      setScopeSummaryError("This scope could not be loaded just now. This is usually a temporary connection problem.");
       setScopeSummaryLoading(false);
       return;
     }
@@ -1145,7 +1146,8 @@ export default function HomePage() {
       if (cancelled) return;
       if (error) {
         setProgressHistory([]);
-        setProgressError(error.message || "Progress history is temporarily unavailable.");
+        console.error("Progress history load failed:", error);
+        setProgressError("Progress history could not be loaded just now. This is usually a temporary connection problem.");
         setProgressLoading(false);
         return;
       }
@@ -2946,6 +2948,12 @@ export default function HomePage() {
           /* The nav links exceed a phone's width, so let them wrap onto a
              second row rather than being clipped off the right edge. */
           .nav { padding: 11px 16px; flex-wrap: wrap; gap: 8px; }
+          /* The beta tooltip is only visually hidden, so it still occupies
+             layout and pushed the document 71px wider than the viewport.
+             Anchor it to the nav instead of the badge so it can never
+             extend past the right edge. */
+          .beta-badge { position: static; }
+          .beta-tooltip { left: 12px; right: 12px; width: auto; top: calc(100% + 6px); }
           .nav-right { flex-wrap: wrap; gap: 7px; }
           .nav-btn { padding: 7px 12px; font-size: 12px; }
           .page { padding: 28px 16px 72px; }
@@ -2959,6 +2967,16 @@ export default function HomePage() {
           .scope-drawer-backdrop, .scope-drawer,
           .placeholder-orbit, .placeholder-orbit::before, .placeholder-orbit::after {
             animation: none !important;
+          }
+          /* Catch-all: the page reveal and any future decorative animation
+             should be instant rather than a multi-second transition. The
+             content must still arrive, so opacity is forced back to full. */
+          .page { animation: none !important; opacity: 1 !important; filter: none !important; transform: none !important; }
+          *, *::before, *::after {
+            animation-duration: .001ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: .001ms !important;
+            scroll-behavior: auto !important;
           }
         }
       `}</style>

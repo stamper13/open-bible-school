@@ -103,12 +103,17 @@ export default function AttemptResultsPage() {
   const [expandedAnswerId, setExpandedAnswerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Distinguishes what the user can actually do about the failure: sign in,
+  // go back, or simply try again.
+  const [errorKind, setErrorKind] = useState<"auth" | "notfound" | "failed" | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const context = canvas.getContext("2d");
     if (!context) return;
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animationFrame = 0;
     let frame = 0;
     const stars = Array.from({ length: 260 }, (_, index) => ({
@@ -139,7 +144,7 @@ export default function AttemptResultsPage() {
         context.fill();
       }
       frame += 1;
-      animationFrame = requestAnimationFrame(draw);
+      if (!prefersReducedMotion) animationFrame = requestAnimationFrame(draw);
     };
     resize();
     draw();
@@ -157,11 +162,13 @@ export default function AttemptResultsPage() {
     async function loadResults() {
       setLoading(true);
       setError("");
+      setErrorKind(null);
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
       if (!userId) {
         if (!cancelled) {
           setError("Your assessment session is no longer available. Sign in to view saved results.");
+          setErrorKind("auth");
           setLoading(false);
         }
         return;
@@ -180,12 +187,17 @@ export default function AttemptResultsPage() {
 
       if (cancelled) return;
       if (summaryError || reviewError) {
-        setError(summaryError?.message || reviewError?.message || "Results could not be loaded.");
+        // Keep the database detail in the console for diagnosis; show the user
+        // something they can act on instead of a raw Postgres message.
+        console.error("Results load failed:", summaryError ?? reviewError);
+        setError("We could not load these results just now. This is usually a temporary connection problem.");
+        setErrorKind("failed");
         setLoading(false);
         return;
       }
       if (!summaryData) {
         setError("These results were not found or do not belong to this session.");
+        setErrorKind("notfound");
         setLoading(false);
         return;
       }
@@ -199,7 +211,7 @@ export default function AttemptResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [attemptId]);
+  }, [attemptId, reloadToken]);
 
   const filteredRows = useMemo(() => {
     if (activeFilter === "missed") return reviewRows.filter(row => !row.is_correct && !row.is_idk);
@@ -215,7 +227,7 @@ export default function AttemptResultsPage() {
   const continueAssessment = () => {
     if (summary?.testament === "NT") {
       sessionStorage.removeItem("obs_nt_attempt_id");
-      window.location.href = "/assess?testament=NT";
+      window.location.href = "/assess?testament=NT&scope=NT";
       return;
     }
     window.location.href = "/assess";
@@ -224,9 +236,9 @@ export default function AttemptResultsPage() {
   const score = summary?.snapshot?.display_bli ?? null;
   const pageError = attemptId ? error : "This results link is incomplete.";
   const scoreLabel = summary?.snapshot?.bli_level
-    ? `${summary.snapshot.bli_level} · ${summary.testament === "NT" ? "developmental NT estimate" : "Bible Literacy Index"}`
+    ? `${summary.snapshot.bli_level} · ${summary.testament === "NT" ? "New Testament BLI" : "Old Testament BLI"}`
     : summary?.testament === "NT"
-      ? "New Testament pilot accuracy"
+      ? "New Testament assessment accuracy"
       : "Attempt accuracy";
 
   return (
@@ -245,8 +257,23 @@ export default function AttemptResultsPage() {
         }
         *, *::before, *::after { box-sizing: border-box; }
         html { background: #0b0f1e; }
-        body { margin: 0; background: #0b0f1e; color: var(--navy); font-family: "Inter", system-ui, sans-serif; }
+        body { margin: 0; background: #0b0f1e; color: var(--navy); font-family: var(--font-inter), system-ui, sans-serif; }
         .results-page { min-height: 100vh; position: relative; isolation: isolate; padding-bottom: 72px; }
+        .action-primary:focus-visible,
+        .action-secondary:focus-visible,
+        .results-nav-link:focus-visible,
+        .results-brand:focus-visible,
+        .filter-btn:focus-visible,
+        .review-trigger:focus-visible {
+          outline: 2px solid #4fd6d6; outline-offset: 3px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: .001ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: .001ms !important;
+          }
+        }
         .results-page::before {
           content: ""; position: fixed; inset: 0; z-index: -3;
           background: linear-gradient(180deg, #0b0f1e 0%, #111827 54%, #0d1530 100%);
@@ -257,7 +284,7 @@ export default function AttemptResultsPage() {
           padding: 0 32px; border-bottom: 1px solid rgba(255,255,255,.08);
           background: rgba(8,12,25,.78); backdrop-filter: blur(14px);
         }
-        .results-brand { color: #fff; text-decoration: none; font: 700 17px "Crimson Pro", Georgia, serif; }
+        .results-brand { color: #fff; text-decoration: none; font: 700 17px var(--font-crimson), Georgia, serif; }
         .results-nav-link {
           color: rgba(255,255,255,.67); text-decoration: none; font-size: 13px; font-weight: 650;
           padding: 8px 13px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px;
@@ -268,7 +295,7 @@ export default function AttemptResultsPage() {
           letter-spacing: .16em; text-transform: uppercase; margin: 0 0 10px;
         }
         .results-title {
-          color: #fff; font: 700 clamp(30px, 5vw, 48px)/1.02 "Crimson Pro", Georgia, serif;
+          color: #fff; font: 700 clamp(30px, 5vw, 48px)/1.02 var(--font-crimson), Georgia, serif;
           letter-spacing: 0; margin: 0;
         }
         .results-date { color: rgba(255,255,255,.56); font-size: 13px; margin: 9px 0 26px; }
@@ -281,17 +308,17 @@ export default function AttemptResultsPage() {
           min-height: 220px; padding: 28px; display: flex; flex-direction: column; justify-content: center;
           border-right: 1px solid var(--line); background: rgba(10,163,163,.07);
         }
-        .score-value { font: 750 66px/1 "Crimson Pro", Georgia, serif; color: var(--navy); }
-        .score-value span { font: 700 28px/1 "Inter", sans-serif; }
+        .score-value { font: 750 66px/1 var(--font-crimson), Georgia, serif; color: var(--navy); }
+        .score-value span { font: 700 28px/1 var(--font-inter), sans-serif; }
         .score-label { margin-top: 8px; color: var(--muted); font-size: 12px; font-weight: 750; line-height: 1.45; }
         .summary-body { min-width: 0; padding: 28px 30px; }
-        .summary-heading { margin: 0; font: 700 25px/1.1 "Crimson Pro", Georgia, serif; }
+        .summary-heading { margin: 0; font: 700 25px/1.1 var(--font-crimson), Georgia, serif; }
         .summary-copy { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 7px 0 24px; }
         .metric-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--line); }
         .metric { padding: 15px 12px; border-right: 1px solid var(--line); }
         .metric:first-child { padding-left: 0; }
         .metric:last-child { border-right: 0; }
-        .metric strong { display: block; font: 750 23px/1 "Crimson Pro", Georgia, serif; }
+        .metric strong { display: block; font: 750 23px/1 var(--font-crimson), Georgia, serif; }
         .metric span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; margin-top: 5px; }
         .scope-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
         .scope-chip { color: var(--navy); background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; font-size: 11px; font-weight: 700; }
@@ -305,12 +332,12 @@ export default function AttemptResultsPage() {
         .action-secondary { color: rgba(255,255,255,.78); border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); }
         .review-section { background: var(--card); border: 1px solid rgba(255,255,255,.46); border-radius: 8px; overflow: hidden; }
         .review-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 24px 26px 18px; border-bottom: 1px solid var(--line); }
-        .review-title { margin: 0; font: 700 25px/1.1 "Crimson Pro", Georgia, serif; }
+        .review-title { margin: 0; font: 700 25px/1.1 var(--font-crimson), Georgia, serif; }
         .review-sub { color: var(--muted); font-size: 12px; margin: 5px 0 0; }
         .review-filters { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
         .filter-btn {
           border: 0; border-radius: 999px; padding: 8px 12px; background: transparent;
-          color: var(--muted); font: 700 11px "Inter", sans-serif; cursor: pointer;
+          color: var(--muted); font: 700 11px var(--font-inter), sans-serif; cursor: pointer;
         }
         .filter-btn.active { color: var(--navy); background: #fff; box-shadow: 0 2px 8px rgba(27,36,66,.11); }
         .review-list { display: block; }
@@ -362,7 +389,7 @@ export default function AttemptResultsPage() {
           color: #fff; text-align: center;
         }
         .state-panel { width: min(430px, 100%); }
-        .state-title { font: 700 30px "Crimson Pro", Georgia, serif; margin-bottom: 8px; }
+        .state-title { font: 700 30px var(--font-crimson), Georgia, serif; margin-bottom: 8px; }
         .state-copy { color: rgba(255,255,255,.62); font-size: 13px; line-height: 1.55; }
         .loader { width: 34px; height: 34px; margin: 0 auto 18px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: var(--accent); animation: spin .75s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -404,17 +431,30 @@ export default function AttemptResultsPage() {
           </main>
         ) : pageError || !summary ? (
           <main className="results-state">
-            <div className="state-panel">
-              <div className="state-title">Results unavailable</div>
+            <div className="state-panel" role="alert">
+              <div className="state-title">
+                {errorKind === "auth" ? "Sign in to view these results" : "Results unavailable"}
+              </div>
               <p className="state-copy">{pageError || "This assessment could not be found."}</p>
-              <div className="results-actions" style={{ justifyContent: "center" }}>
-                <Link className="action-secondary" href="/">Return to dashboard</Link>
+              <div className="results-actions" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+                {errorKind === "failed" && (
+                  <button
+                    type="button"
+                    className="action-primary"
+                    onClick={() => setReloadToken(token => token + 1)}
+                  >
+                    Try again
+                  </button>
+                )}
+                <Link className="action-secondary" href="/">
+                  {errorKind === "auth" ? "Go to sign in" : "Return to dashboard"}
+                </Link>
               </div>
             </div>
           </main>
         ) : (
           <main className="results-shell">
-            <p className="results-kicker">{summary.testament === "NT" ? "New Testament pilot" : "Old Testament assessment"}</p>
+            <p className="results-kicker">{summary.testament === "NT" ? "New Testament assessment" : "Old Testament assessment"}</p>
             <h1 className="results-title">Your assessment results</h1>
             <p className="results-date">{formatDate(summary.completed_at)}</p>
 
@@ -422,13 +462,13 @@ export default function AttemptResultsPage() {
               <div className="score-signal">
                 <div className="score-value">
                   {score ?? Math.round(summary.accuracy ?? 0)}
-                  {!score && <span>%</span>}
+                  {score === null && <span>%</span>}
                 </div>
                 <div className="score-label">{scoreLabel}</div>
               </div>
               <div className="summary-body">
                 <h2 className="summary-heading">
-                  {summary.testament === "NT" ? "Developmental pilot snapshot" : "Your latest BLI snapshot"}
+                  {summary.testament === "NT" ? "Your latest NT BLI snapshot" : "Your latest OT BLI snapshot"}
                 </h2>
                 <p className="summary-copy">
                   Review the session below when you want to study specific misses or revisit questions you skipped.
@@ -464,14 +504,15 @@ export default function AttemptResultsPage() {
                   <h2 className="review-title" id="review-heading">Session review</h2>
                   <p className="review-sub">{filteredRows.length} of {reviewRows.length} responses shown</p>
                 </div>
-                <div className="review-filters" role="tablist" aria-label="Review filters">
+                {/* Toggle buttons rather than an ARIA tablist: there is no
+                    tabpanel to own, and these filter a list in place. */}
+                <div className="review-filters" role="group" aria-label="Review filters">
                   {FILTERS.map(filter => (
                     <button
                       key={filter.key}
                       className={`filter-btn ${activeFilter === filter.key ? "active" : ""}`}
                       type="button"
-                      role="tab"
-                      aria-selected={activeFilter === filter.key}
+                      aria-pressed={activeFilter === filter.key}
                       onClick={() => setActiveFilter(filter.key)}
                     >
                       {filter.label}
@@ -480,7 +521,7 @@ export default function AttemptResultsPage() {
                 </div>
               </div>
 
-              <div className="review-list">
+              <div className="review-list" role="status" aria-live="polite">
                 {filteredRows.length === 0 ? (
                   <p className="empty-review">No responses match this filter.</p>
                 ) : filteredRows.map(row => {
