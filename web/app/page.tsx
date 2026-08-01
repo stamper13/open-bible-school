@@ -5,7 +5,16 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { loadPublicQuestionMetadata, type PublicQuestionMetadataRow } from "@/lib/supabase/questionMetadata";
 import { BLI_LEVELS, levelForScore, toDisplayScore } from "@/lib/bli";
-import { BOOK_NAMES, OT_BOOK_CODES, SECTION_BOOKS, sectionForBook } from "@/lib/bibleTaxonomy";
+import {
+  BIBLE_BOOKS,
+  BOOK_NAMES,
+  OT_BOOK_CODES,
+  NT_BOOK_CODES,
+  SECTION_BOOKS,
+  sectionForBook,
+  testamentForBook,
+  type Testament as BibleTestament,
+} from "@/lib/bibleTaxonomy";
 
 const SKY_SEED_KEY = "obs_sky_seed";
 const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
@@ -107,6 +116,8 @@ type ScopeScore = {
   subtitle: string;
   kind: ScopeKind;
   className: string;
+  testament: BibleTestament;
+  backendScopeKey: string;
   rawScore: number | null;
   displayScore: number | null;
   answered: number;
@@ -206,14 +217,39 @@ type NtPilotSummary = {
   booksAttempted: number;
   updatedAt: string;
 };
+type TestamentBliScores = {
+  ot_raw_bli: number;
+  ot_display_bli: number;
+  ot_bli_level: string;
+  ot_questions_answered: number;
+  ot_correct_answers: number;
+  ot_idk_answers: number;
+  ot_section_scores: Record<string, unknown>;
+  nt_raw_bli: number;
+  nt_display_bli: number;
+  nt_bli_level: string;
+  nt_questions_answered: number;
+  nt_correct_answers: number;
+  nt_idk_answers: number;
+  nt_section_scores: Record<string, unknown>;
+  combined_display_bli: number | null;
+  combined_questions_answered: number;
+  combined_available: boolean;
+};
 
 const SECTION_META = [
-  { key: "ot", label: "Old Testament", subtitle: "Genesis - Malachi", kind: "canon" as const, className: "ot", books: OT_BOOK_CODES },
-  { key: "torah", label: "Torah", subtitle: "Genesis - Deuteronomy", kind: "section" as const, className: "torah", books: SECTION_BOOKS.Torah },
-  { key: "prophets", label: "Prophets", subtitle: "Former + Latter Prophets", kind: "section" as const, className: "prophets", books: [...SECTION_BOOKS["Former Prophets"], ...SECTION_BOOKS["Latter Prophets"]] },
-  { key: "former", label: "Former Prophets", subtitle: "Joshua - Kings", kind: "section" as const, className: "former", books: SECTION_BOOKS["Former Prophets"] },
-  { key: "latter", label: "Latter Prophets", subtitle: "Isaiah - Malachi", kind: "section" as const, className: "latter", books: SECTION_BOOKS["Latter Prophets"] },
-  { key: "writings", label: "Writings", subtitle: "Psalms, Proverbs, Job...", kind: "section" as const, className: "writings", books: SECTION_BOOKS.Writings },
+  { key: "ot", label: "Old Testament", subtitle: "Genesis - Malachi", kind: "canon" as const, className: "ot", testament: "OT" as const, backendScopeKey: "OT", books: OT_BOOK_CODES },
+  { key: "torah", label: "Torah", subtitle: "Genesis - Deuteronomy", kind: "section" as const, className: "torah", testament: "OT" as const, backendScopeKey: "Torah", books: SECTION_BOOKS.Torah },
+  { key: "prophets", label: "Prophets", subtitle: "Former + Latter Prophets", kind: "section" as const, className: "prophets", testament: "OT" as const, backendScopeKey: "Prophets", books: [...SECTION_BOOKS["Former Prophets"], ...SECTION_BOOKS["Latter Prophets"]] },
+  { key: "former", label: "Former Prophets", subtitle: "Joshua - Kings", kind: "section" as const, className: "former", testament: "OT" as const, backendScopeKey: "Former Prophets", books: SECTION_BOOKS["Former Prophets"] },
+  { key: "latter", label: "Latter Prophets", subtitle: "Isaiah - Malachi", kind: "section" as const, className: "latter", testament: "OT" as const, backendScopeKey: "Latter Prophets", books: SECTION_BOOKS["Latter Prophets"] },
+  { key: "writings", label: "Writings", subtitle: "Psalms, Proverbs, Job...", kind: "section" as const, className: "writings", testament: "OT" as const, backendScopeKey: "Writings", books: SECTION_BOOKS.Writings },
+  { key: "nt", label: "New Testament", subtitle: "Matthew - Revelation", kind: "canon" as const, className: "nt", testament: "NT" as const, backendScopeKey: "NT", books: NT_BOOK_CODES },
+  { key: "gospels", label: "Gospels", subtitle: "Matthew - John", kind: "section" as const, className: "gospels", testament: "NT" as const, backendScopeKey: "GOSPELS", books: ["MAT", "MRK", "LUK", "JHN"] },
+  { key: "acts", label: "Acts", subtitle: "Acts of the Apostles", kind: "section" as const, className: "acts", testament: "NT" as const, backendScopeKey: "ACTS", books: ["ACT"] },
+  { key: "pauline", label: "Pauline Epistles", subtitle: "Romans - Philemon", kind: "section" as const, className: "pauline", testament: "NT" as const, backendScopeKey: "PAULINE", books: SECTION_BOOKS["Pauline Epistles"] },
+  { key: "general", label: "General Epistles", subtitle: "Hebrews - Jude", kind: "section" as const, className: "general", testament: "NT" as const, backendScopeKey: "GENERAL", books: SECTION_BOOKS["General Epistles"] },
+  { key: "revelation", label: "Revelation", subtitle: "Revelation", kind: "section" as const, className: "revelation", testament: "NT" as const, backendScopeKey: "APOCALYPSE", books: SECTION_BOOKS.Apocalypse },
 ];
 const DOMAIN_META = [
   { key: "characters", backendKey: "characters_lineage", label: "Characters & Lineage", match: (type: string) => type.includes("relationship") || type.includes("people") || type.includes("lineage") || type.includes("genealogy") },
@@ -227,30 +263,43 @@ const DOMAIN_META = [
 
 function detailTargetForScore(score: ScopeScore): ScopeDetailTarget {
   if (score.kind === "canon") {
-    return { scopeType: "TESTAMENT", scopeKey: "OT", label: score.label, subtitle: score.subtitle };
+    return { scopeType: "TESTAMENT", scopeKey: score.backendScopeKey, label: score.label, subtitle: score.subtitle };
   }
   if (score.kind === "book") {
     return {
       scopeType: "BOOK",
-      scopeKey: score.key.replace("book:", ""),
+      scopeKey: score.backendScopeKey,
       label: score.label,
       subtitle: score.subtitle,
     };
   }
   if (score.kind === "domain") {
-    const domain = DOMAIN_META.find(item => `domain:${item.key}` === score.key);
     return {
       scopeType: "DIMENSION",
-      scopeKey: domain?.backendKey ?? score.key.replace("domain:", ""),
+      scopeKey: `${score.testament}:${score.backendScopeKey}`,
       label: score.label,
-      subtitle: "Knowledge dimension",
+      subtitle: `${score.testament === "NT" ? "New" : "Old"} Testament knowledge dimension`,
     };
   }
-  return { scopeType: "SECTION", scopeKey: score.label, label: score.label, subtitle: score.subtitle };
+  return { scopeType: "SECTION", scopeKey: score.backendScopeKey, label: score.label, subtitle: score.subtitle };
 }
 
 function assessmentHrefForScore(score: ScopeScore): string | null {
-  if (score.kind === "canon") return "/assess?testament=OT";
+  if (score.kind === "canon") {
+    return score.testament === "NT"
+      ? "/assess?testament=NT&scope=NT"
+      : "/assess";
+  }
+
+  if (score.testament === "NT") {
+    if (score.kind === "domain") return null;
+    const params = new URLSearchParams({
+      testament: "NT",
+      scope: score.backendScopeKey,
+      target: score.kind === "book" ? "15" : "20",
+    });
+    return `/assess?${params.toString()}`;
+  }
 
   const params = new URLSearchParams({
     mode: "scope",
@@ -259,7 +308,7 @@ function assessmentHrefForScore(score: ScopeScore): string | null {
   });
 
   if (score.kind === "book") {
-    params.set("scope", score.key.replace("book:", ""));
+    params.set("scope", score.backendScopeKey);
     return `/assess?${params.toString()}`;
   }
 
@@ -294,6 +343,10 @@ function classNameForSection(sectionName: string) {
   if (sectionName === "Former Prophets") return "former";
   if (sectionName === "Latter Prophets") return "latter";
   if (sectionName === "Writings") return "writings";
+  if (sectionName === "Gospels & Acts") return "gospels";
+  if (sectionName === "Pauline Epistles") return "pauline";
+  if (sectionName === "General Epistles") return "general";
+  if (sectionName === "Apocalypse") return "revelation";
   return "ot";
 }
 
@@ -330,6 +383,7 @@ function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
       return {
         bookCode: bank.book_code,
         section: sectionNameForBook(bank.book_code),
+        testament: testamentForBook(bank.book_code) ?? "OT",
         questionType: bank.question_type ?? "",
         dimensionKey: bank.dimension_key ?? null,
         isCorrect: Boolean(answer.is_correct),
@@ -344,6 +398,8 @@ function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
     subtitle: string,
     kind: ScopeKind,
     className: string,
+    testament: BibleTestament,
+    backendScopeKey: string,
     rows: typeof evidence,
   ): ScopeScore => {
     const rawScore = scoreEvidence(rows);
@@ -353,6 +409,8 @@ function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
       subtitle,
       kind,
       className,
+      testament,
+      backendScopeKey,
       rawScore,
       displayScore: rawScore === null ? null : toDisplayScore(rawScore),
       answered: rows.length,
@@ -367,26 +425,43 @@ function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
     scope.subtitle,
     scope.kind,
     scope.className,
+    scope.testament,
+    scope.backendScopeKey,
     evidence.filter(row => scope.books.includes(row.bookCode)),
   ));
 
-  const books = OT_BOOK_CODES.map(bookCode => makeScore(
-    `book:${bookCode}`,
-    BOOK_NAMES[bookCode] ?? bookCode,
-    sectionNameForBook(bookCode),
+  const books = BIBLE_BOOKS.map(bibleBook => makeScore(
+    `book:${bibleBook.code}`,
+    bibleBook.name,
+    bibleBook.code === "ACT"
+      ? "Acts"
+      : bibleBook.section === "Gospels & Acts"
+        ? "Gospels"
+        : bibleBook.section === "Apocalypse"
+          ? "Revelation"
+          : bibleBook.section,
     "book",
-    classNameForSection(sectionNameForBook(bookCode)),
-    evidence.filter(row => row.bookCode === bookCode),
+    classNameForSection(bibleBook.section),
+    bibleBook.testament,
+    bibleBook.code,
+    evidence.filter(row => row.bookCode === bibleBook.code),
   ));
 
-  const domains = DOMAIN_META.map(domain => makeScore(
-    `domain:${domain.key}`,
-    domain.label,
-    "Question dimension",
-    "domain",
-    `domain-${domain.key}`,
-    evidence.filter(row => row.dimensionKey === domain.backendKey || (!row.dimensionKey && domain.match(row.questionType))),
-  ));
+  const domains = (["OT", "NT"] as const).flatMap(testament =>
+    DOMAIN_META.map(domain => makeScore(
+      `domain:${testament}:${domain.key}`,
+      domain.label,
+      `${testament} question dimension`,
+      "domain",
+      `domain-${domain.key}`,
+      testament,
+      domain.backendKey,
+      evidence.filter(row => (
+        row.testament === testament
+        && (row.dimensionKey === domain.backendKey || (!row.dimensionKey && domain.match(row.questionType)))
+      )),
+    ))
+  );
 
   return { sections, books, domains };
 }
@@ -473,6 +548,7 @@ export default function HomePage() {
   const [sectionScores, setSectionScores] = useState<Record<string, {pct: number, total: number, weighted_pct: number}>>({});
   const [scopeScores, setScopeScores] = useState<{sections: ScopeScore[]; books: ScopeScore[]; domains: ScopeScore[]}>(() => buildScopeScores([], []));
   const [activeBreakdownTab, setActiveBreakdownTab] = useState<BreakdownTab>("sections");
+  const [profileTestament, setProfileTestament] = useState<BibleTestament>("OT");
   const [prophetsExpanded, setProphetsExpanded] = useState(false);
   const [showBliTooltip, setShowBliTooltip] = useState(false);
   const [showEvidenceTooltip, setShowEvidenceTooltip] = useState(false);
@@ -492,6 +568,7 @@ export default function HomePage() {
   const [scopeSummaryLoading, setScopeSummaryLoading] = useState(false);
   const [scopeSummaryError, setScopeSummaryError] = useState<string | null>(null);
   const [ntPilotSummary, setNtPilotSummary] = useState<NtPilotSummary | null>(null);
+  const [testamentScores, setTestamentScores] = useState<TestamentBliScores | null>(null);
   const [pendingRetestHref, setPendingRetestHref] = useState<string | null>(null);
   const tooltipCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assessmentHoldDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -509,7 +586,9 @@ export default function HomePage() {
     lastFrameT: 0,
   });
   const currentDisplayScore = assessmentData
-    ? toDisplayScore(assessmentData.bli ?? Math.round((assessmentData.correct / assessmentData.answered) * 100))
+    ? testamentScores?.ot_questions_answered
+      ? testamentScores.ot_display_bli
+      : toDisplayScore(assessmentData.bli ?? Math.round((assessmentData.correct / assessmentData.answered) * 100))
     : 0;
   const currentDisplayLevel = levelForScore(currentDisplayScore);
   const currentDisplayBand = BLI_LEVELS.find((band) => band.name === currentDisplayLevel) ?? BLI_LEVELS[0];
@@ -574,13 +653,19 @@ export default function HomePage() {
   const visibleBreakdownScores = useMemo(() => {
     if (activeBreakdownTab === "sections") {
       return scopeScores.sections.filter(score => (
-        prophetsExpanded
-        || (score.key !== "former" && score.key !== "latter")
+        score.testament === profileTestament
+        && (
+          profileTestament === "NT"
+          || prophetsExpanded
+          || (score.key !== "former" && score.key !== "latter")
+        )
       ));
     }
-    if (activeBreakdownTab === "domains") return scopeScores.domains;
-    return scopeScores.books;
-  }, [activeBreakdownTab, prophetsExpanded, scopeScores]);
+    if (activeBreakdownTab === "domains") {
+      return scopeScores.domains.filter(score => score.testament === profileTestament);
+    }
+    return scopeScores.books.filter(score => score.testament === profileTestament);
+  }, [activeBreakdownTab, profileTestament, prophetsExpanded, scopeScores]);
   const scriptureConnectionsUnlocked = useMemo(() => {
     const torah = scopeScores.sections.find(score => score.label === "Torah");
     const former = scopeScores.sections.find(score => score.label === "Former Prophets");
@@ -909,8 +994,9 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    const slosh = sloshRef.current;
     return () => {
-      cancelAnimationFrame(sloshRef.current.raf);
+      cancelAnimationFrame(slosh.raf);
     };
   }, []);
 
@@ -934,13 +1020,13 @@ export default function HomePage() {
       }
       if (session?.user?.id) {
         const [
-          { data: bliData },
+          { data: testamentScoreData },
           bankData,
           { data: answerData },
           { data: recommendationData },
           { data: evidenceData },
         ] = await Promise.all([
-          supabase.rpc("compute_bli", { p_user_id: session.user.id }),
+          supabase.rpc("obs_get_testament_bli_scores", { p_user_id: session.user.id }),
           loadDimensionAwareQuestionBank(),
           supabase
             .from("assessment_answers")
@@ -981,14 +1067,35 @@ export default function HomePage() {
           });
         setSectionScores(sectionMap);
 
-        if (bliData && bliData.length > 0) {
-          const b = bliData[0];
-          if (b.questions_answered > 0) {
+        if (testamentScoreData && testamentScoreData.length > 0) {
+          const rawScores = testamentScoreData[0] as TestamentBliScores;
+          const scores: TestamentBliScores = {
+            ...rawScores,
+            ot_raw_bli: Number(rawScores.ot_raw_bli ?? 0),
+            ot_display_bli: Number(rawScores.ot_display_bli ?? 0),
+            ot_questions_answered: Number(rawScores.ot_questions_answered ?? 0),
+            ot_correct_answers: Number(rawScores.ot_correct_answers ?? 0),
+            ot_idk_answers: Number(rawScores.ot_idk_answers ?? 0),
+            nt_raw_bli: Number(rawScores.nt_raw_bli ?? 0),
+            nt_display_bli: Number(rawScores.nt_display_bli ?? 0),
+            nt_questions_answered: Number(rawScores.nt_questions_answered ?? 0),
+            nt_correct_answers: Number(rawScores.nt_correct_answers ?? 0),
+            nt_idk_answers: Number(rawScores.nt_idk_answers ?? 0),
+            combined_display_bli: rawScores.combined_display_bli === null
+              ? null
+              : Number(rawScores.combined_display_bli),
+            combined_questions_answered: Number(rawScores.combined_questions_answered ?? 0),
+            combined_available: Boolean(rawScores.combined_available),
+          };
+          setTestamentScores(scores);
+          if (scores.ot_questions_answered > 0) {
             setAssessmentData({
-              answered: b.questions_answered,
-              correct: Math.round(b.total_weighted_earned),
-              bli: parseFloat(b.bli_score)
+              answered: scores.ot_questions_answered,
+              correct: scores.ot_correct_answers,
+              bli: scores.ot_raw_bli,
             });
+          } else {
+            setAssessmentData(null);
           }
         }
       }
@@ -1079,15 +1186,15 @@ export default function HomePage() {
       constellation.active = false;
       return;
     }
-    const domains = scopeScores.domains;
+    const domains = scopeScores.domains.filter(score => score.testament === profileTestament);
     constellation.points = domains.map((score, index) => {
-      const isLockedConnection = score.key === "domain:scripture_connections" && !scriptureConnectionsUnlocked;
+      const isLockedConnection = score.key.endsWith(":scripture_connections") && !scriptureConnectionsUnlocked;
       const pct = isLockedConnection || score.rawScore === null || score.answered === 0 ? 0 : Math.max(0, Math.min(100, score.rawScore));
       const angle = -Math.PI / 2 + (index / Math.max(domains.length, 1)) * Math.PI * 2;
       return { angle, pct };
     });
     constellation.active = true;
-  }, [activeBreakdownTab, scopeScores.domains, scriptureConnectionsUnlocked]);
+  }, [activeBreakdownTab, profileTestament, scopeScores.domains, scriptureConnectionsUnlocked]);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -1369,7 +1476,7 @@ export default function HomePage() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html { font-size: 16px; }
         body {
-          font-family: "Inter", system-ui, -apple-system, sans-serif;
+          font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
           color: var(--ink); min-height: 100vh;
           background: #0b0f1e;
         }
@@ -1386,7 +1493,7 @@ export default function HomePage() {
           border-bottom: 1px solid rgba(255,255,255,.08);
         }
         .nav-brand {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-weight: 600; font-size: 18px;
           color: #fff; text-decoration: none; letter-spacing: .01em;
         }
@@ -1444,7 +1551,7 @@ export default function HomePage() {
           gap: 16px; margin-bottom: 36px; flex-wrap: wrap;
         }
         .page-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 30px; font-weight: 600; line-height: 1.1;
           color: #fff; letter-spacing: .005em;
         }
@@ -1514,7 +1621,7 @@ export default function HomePage() {
           margin-bottom: 10px;
         }
         .save-results-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 30px; font-weight: 650; line-height: 1.05;
           color: var(--navy); margin-bottom: 7px;
         }
@@ -1551,7 +1658,7 @@ export default function HomePage() {
           color: #0a6e6e; margin-bottom: 12px;
         }
         .placeholder-title {
-          font-family: "Crimson Pro", Georgia, serif; font-size: 36px; line-height: 1.04;
+          font-family: var(--font-crimson), Georgia, serif; font-size: 36px; line-height: 1.04;
           color: var(--navy); margin-bottom: 14px;
         }
         .placeholder-copy { color: var(--muted); font-size: 15px; line-height: 1.65; max-width: 560px; }
@@ -1582,6 +1689,41 @@ export default function HomePage() {
           backdrop-filter: blur(16px); overflow: visible;
           margin-bottom: 28px; position: relative; z-index: 40;
         }
+        .testament-score-overview {
+          display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+          margin-bottom: 18px; overflow: hidden;
+          background: rgba(255,255,255,.92); border: 1px solid var(--border);
+          border-radius: 16px; box-shadow: var(--shadow-sm);
+          backdrop-filter: blur(16px);
+        }
+        .testament-score-item {
+          min-width: 0; padding: 18px 22px;
+          display: grid; grid-template-columns: 1fr auto; align-items: center;
+          gap: 8px 18px; position: relative;
+        }
+        .testament-score-item + .testament-score-item {
+          border-left: 1px solid var(--border);
+        }
+        .testament-score-item::before {
+          content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+          background: var(--score-accent, var(--accent));
+        }
+        .testament-score-item.is-ot { --score-accent: #d4a017; }
+        .testament-score-item.is-nt { --score-accent: #7c3aed; }
+        .testament-score-item.is-combined { --score-accent: #0aa3a3; }
+        .testament-score-name {
+          color: var(--navy); font-size: 12px; font-weight: 850;
+          letter-spacing: .075em; text-transform: uppercase;
+        }
+        .testament-score-range {
+          grid-column: 1; color: var(--muted); font-size: 11px; font-weight: 650;
+        }
+        .testament-score-value {
+          grid-column: 2; grid-row: 1 / span 2;
+          font: 750 34px/1 var(--font-crimson), Georgia, serif;
+          color: var(--navy);
+        }
+        .testament-score-value.is-empty { color: rgba(27,36,66,.28); }
         .score-strip::after {
           content: ""; position: absolute; inset: 0;
           background: repeating-linear-gradient(90deg,transparent,transparent 60px,rgba(255,255,255,.18) 60px,rgba(255,255,255,.18) 120px);
@@ -1617,7 +1759,7 @@ export default function HomePage() {
           text-transform: uppercase;
         }
         .progress-title {
-          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          color: #fff; font-family: var(--font-crimson), Georgia, serif;
           font-size: 25px; font-weight: 650; line-height: 1.1;
         }
         .progress-sub {
@@ -1641,12 +1783,12 @@ export default function HomePage() {
         }
         .progress-latest {
           min-width: 66px; text-align: right;
-          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          color: #fff; font-family: var(--font-crimson), Georgia, serif;
           font-size: 27px; font-weight: 700; line-height: 1;
         }
         .progress-latest span {
           display: block; margin-top: 3px; color: rgba(226,232,240,.58);
-          font-family: "Inter", system-ui, sans-serif; font-size: 9px;
+          font-family: var(--font-inter), system-ui, sans-serif; font-size: 9px;
           font-weight: 750; letter-spacing: .10em; text-transform: uppercase;
         }
         .progress-chart-shell {
@@ -1740,7 +1882,7 @@ export default function HomePage() {
           border-top: 1px solid rgba(148,163,184,.17);
         }
         .progress-detail-primary strong {
-          display: block; color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          display: block; color: #fff; font-family: var(--font-crimson), Georgia, serif;
           font-size: 20px; line-height: 1.1;
         }
         .progress-detail-primary span,
@@ -1771,7 +1913,7 @@ export default function HomePage() {
           text-align: center; color: rgba(226,232,240,.68);
         }
         .progress-empty strong {
-          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          color: #fff; font-family: var(--font-crimson), Georgia, serif;
           font-size: 20px; font-weight: 650;
         }
         .progress-empty span { max-width: 420px; margin-top: 6px; font-size: 12px; line-height: 1.5; }
@@ -1782,7 +1924,7 @@ export default function HomePage() {
           position: relative; z-index: 2;
         }
         .score-number {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 56px; font-weight: 700; line-height: 1;
           color: rgba(27,36,66,.22); letter-spacing: -.02em; user-select: none;
         }
@@ -1866,17 +2008,17 @@ export default function HomePage() {
           gap: 18px; margin-bottom: 22px;
         }
         .knowledge-cone-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 25px; font-weight: 650; color: var(--navy); line-height: 1.1;
         }
         .knowledge-cone-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
         .knowledge-cone-score {
           display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
           color: var(--navy); font-weight: 700; font-size: 28px;
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
         }
         .knowledge-cone-score span {
-          font-family: "Inter", system-ui, sans-serif; font-size: 10px;
+          font-family: var(--font-inter), system-ui, sans-serif; font-size: 10px;
           letter-spacing: .10em; text-transform: uppercase; color: var(--muted);
         }
         .knowledge-cone-wrap {
@@ -2078,7 +2220,7 @@ export default function HomePage() {
           text-transform: uppercase; color: rgba(27,36,66,.56); text-align: left;
         }
         .conf-percent {
-          font-family: "Crimson Pro", Georgia, serif; font-size: 27px; line-height: 1;
+          font-family: var(--font-crimson), Georgia, serif; font-size: 27px; line-height: 1;
           font-weight: 750; color: var(--navy); letter-spacing: 0; text-transform: none;
         }
         .conf-note { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--muted); text-align: left; line-height: 1.35; }
@@ -2091,7 +2233,7 @@ export default function HomePage() {
         .evidence-info-btn {
           width: 21px; height: 21px; display: inline-flex; align-items: center; justify-content: center;
           border-radius: 50%; border: 1px solid rgba(27,36,66,.14); background: rgba(255,255,255,.58);
-          color: var(--muted); font: 800 11px "Inter", sans-serif; cursor: pointer;
+          color: var(--muted); font: 800 11px var(--font-inter), sans-serif; cursor: pointer;
         }
         .evidence-tooltip {
           position: absolute; right: 22px; top: calc(100% - 10px); z-index: 80;
@@ -2142,7 +2284,7 @@ export default function HomePage() {
           display: flex; align-items: center; justify-content: space-between; gap: 10px;
         }
         .assessment-suite-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 24px; font-weight: 700; color: var(--navy); line-height: 1;
         }
         .assessment-suite-badge {
@@ -2229,7 +2371,7 @@ export default function HomePage() {
         .start-hero.compact .start-btn {
           position: relative; z-index: 1; width: 238px; min-width: 238px; height: 58px;
           justify-content: center; padding: 18px 34px; font-size: 16px;
-          font-family: "Inter", system-ui, sans-serif; font-weight: 760; letter-spacing: .01em;
+          font-family: var(--font-inter), system-ui, sans-serif; font-weight: 760; letter-spacing: .01em;
           white-space: nowrap;
           background: linear-gradient(135deg, #1b2442 0%, #253566 58%, #0a6e6e 100%);
           box-shadow: 0 18px 38px rgba(27,36,66,.38), 0 0 28px rgba(10,163,163,.22);
@@ -2275,7 +2417,7 @@ export default function HomePage() {
           background: linear-gradient(180deg, var(--accent), #d4a017);
         }
         .recommended-eyebrow { font-size: 11px; font-weight: 850; letter-spacing: .11em; text-transform: uppercase; color: #0a6e6e; margin-bottom: 7px; }
-        .recommended-title { font-family: "Crimson Pro", Georgia, serif; font-size: 26px; font-weight: 650; color: var(--navy); line-height: 1.05; }
+        .recommended-title { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 650; color: var(--navy); line-height: 1.05; }
         .recommended-books { margin-top: 5px; font-size: 13px; color: var(--muted); font-weight: 650; }
         .recommended-focus { margin-top: 13px; font-size: 14px; line-height: 1.55; color: rgba(27,36,66,.76); max-width: 660px; }
         .recommended-side { display: flex; flex-direction: column; align-items: flex-end; }
@@ -2316,7 +2458,7 @@ export default function HomePage() {
           letter-spacing: .11em; text-transform: uppercase; margin-bottom: 10px;
         }
         .retest-modal-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 28px; line-height: 1.08; font-weight: 650;
           color: var(--navy); margin-bottom: 10px;
         }
@@ -2352,6 +2494,24 @@ export default function HomePage() {
           gap: 14px; margin-top: 32px; margin-bottom: 14px;
         }
         .breakdown-head .section-eyebrow { margin: 0; }
+        .breakdown-controls {
+          display: flex; align-items: center; justify-content: flex-end;
+          gap: 10px; flex-wrap: wrap;
+        }
+        .profile-testament-tabs {
+          display: inline-flex; gap: 3px; padding: 4px; border-radius: 999px;
+          background: rgba(10,163,163,.11); border: 1px solid rgba(10,163,163,.22);
+          backdrop-filter: blur(10px);
+        }
+        .profile-testament-tab {
+          min-width: 44px; border: 0; border-radius: 999px; padding: 7px 11px;
+          background: transparent; color: rgba(255,255,255,.68);
+          font: inherit; font-size: 12px; font-weight: 850; cursor: pointer;
+        }
+        .profile-testament-tab.is-active {
+          background: #0aa3a3; color: #fff;
+          box-shadow: 0 6px 15px rgba(10,163,163,.24);
+        }
         .breakdown-tabs {
           display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px;
           background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.12);
@@ -2451,7 +2611,7 @@ export default function HomePage() {
           display: flex; flex-direction: column; gap: 12px;
         }
         .domain-radar-title {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 26px; line-height: 1.08; color: #fff;
           font-weight: 650; margin-bottom: 2px;
         }
@@ -2486,11 +2646,11 @@ export default function HomePage() {
           color: rgba(255,255,255,.55); font-size: 11.5px; font-weight: 650;
         }
         .domain-radar-score {
-          color: #fff; font-family: "Crimson Pro", Georgia, serif;
+          color: #fff; font-family: var(--font-crimson), Georgia, serif;
           font-size: 20px; font-weight: 700;
         }
         .domain-radar-score.is-locked {
-          font-family: "Inter", system-ui, sans-serif;
+          font-family: var(--font-inter), system-ui, sans-serif;
           font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
           color: rgba(255,255,255,.56);
         }
@@ -2521,11 +2681,17 @@ export default function HomePage() {
         .section-card.low-evidence { opacity: .82; }
         .section-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
         .section-card.ot::before { background: linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed); }
+        .section-card.nt::before { background: linear-gradient(90deg,#14b8a6,#2563eb,#7c3aed); }
         .section-card.torah::before   { background: var(--torah-bar); }
         .section-card.former::before  { background: var(--former-bar); }
         .section-card.latter::before  { background: var(--latter-bar); }
         .section-card.prophets::before { background: linear-gradient(90deg,#0e8c6a,#2563c4); }
         .section-card.writings::before { background: var(--writings-bar); }
+        .section-card.gospels::before { background: linear-gradient(90deg,#0d9488,#2dd4bf); }
+        .section-card.acts::before { background: linear-gradient(90deg,#0284c7,#38bdf8); }
+        .section-card.pauline::before { background: linear-gradient(90deg,#4f46e5,#818cf8); }
+        .section-card.general::before { background: linear-gradient(90deg,#7c3aed,#c084fc); }
+        .section-card.revelation::before { background: linear-gradient(90deg,#be123c,#fb7185); }
         .section-card.domain-events::before { background: linear-gradient(90deg,#d4a017,#f5c842); }
         .section-card.domain-characters::before { background: linear-gradient(90deg,#0e8c6a,#34d399); }
         .section-card.domain-geography::before { background: linear-gradient(90deg,#0aa3a3,#67e8f9); }
@@ -2551,7 +2717,7 @@ export default function HomePage() {
         }
         .sc-name { font-size: 15px; font-weight: 650; color: var(--navy); }
         .sc-books { font-size: 12px; color: var(--muted); margin-top: 2px; }
-        .sc-pct-empty { font-family: "Crimson Pro",Georgia,serif; font-size: 24px; font-weight: 700; color: rgba(27,36,66,.18); line-height: 1; }
+        .sc-pct-empty { font-family: var(--font-crimson),Georgia,serif; font-size: 24px; font-weight: 700; color: rgba(27,36,66,.18); line-height: 1; }
         .sc-bar-track { height: 6px; border-radius: 999px; background: rgba(27,36,66,.07); margin-bottom: 12px; }
         .sc-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .sc-chip-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
@@ -2629,7 +2795,7 @@ export default function HomePage() {
           font-weight: 850; letter-spacing: .12em; text-transform: uppercase;
         }
         .scope-drawer-title {
-          font-family: "Crimson Pro", Georgia, serif; font-size: 31px;
+          font-family: var(--font-crimson), Georgia, serif; font-size: 31px;
           font-weight: 700; line-height: 1.05;
         }
         .scope-drawer-sub { margin-top: 5px; color: var(--muted); font-size: 12.5px; }
@@ -2648,7 +2814,7 @@ export default function HomePage() {
         }
         .scope-state strong {
           display: block; margin-bottom: 5px; color: var(--navy);
-          font-family: "Crimson Pro", Georgia, serif; font-size: 22px;
+          font-family: var(--font-crimson), Georgia, serif; font-size: 22px;
         }
         .scope-evidence {
           display: flex; justify-content: space-between; align-items: center; gap: 16px;
@@ -2661,12 +2827,12 @@ export default function HomePage() {
         }
         .scope-evidence-copy { margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.45; }
         .scope-evidence-score {
-          color: var(--navy); font-family: "Crimson Pro", Georgia, serif;
+          color: var(--navy); font-family: var(--font-crimson), Georgia, serif;
           font-size: 32px; font-weight: 700; text-align: right;
         }
         .scope-evidence-score span {
           display: block; margin-top: 2px; color: var(--muted);
-          font-family: "Inter", system-ui, sans-serif; font-size: 9px;
+          font-family: var(--font-inter), system-ui, sans-serif; font-size: 9px;
           font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
         }
         .scope-metrics {
@@ -2705,6 +2871,10 @@ export default function HomePage() {
           font-size: 12px; font-weight: 800; box-shadow: 0 8px 20px rgba(27,36,66,.22);
         }
         @media (max-width: 640px) {
+          .testament-score-overview { grid-template-columns: 1fr; }
+          .testament-score-item + .testament-score-item {
+            border-left: 0; border-top: 1px solid var(--border);
+          }
           .score-strip { grid-template-columns: 1fr; }
           .score-block { border-right: none; border-bottom: 1px solid var(--border); }
           .conf-block { border-left: none; border-top: 1px solid var(--border); align-items: center; text-align: center; }
@@ -2716,6 +2886,8 @@ export default function HomePage() {
           .progress-detail-primary { grid-column: 1 / -1; }
           .progress-review-link { grid-column: 1 / -1; }
           .breakdown-head { flex-direction: column; align-items: flex-start; }
+          .breakdown-controls { width: 100%; justify-content: flex-start; }
+          .profile-testament-tabs { flex: 0 0 auto; }
           .breakdown-tabs { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
           .breakdown-tab { padding-inline: 8px; }
           .sections-grid,
@@ -2771,7 +2943,11 @@ export default function HomePage() {
           .scope-drawer-head { padding: 22px 20px 17px; }
           .scope-drawer-body { padding: 20px 20px 30px; }
           .scope-focused-action { align-items: flex-start; flex-direction: column; }
-          .nav { padding: 13px 16px; }
+          /* The nav links exceed a phone's width, so let them wrap onto a
+             second row rather than being clipped off the right edge. */
+          .nav { padding: 11px 16px; flex-wrap: wrap; gap: 8px; }
+          .nav-right { flex-wrap: wrap; gap: 7px; }
+          .nav-btn { padding: 7px 12px; font-size: 12px; }
           .page { padding: 28px 16px 72px; }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -2800,8 +2976,9 @@ export default function HomePage() {
         </span>
         <div className="nav-right">
           <Link className="nav-btn" href="/knowledge-map">Knowledge Map</Link>
+          <Link className="nav-btn" href="/bli">How BLI Works</Link>
           <Link className="nav-btn" href="/about">About</Link>
-          <Link className="nav-btn" href="/credential">For Churches</Link>
+          <Link className="nav-btn" href="/credential">Future Ideas</Link>
           {userEmail ? (
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:12,color:"var(--muted)",padding:"6px 12px",borderRadius:999,border:"1px solid var(--border)",background:"rgba(255,255,255,.5)"}}>
@@ -2813,6 +2990,7 @@ export default function HomePage() {
                   clearAssessmentBrowserStorage();
                   setUserEmail(null);
                   setAssessmentData(null);
+                  setTestamentScores(null);
                   setSectionScores({});
                   setScopeScores(buildScopeScores([], []));
                   setBackendRecommendation(null);
@@ -2833,7 +3011,9 @@ export default function HomePage() {
           <div>
             <h1 className="page-title">Your Learning Dashboard</h1>
             <p className="page-meta">
-              {activeDashboardTab === "bli" && (assessmentData ? `${assessmentData.answered} questions answered` : "No assessment taken yet")}
+              {activeDashboardTab === "bli" && (testamentScores?.combined_questions_answered
+                ? `${testamentScores.combined_questions_answered} questions answered across OT and NT`
+                : assessmentData ? `${assessmentData.answered} questions answered` : "No assessment taken yet")}
               {activeDashboardTab === "church-history" && "Church History dashboard coming soon"}
               {activeDashboardTab === "biblical-languages" && "Biblical Languages dashboard coming soon"}
             </p>
@@ -2849,7 +3029,7 @@ export default function HomePage() {
             onClick={() => setActiveDashboardTab("bli")}
           >
             <strong>BLI</strong>
-            <span>Old Testament literacy</span>
+            <span>OT, NT, and combined literacy</span>
           </button>
           <button
             type="button"
@@ -2925,17 +3105,21 @@ export default function HomePage() {
           </div>
           <div className="assessment-suite-card is-nt">
             <div className="assessment-suite-top">
-              <h2 className="assessment-suite-title">New Testament Pilot</h2>
-              <span className="assessment-suite-badge">Pilot</span>
+              <h2 className="assessment-suite-title">New Testament</h2>
+              <span className="assessment-suite-badge">NT BLI</span>
             </div>
-            <p className="assessment-suite-copy">Preview questions across all 27 New Testament books. Results are developmental and not credential-grade.</p>
+            <p className="assessment-suite-copy">Adaptive assessment across all 27 New Testament books. Results build a separate NT BLI.</p>
             <div className="assessment-suite-stats">
-              <span>{ntPilotSummary ? `${ntPilotSummary.accuracy}% latest` : "No pilot attempt yet"}</span>
-              <span>{ntPilotSummary ? `${ntPilotSummary.booksAttempted} books attempted` : "Separate from BLI"}</span>
+              <span>{testamentScores?.nt_questions_answered
+                ? `${testamentScores.nt_questions_answered} answered`
+                : ntPilotSummary ? `${ntPilotSummary.answered} answered` : "Not yet assessed"}</span>
+              <span>{testamentScores?.nt_questions_answered
+                ? `NT BLI ${testamentScores.nt_display_bli}`
+                : "Separate 0-800 score"}</span>
             </div>
             <div className="assessment-suite-actions">
-              <Link className="assessment-suite-link" href="/assess?testament=NT">
-                Explore NT pilot →
+              <Link className="assessment-suite-link" href="/assess?testament=NT&scope=NT">
+                {testamentScores?.nt_questions_answered ? "Continue NT assessment" : "Start NT assessment"} →
               </Link>
               <button
                 type="button"
@@ -2953,6 +3137,36 @@ export default function HomePage() {
           </div>
         </section>
 
+        <section className="testament-score-overview" aria-label="Bible Literacy Index scores">
+          <div className="testament-score-item is-ot">
+            <span className="testament-score-name">OT BLI</span>
+            <span className="testament-score-range">
+              {testamentScores?.ot_questions_answered ? `${testamentScores.ot_bli_level} · 0-800` : "Complete the OT assessment · 0-800"}
+            </span>
+            <span className={`testament-score-value ${testamentScores?.ot_questions_answered ? "" : "is-empty"}`}>
+              {testamentScores?.ot_questions_answered ? testamentScores.ot_display_bli : "—"}
+            </span>
+          </div>
+          <div className="testament-score-item is-nt">
+            <span className="testament-score-name">NT BLI</span>
+            <span className="testament-score-range">
+              {testamentScores?.nt_questions_answered ? `${testamentScores.nt_bli_level} · 0-800` : "Complete the NT assessment · 0-800"}
+            </span>
+            <span className={`testament-score-value ${testamentScores?.nt_questions_answered ? "" : "is-empty"}`}>
+              {testamentScores?.nt_questions_answered ? testamentScores.nt_display_bli : "—"}
+            </span>
+          </div>
+          <div className="testament-score-item is-combined">
+            <span className="testament-score-name">Combined</span>
+            <span className="testament-score-range">
+              {testamentScores?.combined_available ? "OT + NT · 0-1600" : "Available after both assessments · 0-1600"}
+            </span>
+            <span className={`testament-score-value ${testamentScores?.combined_available ? "" : "is-empty"}`}>
+              {testamentScores?.combined_available ? testamentScores.combined_display_bli : "—"}
+            </span>
+          </div>
+        </section>
+
         <div className="score-strip">
           <div className="score-block">
             {assessmentData ? (
@@ -2965,7 +3179,7 @@ export default function HomePage() {
                   onMouseEnter={openBliTooltip}
                   onMouseLeave={closeBliTooltipSoon}
                 >
-                  BLI Score
+                  OT BLI
                   <button
                     type="button"
                     className="bli-info-btn"
@@ -2986,7 +3200,7 @@ export default function HomePage() {
                     onFocus={openBliTooltip}
                     onBlur={closeBliTooltipSoon}
                   >
-                    Your Bible Literacy Index measures your knowledge of the Old Testament across four sections, weighted by the theological importance of each book and passage. Scores range from 0 (Unfamiliar) to 800 (Scholar).
+                    Your OT Bible Literacy Index measures Old Testament knowledge across four sections. The NT BLI is scored separately, and the combined score adds both 0-800 indexes for a total up to 1600.
                     <span>Learn more →</span>
                   </Link>
                 </span>
@@ -2999,7 +3213,7 @@ export default function HomePage() {
                   onMouseEnter={openBliTooltip}
                   onMouseLeave={closeBliTooltipSoon}
                 >
-                  BLI Score
+                  OT BLI
                   <button
                     type="button"
                     className="bli-info-btn"
@@ -3020,7 +3234,7 @@ export default function HomePage() {
                     onFocus={openBliTooltip}
                     onBlur={closeBliTooltipSoon}
                   >
-                    Your Bible Literacy Index measures your knowledge of the Old Testament across four sections, weighted by the theological importance of each book and passage. Scores range from 0 (Unfamiliar) to 800 (Scholar).
+                    Your OT Bible Literacy Index measures Old Testament knowledge across four sections. The NT BLI is scored separately, and the combined score adds both 0-800 indexes for a total up to 1600.
                     <span>Learn more →</span>
                   </Link>
                 </span>
@@ -3103,7 +3317,7 @@ export default function HomePage() {
               </div>
               <div className="progress-latest">
                 {progressHistory[0]?.display_bli ?? "--"}
-                <span>Latest BLI</span>
+                <span>Latest {progressTestament} BLI</span>
               </div>
             </div>
           </div>
@@ -3356,35 +3570,54 @@ export default function HomePage() {
 
         <div className="breakdown-head">
           <p className="section-eyebrow">BLI profile</p>
-          <div className="breakdown-tabs" role="tablist" aria-label="BLI profile breakdown">
-            {[
-              { key: "sections", label: "Sections" },
-              { key: "books", label: "Books" },
-              { key: "domains", label: "Domains" },
-            ].map(tab => (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={activeBreakdownTab === tab.key}
-                className={`breakdown-tab ${activeBreakdownTab === tab.key ? "is-active" : ""}`}
-                onClick={() => setActiveBreakdownTab(tab.key as BreakdownTab)}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="breakdown-controls">
+            <div className="profile-testament-tabs" role="tablist" aria-label="BLI profile testament">
+              {(["OT", "NT"] as const).map(testament => (
+                <button
+                  key={testament}
+                  type="button"
+                  role="tab"
+                  aria-selected={profileTestament === testament}
+                  className={`profile-testament-tab ${profileTestament === testament ? "is-active" : ""}`}
+                  onClick={() => {
+                    setProfileTestament(testament);
+                    setProphetsExpanded(false);
+                  }}
+                >
+                  {testament}
+                </button>
+              ))}
+            </div>
+            <div className="breakdown-tabs" role="tablist" aria-label="BLI profile breakdown">
+              {[
+                { key: "sections", label: "Sections" },
+                { key: "books", label: "Books" },
+                { key: "domains", label: "Domains" },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeBreakdownTab === tab.key}
+                  className={`breakdown-tab ${activeBreakdownTab === tab.key ? "is-active" : ""}`}
+                  onClick={() => setActiveBreakdownTab(tab.key as BreakdownTab)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <p className="breakdown-note">
-          {activeBreakdownTab === "sections" && "Scoped BLI uses the same guess-discounted evidence as the main score, grouped by canon and OT section."}
-          {activeBreakdownTab === "books" && "Book scores are useful once there are several answered questions in that book; low-evidence cards are intentionally muted."}
-          {activeBreakdownTab === "domains" && "Dimensions show the kind of knowledge being tested. Cross Ref unlocks after baseline competence in Torah and Former Prophets."}
+          {activeBreakdownTab === "sections" && `Scoped BLI groups your ${profileTestament === "NT" ? "New" : "Old"} Testament evidence into its major literary sections.`}
+          {activeBreakdownTab === "books" && `${profileTestament} book scores become more reliable after several answered questions; low-evidence cards are intentionally muted.`}
+          {activeBreakdownTab === "domains" && `Dimensions show the kinds of ${profileTestament} knowledge being tested. Cross Ref unlocks after baseline competence in Torah and Former Prophets.`}
         </p>
         {activeBreakdownTab === "domains" ? (() => {
           const center = 160;
           const radius = 104;
           const labelRadius = 152;
-          const scores = scopeScores.domains;
+          const scores = visibleBreakdownScores;
           const pointFor = (index: number, valueRadius: number) => {
             const angle = -Math.PI / 2 + (index / Math.max(scores.length, 1)) * Math.PI * 2;
             return {
@@ -3409,7 +3642,7 @@ export default function HomePage() {
                   {scores.map((score, index) => {
                     const end = pointFor(index, radius);
                     const label = pointFor(index, labelRadius);
-                    const isLockedConnection = score.key === "domain:scripture_connections" && !scriptureConnectionsUnlocked;
+                    const isLockedConnection = score.key.endsWith(":scripture_connections") && !scriptureConnectionsUnlocked;
                     return (
                       <g key={score.key}>
                         <line className="radar-axis" x1={center} y1={center} x2={end.x} y2={end.y} />
@@ -3453,12 +3686,12 @@ export default function HomePage() {
                 <div>
                   <h3 className="domain-radar-title">Knowledge by Dimension</h3>
                   <p className="domain-radar-copy">
-                    This profile shows the kinds of Old Testament knowledge being tested. Cross Ref stays locked until the earlier foundation is stable enough for cross-reference questions.
+                    This profile shows the kinds of {profileTestament === "NT" ? "New" : "Old"} Testament knowledge being tested. Cross Ref stays locked until the earlier foundation is stable enough for cross-reference questions.
                   </p>
                 </div>
                 <div className="domain-radar-list">
                   {scores.map(score => {
-                    const isLockedConnection = score.key === "domain:scripture_connections" && !scriptureConnectionsUnlocked;
+                    const isLockedConnection = score.key.endsWith(":scripture_connections") && !scriptureConnectionsUnlocked;
                     return (
                       <button
                         type="button"
@@ -3498,6 +3731,12 @@ export default function HomePage() {
                 : s.className === "writings" ? "linear-gradient(90deg,#7c3aed,#a78bfa)"
                 : s.className === "prophets" ? "linear-gradient(90deg,#0e8c6a,#2563c4)"
                 : s.className === "ot" ? "linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed)"
+                : s.className === "nt" ? "linear-gradient(90deg,#14b8a6,#2563eb,#7c3aed)"
+                : s.className === "gospels" ? "linear-gradient(90deg,#0d9488,#2dd4bf)"
+                : s.className === "acts" ? "linear-gradient(90deg,#0284c7,#38bdf8)"
+                : s.className === "pauline" ? "linear-gradient(90deg,#4f46e5,#818cf8)"
+                : s.className === "general" ? "linear-gradient(90deg,#7c3aed,#c084fc)"
+                : s.className === "revelation" ? "linear-gradient(90deg,#be123c,#fb7185)"
                 : "linear-gradient(90deg,#0aa3a3,#67e8f9)";
               return (
                 <article

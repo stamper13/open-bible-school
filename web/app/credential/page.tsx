@@ -1,189 +1,691 @@
+"use client";
+
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+
+type AccentKey = "teal" | "gold" | "blue" | "purple";
+type ModuleStatus = "In development" | "Planned";
+
+type RoadmapModule = {
+  id: string;
+  title: string;
+  status: ModuleStatus;
+  accent: AccentKey;
+  description: string;
+  motif: AccentKey;
+};
+
+const ACCENTS: Record<AccentKey, { main: string; soft: string; line: string; glow: string }> = {
+  teal: { main: "#0aa3a3", soft: "rgba(10,163,163,.16)", line: "rgba(10,163,163,.34)", glow: "rgba(10,163,163,.22)" },
+  gold: { main: "#d4a017", soft: "rgba(212,160,23,.16)", line: "rgba(212,160,23,.34)", glow: "rgba(212,160,23,.20)" },
+  blue: { main: "#2563c4", soft: "rgba(37,99,196,.16)", line: "rgba(37,99,196,.34)", glow: "rgba(37,99,196,.22)" },
+  purple: { main: "#7c3aed", soft: "rgba(124,58,237,.16)", line: "rgba(124,58,237,.34)", glow: "rgba(124,58,237,.22)" },
+};
+
+const MODULES: RoadmapModule[] = [
+  {
+    id: "printable-assessments",
+    title: "Printable verification assessments",
+    status: "In development",
+    accent: "teal",
+    motif: "teal",
+    description: "Generate a custom paper assessment targeted at an individual's current level, administer it under supervision, and use the result to verify an online BLI or confirm specific strengths and gaps. The offline half of the two-tier model.",
+  },
+  {
+    id: "biblical-languages",
+    title: "Biblical languages",
+    status: "Planned",
+    accent: "gold",
+    motif: "gold",
+    description: "Hebrew and Greek as a parallel literacy track: alphabet, core vocabulary, morphology, and progressive reading fluency, scored on its own index.",
+  },
+  {
+    id: "church-history",
+    title: "Church history",
+    status: "Planned",
+    accent: "blue",
+    motif: "blue",
+    description: "From the apostolic era to the present: councils, creeds, movements, and the figures who shaped them, assessed with the same denominationally neutral approach.",
+  },
+  {
+    id: "systematic-theology",
+    title: "Systematic theology",
+    status: "Planned",
+    accent: "purple",
+    motif: "purple",
+    description: "Doctrine organized by topic rather than by book, mapping how biblical material coheres into structured theological categories.",
+  },
+];
+
+const TIMELINE_ERAS = ["Apostolic", "Councils", "Reformation", "Present"];
+const GLYPHS = ["א", "Ω", "ש", "β", "ל", "λ"];
+const THEOLOGY_NODES = [
+  { label: "God", x: 150, y: 34 },
+  { label: "Man", x: 254, y: 92 },
+  { label: "Sin", x: 226, y: 186 },
+  { label: "Salvation", x: 74, y: 186 },
+  { label: "Church", x: 46, y: 92 },
+];
+
+function accentVars(key: AccentKey): CSSProperties {
+  const a = ACCENTS[key];
+  return {
+    ["--card-accent" as string]: a.main,
+    ["--card-accent-soft" as string]: a.soft,
+    ["--card-accent-line" as string]: a.line,
+    ["--card-accent-glow" as string]: a.glow,
+  } as CSSProperties;
+}
+
+function CardMotif({ kind }: { kind: AccentKey }) {
+  if (kind === "teal") {
+    return (
+      <div className="card-motif motif-paper" aria-hidden="true">
+        <div className="paper-lines" />
+        <svg className="paper-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </div>
+    );
+  }
+  if (kind === "gold") {
+    return (
+      <div className="card-motif motif-glyphs" aria-hidden="true">
+        {GLYPHS.map((g, i) => (
+          <span key={i} className={`glyph glyph-${i}`}>{g}</span>
+        ))}
+      </div>
+    );
+  }
+  if (kind === "blue") {
+    return (
+      <div className="card-motif motif-timeline" aria-hidden="true">
+        <div className="timeline-line" />
+        {TIMELINE_ERAS.map((era, i) => (
+          <div key={era} className={`timeline-node timeline-node-${i}`}>
+            <span className="timeline-dot" />
+            <span className="timeline-label">{era}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <svg className="card-motif motif-graph" viewBox="0 0 300 220" aria-hidden="true">
+      {THEOLOGY_NODES.map((node, i) => {
+        const next = THEOLOGY_NODES[(i + 1) % THEOLOGY_NODES.length];
+        return <line key={`l-${i}`} x1={node.x} y1={node.y} x2={next.x} y2={next.y} className="graph-line" />;
+      })}
+      {THEOLOGY_NODES.map((node, i) => (
+        <g key={node.label} className={`graph-node graph-node-${i}`}>
+          <circle cx={node.x} cy={node.y} r="5" />
+          <text x={node.x} y={node.y - 12} textAnchor="middle">{node.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
 
 export default function CredentialPage() {
+  const total = MODULES.length;
+  const [index, setIndex] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  const dragStartXRef = useRef(0);
+  const dragStartIndexRef = useRef(0);
+  const pointerIdRef = useRef<number | null>(null);
+  const draggingRef = useRef(false);
+  const dragOffsetRef = useRef(0);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+    const onChange = () => setReducedMotion(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const skipAnimation = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    let raf = 0;
+    let frame = 0;
+
+    const stars = Array.from({ length: 240 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      r: (0.5 + Math.random() * 1.5) * DPR,
+      opacity: 0.35 + Math.random() * 0.55,
+      twinkleSpeed: 0.002 + Math.random() * 0.004,
+      twinkleOffset: Math.random() * Math.PI * 2,
+    }));
+
+    function resize() {
+      if (!canvas) return;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.width = w * DPR;
+      canvas.height = h * DPR;
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    function draw() {
+      if (!canvas || !ctx) return;
+      const w = canvas.width;
+      const h = canvas.height;
+
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, "#0b0f1e");
+      grad.addColorStop(0.5, "#111827");
+      grad.addColorStop(1, "#0d1530");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      const nebulaA = ctx.createRadialGradient(w * 0.78, h * 0.22, 0, w * 0.78, h * 0.22, w * 0.45);
+      nebulaA.addColorStop(0, "rgba(10,163,163,0.07)");
+      nebulaA.addColorStop(1, "transparent");
+      ctx.fillStyle = nebulaA;
+      ctx.fillRect(0, 0, w, h);
+
+      const nebulaB = ctx.createRadialGradient(w * 0.18, h * 0.8, 0, w * 0.18, h * 0.8, w * 0.4);
+      nebulaB.addColorStop(0, "rgba(124,58,237,0.05)");
+      nebulaB.addColorStop(1, "transparent");
+      ctx.fillStyle = nebulaB;
+      ctx.fillRect(0, 0, w, h);
+
+      for (const star of stars) {
+        const twinkle = skipAnimation ? 1 : 0.6 + 0.4 * Math.sin(frame * star.twinkleSpeed + star.twinkleOffset);
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(255,255,255,${star.opacity * twinkle})`;
+        ctx.arc(star.x * w, star.y * h, star.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      frame++;
+      if (!skipAnimation) raf = requestAnimationFrame(draw);
+    }
+    draw();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+
+  const goTo = useCallback((next: number) => {
+    setIndex(Math.max(0, Math.min(total - 1, next)));
+  }, [total]);
+  const goPrev = useCallback(() => setIndex(i => Math.max(0, i - 1)), []);
+  const goNext = useCallback(() => setIndex(i => Math.min(total - 1, i + 1)), [total]);
+
+  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
+  }, [goNext, goPrev]);
+
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    draggingRef.current = true;
+    dragOffsetRef.current = 0;
+    dragStartXRef.current = e.clientX;
+    dragStartIndexRef.current = index;
+    pointerIdRef.current = e.pointerId;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setIsDragging(true);
+  }, [index]);
+
+  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current || pointerIdRef.current !== e.pointerId) return;
+    const delta = e.clientX - dragStartXRef.current;
+    const atStart = dragStartIndexRef.current === 0 && delta > 0;
+    const atEnd = dragStartIndexRef.current === total - 1 && delta < 0;
+    const offset = atStart || atEnd ? delta * 0.35 : delta;
+    dragOffsetRef.current = offset;
+    setDragOffset(offset);
+  }, [total]);
+
+  const finishDrag = useCallback(() => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    const width = viewportRef.current?.offsetWidth ?? window.innerWidth;
+    const threshold = Math.max(40, width * 0.15);
+    const offset = dragOffsetRef.current;
+    if (offset <= -threshold) goTo(dragStartIndexRef.current + 1);
+    else if (offset >= threshold) goTo(dragStartIndexRef.current - 1);
+    dragOffsetRef.current = 0;
+    pointerIdRef.current = null;
+    setIsDragging(false);
+    setDragOffset(0);
+  }, [goTo]);
+
+  useEffect(() => {
+    if (!contactOpen) return;
+    firstFieldRef.current?.focus();
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setContactOpen(false); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [contactOpen]);
+
+  const submitContact = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    const name = String(data.get("name") ?? "").trim();
+    const reason = String(data.get("reason") ?? "").trim();
+    const message = String(data.get("message") ?? "").trim();
+    const subject = `Open Bible Assessment — ${reason}`;
+    const body = `${message}\n\n— ${name}`;
+    window.location.href = `mailto:adstamper35@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    setContactOpen(false);
+  }, []);
+
+  const trackStyle: CSSProperties = useMemo(() => ({
+    transform: `translate3d(calc(-${index * 100}% + ${dragOffset}px), 0, 0)`,
+    transition: isDragging || reducedMotion ? "none" : "transform 560ms cubic-bezier(0.34, 1.42, 0.64, 1)",
+  }), [dragOffset, index, isDragging, reducedMotion]);
+
+  const activeModule = MODULES[index];
+
   return (
     <>
       <style>{`
         :root {
-          --ink: #0e1116; --muted: #566070; --navy: #1b2442;
-          --accent: #0aa3a3; --accent-dim: rgba(10,163,163,.10);
-          --accent-line: rgba(10,163,163,.22); --bg: #f6f8fb;
-          --card: rgba(255,255,255,.86); --border: rgba(27,36,66,.09);
-          --shadow: 0 22px 58px rgba(18,30,54,.13), 0 4px 14px rgba(18,30,54,.06);
-          --shadow-sm: 0 6px 20px rgba(18,30,54,.09);
-          --beta: #7c3aed; --beta-bg: #f5f3ff; --beta-line: rgba(124,58,237,.18);
+          --navy: #1b2442; --accent: #0aa3a3; --muted: #566070;
+          --accent-dim: rgba(10,163,163,.10); --accent-line: rgba(10,163,163,.22);
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html { font-size: 16px; scroll-behavior: smooth; }
         body {
-          font-family: "Inter", system-ui, -apple-system, sans-serif;
-          color: var(--ink); background-color: var(--bg);
-          background-image:
-            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='820' height='820'%3E%3Cg fill='none'%3E%3Cpath stroke='%231b2442' stroke-opacity='.038' d='M0 20H820M0 40H820M0 60H820M0 80H820M0 100H820M20 0V820M40 0V820M60 0V820M80 0V820M100 0V820'/%3E%3Cpath stroke='%231b2442' stroke-opacity='.07' stroke-width='1.2' d='M0 100H820M0 200H820M0 300H820M100 0V820M200 0V820M300 0V820M400 0V820M500 0V820'/%3E%3C/g%3E%3C/svg%3E"),
-            linear-gradient(180deg, #f9fafc 0%, #f0f4fb 100%);
-          background-repeat: repeat; background-size: 820px 820px, 100% 100%;
-          min-height: 100vh;
+          font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+          color: #fff; background: #0b0f1e; min-height: 100vh; overflow-x: hidden;
         }
+        canvas.stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
         .beta-banner {
-          background: var(--beta-bg); border-bottom: 1px solid var(--beta-line);
+          position: relative; z-index: 1;
+          background: rgba(124,58,237,.12); border-bottom: 1px solid rgba(124,58,237,.28);
           padding: 9px 32px; display: flex; align-items: center; justify-content: center;
-          gap: 10px; font-size: 13px; color: var(--beta); text-align: center;
+          gap: 10px; font-size: 13px; color: #d8c7fb; text-align: center;
         }
         .beta-badge {
           font-size: 10px; font-weight: 800; letter-spacing: .08em;
-          text-transform: uppercase; background: var(--beta);
+          text-transform: uppercase; background: #7c3aed;
           color: #fff; padding: 2px 7px; border-radius: 4px; flex-shrink: 0;
         }
+
         .nav {
           position: sticky; top: 0; z-index: 20;
           display: flex; align-items: center; justify-content: space-between;
-          padding: 13px 32px; background: rgba(249,250,252,.90);
-          backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
+          padding: 13px 32px; background: rgba(11,15,30,.85);
+          backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.08);
         }
         .nav-brand {
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-weight: 600; font-size: 18px;
-          color: var(--navy); text-decoration: none; letter-spacing: .01em;
+          color: #fff; text-decoration: none; letter-spacing: .01em;
         }
         .nav-links { display: flex; align-items: center; gap: 6px; }
         .nav-link {
           padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500;
-          color: var(--muted); text-decoration: none; transition: color .14s, background .14s;
+          color: rgba(255,255,255,.6); text-decoration: none; transition: color .14s, background .14s;
         }
-        .nav-link:hover { color: var(--navy); background: rgba(27,36,66,.05); }
+        .nav-link:hover { color: #fff; background: rgba(255,255,255,.08); }
         .nav-btn {
           display: flex; align-items: center; gap: 7px; padding: 8px 18px; border-radius: 999px;
-          font-size: 13px; font-weight: 600; background: var(--navy); color: #fff;
+          font-size: 13px; font-weight: 600; background: rgba(255,255,255,.92); color: var(--navy);
           text-decoration: none; border: none; cursor: pointer;
-          box-shadow: 0 4px 14px rgba(27,36,66,.22); transition: background .15s, transform .13s;
+          box-shadow: 0 4px 14px rgba(0,0,0,.3); transition: background .15s, transform .13s;
         }
-        .nav-btn:hover { background: #253566; transform: translateY(-1px); }
-        .page { max-width: 860px; margin: 0 auto; padding: 56px 24px 96px; }
-        .hero { margin-bottom: 60px; }
+        .nav-btn:hover { background: #fff; transform: translateY(-1px); }
+        .nav-link:focus-visible, .nav-btn:focus-visible, .nav-brand:focus-visible {
+          outline: 2px solid rgba(255,255,255,.65); outline-offset: 3px; border-radius: 6px;
+        }
+
+        .page { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 56px 24px 96px; }
+
+        .hero { margin-bottom: 52px; max-width: 640px; }
         .hero-eyebrow {
           display: inline-flex; align-items: center; gap: 7px;
           background: var(--accent-dim); border: 1px solid var(--accent-line);
           border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 700;
-          letter-spacing: .06em; text-transform: uppercase; color: #0a6e6e; margin-bottom: 20px;
+          letter-spacing: .06em; text-transform: uppercase; color: #6fe0e0; margin-bottom: 20px;
         }
         .hero-eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
         .hero-heading {
-          font-family: "Crimson Pro", Georgia, serif;
-          font-size: clamp(30px, 4.5vw, 46px); font-weight: 600; line-height: 1.12;
-          color: var(--navy); letter-spacing: .005em; margin-bottom: 18px;
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: clamp(28px, 4.5vw, 44px); font-weight: 600; line-height: 1.14;
+          color: #fff; letter-spacing: .005em; margin-bottom: 18px;
         }
-        .hero-lead { font-size: 16.5px; line-height: 1.75; color: var(--muted); max-width: 580px; margin-bottom: 28px; }
+        .hero-lead { font-size: 16px; line-height: 1.75; color: rgba(255,255,255,.62); margin-bottom: 24px; }
         .hero-note {
-          display: inline-flex; align-items: center; gap: 8px;
-          background: var(--beta-bg); border: 1px solid var(--beta-line);
-          border-radius: 10px; padding: 10px 16px; font-size: 13px; color: #4c1d95; line-height: 1.5;
+          display: flex; align-items: flex-start; gap: 8px;
+          background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+          border-radius: 10px; padding: 12px 16px; font-size: 13px; color: rgba(255,255,255,.68); line-height: 1.55;
         }
+        .hero-note svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; color: var(--accent); }
+
         .section-eyebrow {
           font-size: 11px; font-weight: 700; letter-spacing: .10em;
-          text-transform: uppercase; color: var(--muted); margin-bottom: 16px; margin-top: 52px;
+          text-transform: uppercase; color: rgba(255,255,255,.45); margin-bottom: 16px;
         }
-        .products-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 52px; }
-        .product-card {
-          background: var(--card); border: 1px solid var(--border);
-          border-radius: 20px; padding: 32px 28px; box-shadow: var(--shadow);
-          backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 16px;
+
+        .focus-card {
           position: relative; overflow: hidden;
+          border: 1px solid var(--accent-line); border-radius: 18px;
+          background:
+            radial-gradient(circle at 8% 12%, rgba(10,163,163,.16), transparent 46%),
+            linear-gradient(150deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+          backdrop-filter: blur(14px);
+          padding: 26px 28px; margin-bottom: 46px;
+          box-shadow: 0 18px 44px rgba(0,0,0,.34);
         }
-        .product-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
-        .product-card.full::before { background: linear-gradient(90deg, var(--accent), #2dc9c9); }
-        .product-card.custom::before { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
-        .product-icon {
-          width: 48px; height: 48px; border-radius: 14px;
-          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        .focus-kicker {
+          display: inline-flex; align-items: center; gap: 8px;
+          font-size: 11px; font-weight: 850; letter-spacing: .11em;
+          text-transform: uppercase; color: #6fe0e0; margin-bottom: 11px;
         }
-        .product-card.full .product-icon { background: var(--accent-dim); border: 1px solid var(--accent-line); }
-        .product-card.custom .product-icon { background: var(--beta-bg); border: 1px solid var(--beta-line); }
-        .product-card.full .product-icon svg { color: var(--accent); }
-        .product-card.custom .product-icon svg { color: var(--beta); }
-        .product-icon svg { width: 22px; height: 22px; }
-        .product-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-        .product-card.full .product-label { color: var(--accent); }
-        .product-card.custom .product-label { color: var(--beta); }
-        .product-title { font-family: "Crimson Pro", Georgia, serif; font-size: 22px; font-weight: 600; color: var(--navy); line-height: 1.2; margin-bottom: 2px; }
-        .product-desc { font-size: 14px; line-height: 1.7; color: var(--muted); flex: 1; }
-        .product-features { display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-top: 1px solid var(--border); }
-        .feature-row { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: #3a4455; line-height: 1.5; }
-        .feature-row svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
-        .product-card.full .feature-row svg { color: var(--accent); }
-        .product-card.custom .feature-row svg { color: var(--beta); }
-        .product-btn {
-          display: flex; align-items: center; justify-content: center; gap: 8px;
-          padding: 12px 20px; border-radius: 999px; font-size: 14px; font-weight: 600;
-          border: none; cursor: pointer; text-decoration: none;
-          transition: transform .13s, box-shadow .15s, background .15s;
+        .focus-dot {
+          width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+          box-shadow: 0 0 0 4px rgba(10,163,163,.18);
+          animation: statusPulse 1.8s ease-in-out infinite;
         }
-        .product-btn:hover { transform: translateY(-1px); }
-        .product-card.full .product-btn { background: var(--navy); color: #fff; box-shadow: 0 8px 22px rgba(27,36,66,.22); }
-        .product-card.full .product-btn:hover { background: #253566; }
-        .product-card.custom .product-btn { background: var(--beta); color: #fff; box-shadow: 0 8px 22px rgba(124,58,237,.22); }
-        .product-card.custom .product-btn:hover { background: #6d28d9; }
-        .product-btn svg { width: 16px; height: 16px; }
-        .product-coming {
-          display: flex; align-items: center; justify-content: center; gap: 7px;
-          padding: 12px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
-          color: var(--muted); background: rgba(27,36,66,.05); border: 1px solid var(--border);
+        .focus-title {
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: clamp(20px, 2.6vw, 25px); font-weight: 600; line-height: 1.2;
+          color: #fff; margin-bottom: 10px;
         }
-        .product-coming svg { width: 15px; height: 15px; }
-        .how-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 52px; }
-        .how-col-title {
-          font-family: "Crimson Pro", Georgia, serif; font-size: 18px; font-weight: 600;
-          color: var(--navy); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
+        .focus-copy { font-size: 14.5px; line-height: 1.72; color: rgba(255,255,255,.66); max-width: 620px; }
+
+        /* Carousel */
+        .carousel {
+          position: relative;
+          border-radius: 24px;
+          outline: none;
         }
-        .how-col-badge { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
-        .how-col-badge.full { background: var(--accent-dim); color: #0a6e6e; }
-        .how-col-badge.custom { background: var(--beta-bg); color: var(--beta); }
-        .steps { display: flex; flex-direction: column; gap: 0; }
-        .step { display: flex; gap: 14px; padding-bottom: 20px; position: relative; }
-        .step:last-child { padding-bottom: 0; }
-        .step-line { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-        .step-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-        .how-col.full .step-num { background: var(--accent-dim); color: #0a6e6e; border: 1px solid var(--accent-line); }
-        .how-col.custom .step-num { background: var(--beta-bg); color: var(--beta); border: 1px solid var(--beta-line); }
-        .step-connector { width: 1px; flex: 1; margin-top: 4px; background: var(--border); min-height: 16px; }
-        .step:last-child .step-connector { display: none; }
-        .step-body { padding-top: 4px; }
-        .step-title { font-size: 13.5px; font-weight: 650; color: var(--navy); margin-bottom: 3px; }
-        .step-desc { font-size: 13px; line-height: 1.6; color: var(--muted); }
+        .carousel:focus-visible { outline: 2px solid rgba(255,255,255,.55); outline-offset: 6px; }
+        .carousel-viewport {
+          overflow: hidden; border-radius: 24px; touch-action: pan-y; cursor: grab;
+        }
+        .carousel-viewport.is-dragging { cursor: grabbing; }
+        .carousel-track {
+          display: flex; width: 100%; will-change: transform;
+          user-select: none; -webkit-user-select: none;
+        }
+
+        .module-card {
+          flex: 0 0 100%; position: relative; overflow: hidden;
+          min-height: 420px; padding: 36px 30px 32px;
+          border-radius: 24px;
+          border: 1px solid var(--card-accent-line, rgba(255,255,255,.14));
+          background:
+            radial-gradient(circle at 12% 8%, var(--card-accent-glow, transparent), transparent 42%),
+            linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+          backdrop-filter: blur(18px);
+          box-shadow: 0 26px 60px rgba(0,0,0,.42), inset 0 0 60px rgba(255,255,255,.02);
+          display: flex; flex-direction: column; gap: 18px;
+        }
+        .module-card::before {
+          content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+          background: linear-gradient(90deg, transparent, var(--card-accent, var(--accent)), transparent);
+        }
+        .module-number {
+          font-family: var(--font-crimson), Georgia, serif; font-size: 13px; font-weight: 600;
+          letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.4);
+        }
+        .status-pill {
+          position: relative; z-index: 1;
+          display: inline-flex; align-items: center; gap: 7px; width: fit-content;
+          padding: 6px 13px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+          letter-spacing: .07em; text-transform: uppercase;
+        }
+        .status-pill.status-progress {
+          background: var(--card-accent-soft); border: 1px solid var(--card-accent-line);
+          color: var(--card-accent);
+        }
+        .status-pill.status-planned {
+          background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+          color: rgba(255,255,255,.75);
+        }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+        .status-pill.status-progress .status-dot { animation: statusPulse 1.8s ease-in-out infinite; }
+        @keyframes statusPulse {
+          0%, 100% { box-shadow: 0 0 0 0 var(--card-accent-soft); opacity: 1; }
+          50% { box-shadow: 0 0 0 5px transparent; opacity: .65; }
+        }
+
+        .module-title {
+          position: relative; z-index: 1;
+          font-family: var(--font-crimson), Georgia, serif; font-weight: 600;
+          font-size: clamp(24px, 3.4vw, 32px); line-height: 1.16; color: #fff;
+        }
+        .module-desc {
+          position: relative; z-index: 1;
+          font-size: 15px; line-height: 1.75; color: rgba(255,255,255,.68); max-width: 480px;
+        }
+
+        /* Decorative motifs */
+        .card-motif { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+
+        .motif-paper .paper-lines {
+          position: absolute; inset: 14% -10% auto 40%; height: 70%;
+          background-image: repeating-linear-gradient(to bottom, var(--card-accent-line) 0px, var(--card-accent-line) 1.5px, transparent 1.5px, transparent 25px);
+          opacity: .55; transform: rotate(-4deg);
+        }
+        .paper-check {
+          position: absolute; right: 9%; bottom: 10%; width: 120px; height: 120px;
+          color: var(--card-accent); opacity: .14; stroke-width: 1.4;
+        }
+
+        .motif-glyphs .glyph {
+          position: absolute; font-family: var(--font-crimson), Georgia, serif;
+          color: var(--card-accent); opacity: .16; font-weight: 600;
+          animation: glyphFloat 7s ease-in-out infinite;
+        }
+        .glyph-0 { top: 8%; right: 12%; font-size: 92px; animation-delay: 0s; }
+        .glyph-1 { top: 42%; right: 30%; font-size: 56px; animation-delay: .8s; }
+        .glyph-2 { top: 58%; right: 6%; font-size: 68px; animation-delay: 1.6s; }
+        .glyph-3 { top: 4%; right: 38%; font-size: 44px; animation-delay: 2.4s; }
+        .glyph-4 { top: 74%; right: 42%; font-size: 50px; animation-delay: 3.1s; }
+        .glyph-5 { top: 24%; right: 2%; font-size: 40px; animation-delay: 1.1s; }
+        @keyframes glyphFloat {
+          0%, 100% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(-14px) rotate(3deg); }
+        }
+
+        .motif-timeline { display: flex; align-items: center; justify-content: flex-end; padding: 0 8% 0 30%; }
+        .timeline-line { position: absolute; right: 8%; top: 50%; width: 60%; height: 1px; background: var(--card-accent-line); }
+        .timeline-node {
+          position: absolute; top: 50%; display: flex; flex-direction: column; align-items: center; gap: 8px;
+          transform: translate(50%, -50%);
+        }
+        .timeline-node-0 { right: 62%; } .timeline-node-1 { right: 42%; } .timeline-node-2 { right: 22%; } .timeline-node-3 { right: 6%; }
+        .timeline-dot {
+          width: 11px; height: 11px; border-radius: 50%; background: var(--card-accent);
+          box-shadow: 0 0 0 4px var(--card-accent-soft);
+          animation: timelineGlow 3.4s ease-in-out infinite;
+        }
+        .timeline-node-1 .timeline-dot { animation-delay: .5s; }
+        .timeline-node-2 .timeline-dot { animation-delay: 1s; }
+        .timeline-node-3 .timeline-dot { animation-delay: 1.5s; }
+        @keyframes timelineGlow {
+          0%, 100% { opacity: .55; } 50% { opacity: 1; }
+        }
+        .timeline-label {
+          font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+          color: rgba(255,255,255,.34); white-space: nowrap;
+        }
+
+        .motif-graph { position: absolute; right: -4%; top: -6%; width: 78%; height: 100%; opacity: .8; }
+        .graph-line { stroke: var(--card-accent-line); stroke-width: 1; }
+        .graph-node circle { fill: var(--card-accent); opacity: .5; animation: nodePulse 3.6s ease-in-out infinite; }
+        .graph-node text {
+          fill: rgba(255,255,255,.3); font-size: 9px; font-weight: 700;
+          letter-spacing: .04em; text-transform: uppercase;
+        }
+        .graph-node-1 circle, .graph-node-1 { animation-delay: .4s; }
+        .graph-node-2 circle { animation-delay: .8s; }
+        .graph-node-3 circle { animation-delay: 1.2s; }
+        .graph-node-4 circle { animation-delay: 1.6s; }
+        @keyframes nodePulse { 0%, 100% { opacity: .35; } 50% { opacity: .85; } }
+
+        /* Controls */
+        .carousel-controls {
+          display: flex; align-items: center; justify-content: center; gap: 20px;
+          margin-top: 26px;
+        }
+        .carousel-btn {
+          display: flex; align-items: center; justify-content: center;
+          width: 42px; height: 42px; border-radius: 50%;
+          background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16);
+          color: #fff; cursor: pointer; transition: background .15s, transform .13s, opacity .15s;
+        }
+        .carousel-btn svg { width: 18px; height: 18px; }
+        .carousel-btn:hover:not(:disabled) { background: rgba(255,255,255,.14); transform: translateY(-1px); }
+        .carousel-btn:disabled { opacity: .3; cursor: not-allowed; }
+        .carousel-btn:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 3px; }
+
+        .carousel-dots { display: flex; align-items: center; gap: 10px; }
+        .carousel-dot {
+          width: 10px; height: 10px; border-radius: 50%; padding: 0;
+          background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.24);
+          cursor: pointer; transition: background .15s, transform .15s, width .2s;
+        }
+        .carousel-dot:hover { background: rgba(255,255,255,.35); }
+        .carousel-dot.is-active { background: var(--dot-accent, #fff); width: 26px; border-radius: 999px; border-color: transparent; }
+        .carousel-dot:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 3px; }
+
+        .sr-only {
+          position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+          overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+        }
+
         .contact-strip {
-          background: linear-gradient(135deg, #1b2442 0%, #243060 100%);
+          margin-top: 60px;
+          background: linear-gradient(135deg, rgba(27,36,66,.7) 0%, rgba(36,48,96,.7) 100%);
+          border: 1px solid rgba(255,255,255,.12);
           border-radius: 20px; padding: 36px 40px;
           display: flex; align-items: center; justify-content: space-between;
-          gap: 24px; flex-wrap: wrap; position: relative; overflow: hidden;
+          gap: 24px; flex-wrap: wrap; backdrop-filter: blur(14px);
         }
-        .contact-strip::before {
-          content: ""; position: absolute; inset: 0;
-          background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200'%3E%3Cg fill='none' stroke='white' stroke-opacity='.04'%3E%3Cpath d='M0 40H400M0 80H400M0 120H400M40 0V200M80 0V200M120 0V200M160 0V200M200 0V200M240 0V200M280 0V200M320 0V200M360 0V200'/%3E%3C/g%3E%3C/svg%3E");
-          background-repeat: repeat; background-size: 400px 200px; pointer-events: none;
-        }
-        .contact-strip > * { position: relative; }
-        .contact-heading { font-family: "Crimson Pro", Georgia, serif; font-size: 22px; font-weight: 600; color: #fff; margin-bottom: 8px; line-height: 1.2; }
-        .contact-desc { font-size: 14px; line-height: 1.65; color: rgba(255,255,255,.65); max-width: 420px; }
+        .contact-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 21px; font-weight: 600; color: #fff; margin-bottom: 8px; line-height: 1.2; }
+        .contact-desc { font-size: 14px; line-height: 1.65; color: rgba(255,255,255,.6); max-width: 420px; }
         .contact-btn {
           display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 999px;
           background: var(--accent); color: #fff; font-size: 14px; font-weight: 600;
           text-decoration: none; white-space: nowrap; flex-shrink: 0;
           box-shadow: 0 6px 20px rgba(10,163,163,.40); transition: background .15s, transform .13s;
         }
+        .contact-btn { border: none; cursor: pointer; font-family: inherit; }
+        .contact-btn svg { width: 16px; height: 16px; }
         .contact-btn:hover { background: #089090; transform: translateY(-1px); }
+        .contact-btn:focus-visible { outline: 2px solid rgba(255,255,255,.65); outline-offset: 3px; }
+
+        /* Contact modal */
+        .modal-backdrop {
+          position: fixed; inset: 0; z-index: 60;
+          background: rgba(6,9,20,.72); backdrop-filter: blur(6px);
+          display: flex; align-items: center; justify-content: center; padding: 20px;
+          animation: fadeIn .18s ease both;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .modal {
+          position: relative; width: 100%; max-width: 460px;
+          max-height: calc(100vh - 40px); overflow-y: auto;
+          background: linear-gradient(160deg, rgba(24,32,58,.98), rgba(16,22,42,.98));
+          border: 1px solid rgba(255,255,255,.14); border-radius: 20px;
+          padding: 30px 28px 26px;
+          box-shadow: 0 30px 80px rgba(0,0,0,.6);
+          animation: modalIn .24s cubic-bezier(.22,1.2,.4,1) both;
+        }
+        @keyframes modalIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+        .modal-close {
+          position: absolute; top: 14px; right: 14px;
+          width: 32px; height: 32px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
+          color: rgba(255,255,255,.7); cursor: pointer; transition: background .15s, color .15s;
+        }
+        .modal-close svg { width: 15px; height: 15px; }
+        .modal-close:hover { background: rgba(255,255,255,.14); color: #fff; }
+        .modal-title {
+          font-family: var(--font-crimson), Georgia, serif; font-size: 25px;
+          font-weight: 600; color: #fff; margin-bottom: 7px; padding-right: 36px;
+        }
+        .modal-sub { font-size: 13px; line-height: 1.6; color: rgba(255,255,255,.55); margin-bottom: 20px; }
+        .modal-form { display: flex; flex-direction: column; gap: 15px; }
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        .field span {
+          font-size: 11px; font-weight: 800; letter-spacing: .09em;
+          text-transform: uppercase; color: rgba(255,255,255,.5);
+        }
+        .field input, .field select, .field textarea {
+          width: 100%; padding: 11px 13px; border-radius: 10px;
+          background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16);
+          color: #fff; font-family: inherit; font-size: 14.5px; line-height: 1.5;
+          outline: none; transition: border-color .15s, background .15s;
+        }
+        .field textarea { resize: vertical; min-height: 96px; }
+        .field select option { background: #131a30; color: #fff; }
+        .field input:focus, .field select:focus, .field textarea:focus {
+          border-color: var(--accent); background: rgba(255,255,255,.09);
+          box-shadow: 0 0 0 3px rgba(10,163,163,.18);
+        }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+        .btn-ghost, .btn-send {
+          padding: 11px 20px; border-radius: 999px; font-family: inherit;
+          font-size: 14px; font-weight: 650; cursor: pointer; transition: background .15s, transform .13s;
+        }
+        .btn-ghost {
+          background: transparent; border: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.7);
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,.08); color: #fff; }
+        .btn-send {
+          background: var(--accent); border: none; color: #fff;
+          box-shadow: 0 6px 20px rgba(10,163,163,.4);
+        }
+        .btn-send:hover { background: #089090; transform: translateY(-1px); }
+        .modal-close:focus-visible, .btn-ghost:focus-visible, .btn-send:focus-visible {
+          outline: 2px solid rgba(255,255,255,.7); outline-offset: 3px;
+        }
+
         @media (max-width: 640px) {
-          .products-grid { grid-template-columns: 1fr; }
-          .how-grid { grid-template-columns: 1fr; gap: 40px; }
-          .contact-strip { padding: 28px 24px; flex-direction: column; }
           .nav { padding: 13px 16px; }
           .nav-links .nav-link { display: none; }
           .page { padding: 36px 16px 72px; }
           .beta-banner { padding: 9px 16px; font-size: 12px; }
+          .module-card { min-height: 380px; padding: 28px 20px 26px; }
+          .module-desc { max-width: 100%; }
+          .contact-strip { padding: 26px 22px; flex-direction: column; align-items: flex-start; }
+          .motif-glyphs .glyph { opacity: .12; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: 0.001ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.001ms !important;
+          }
         }
       `}</style>
 
+      <canvas ref={canvasRef} className="stars" aria-hidden="true" />
+
       <div className="beta-banner">
-        <span className="beta-badge">Beta</span>
-        The verified assessment for church credentialing is a planned feature — not yet available. Get in touch to be notified when it launches.
+        <span className="beta-badge">Ideas</span>
+        Nothing on this page exists yet. These are future goals, not features you can use.
       </div>
 
       <nav className="nav">
@@ -197,126 +699,161 @@ export default function CredentialPage() {
 
       <main className="page">
         <header className="hero">
-          <div className="hero-eyebrow">For churches &amp; sessions</div>
-          <h1 className="hero-heading">An objective measure of<br/>Scripture content knowledge</h1>
+          <div className="hero-eyebrow">Future ideas</div>
+          <h1 className="hero-heading">Where this could go next</h1>
           <p className="hero-lead">
-            Seminary grades and an MDiv are imperfect proxies for biblical literacy. Open Bible Assessment provides an independent, objective baseline — available to any candidate regardless of how or where they were trained.
+            Open Bible Assessment measures Old and New Testament content knowledge today. The four modules below are
+            goals, not commitments — directions worth taking the same independent, denominationally neutral approach,
+            if there&apos;s time and help to build them. None of them exist yet, and none are on a schedule.
           </p>
           <div className="hero-note">
-            This feature is in development. The assessments below are not yet functional — this page shows what is being built.
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Open Bible Assessment is free, and anything that comes out of this list will stay free. Swipe or use the
+            arrows to look through the ideas.
           </div>
         </header>
 
-        <p className="section-eyebrow">Two assessment options</p>
-        <div className="products-grid">
-          <div className="product-card full">
-            <div>
-              <p className="product-label">Option A</p>
-              <h2 className="product-title">Standard Assessment</h2>
-            </div>
-            <div className="product-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-              </svg>
-            </div>
-            <p className="product-desc">A fixed 35-question printed exam covering the most significant events across the Old Testament. No candidate account required. Each generation produces a slightly different question set.</p>
-            <div className="product-features">
-              {["No candidate account needed", "Randomised question set each time", "Prints as exam + separate answer key", "Space for candidate name — filled in by hand"].map(f => (
-                <div key={f} className="feature-row">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  {f}
-                </div>
-              ))}
-            </div>
-            <a className="product-btn" href="#">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Generate &amp; Print
-            </a>
-          </div>
+        <section className="focus-card" aria-labelledby="focus-title">
+          <span className="focus-kicker">
+            <span className="focus-dot" />
+            Current focus
+          </span>
+          <h2 className="focus-title" id="focus-title">Getting the BLI right comes first</h2>
+          <p className="focus-copy">
+            Before any of this gets built, the priority is making the existing Biblical Literacy Index — Old and New
+            Testament — genuinely reliable: fixing and improving the question bank, and making sure scores mean what
+            they claim to mean. Everything below waits until that&apos;s solid.
+          </p>
+        </section>
 
-          <div className="product-card custom">
-            <div>
-              <p className="product-label">Option B</p>
-              <h2 className="product-title">Verified Assessment</h2>
-            </div>
-            <div className="product-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-            </div>
-            <p className="product-desc">A custom exam generated from the candidate&apos;s BLI profile. Requires a candidate account. The exam link goes to the elder, not the candidate.</p>
-            <div className="product-features">
-              {["Candidate requests — elder receives the exam link", "Tailored to the candidate's claimed BLI profile", "Elder inputs results — verified report generated", "Unique exam ID · 30-day link expiry"].map(f => (
-                <div key={f} className="feature-row">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  {f}
-                </div>
-              ))}
-            </div>
-            <div className="product-coming">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Coming soon — requires account
-            </div>
-          </div>
-        </div>
+        <p className="section-eyebrow">Ideas — {index + 1} of {total}</p>
 
-        <p className="section-eyebrow">How each option works</p>
-        <div className="how-grid">
-          <div className="how-col full">
-            <h3 className="how-col-title">Standard Assessment <span className="how-col-badge full">Option A</span></h3>
-            <div className="steps">
-              {[
-                { t: "Generate the exam", d: "Click Generate & Print. The site selects 35 questions at random from the Tier 1 question bank, shuffling choice order to produce a unique set." },
-                { t: "Print exam and key", d: "The PDF contains the exam and a separate answer key. Print both — give the candidate the exam, keep the key." },
-                { t: "Candidate completes exam", d: "The candidate writes their name on the exam and answers the questions on paper. No internet access required." },
-                { t: "Grade against the key", d: "Mark the exam using the answer key. The score speaks for itself." },
-              ].map((s, i) => (
-                <div key={i} className="step">
-                  <div className="step-line">
-                    <div className="step-num">{i + 1}</div>
-                    <div className="step-connector" />
-                  </div>
-                  <div className="step-body">
-                    <p className="step-title">{s.t}</p>
-                    <p className="step-desc">{s.d}</p>
-                  </div>
+        <div
+          className="carousel"
+          role="region"
+          aria-roledescription="carousel"
+          aria-label="Planned modules roadmap"
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+        >
+          <div
+            className={`carousel-viewport${isDragging ? " is-dragging" : ""}`}
+            ref={viewportRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={finishDrag}
+            onPointerCancel={finishDrag}
+            onPointerLeave={(e) => { if (isDragging && pointerIdRef.current === e.pointerId) finishDrag(); }}
+          >
+            <div className="carousel-track" style={trackStyle}>
+              {MODULES.map((mod, i) => (
+                <div
+                  key={mod.id}
+                  className="module-card"
+                  style={accentVars(mod.accent)}
+                  role="group"
+                  aria-roledescription="slide"
+                  aria-label={`Module ${i + 1} of ${total}: ${mod.title}`}
+                  aria-hidden={i !== index}
+                >
+                  <CardMotif kind={mod.motif} />
+                  <span className="module-number">Module {i + 1} of {total}</span>
+                  <span className={`status-pill ${mod.status === "In development" ? "status-progress" : "status-planned"}`}>
+                    <span className="status-dot" />
+                    {mod.status}
+                  </span>
+                  <h2 className="module-title">{mod.title}</h2>
+                  <p className="module-desc">{mod.description}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="how-col custom">
-            <h3 className="how-col-title">Verified Assessment <span className="how-col-badge custom">Option B</span></h3>
-            <div className="steps">
-              {[
-                { t: "Candidate requests exam", d: "The candidate logs in to their Open Bible Assessment account and requests a verified assessment, entering the elder's email address." },
-                { t: "Elder receives secure link", d: "The elder receives an email with a secure link valid for 30 days. The candidate never sees this link." },
-                { t: "Candidate takes paper exam", d: "The elder administers the printed exam independently. The candidate answers on paper with no access to the site." },
-                { t: "Elder submits results", d: "Using a second link in the same email, the elder enters section-level scores. The site generates a verified BLI report." },
-              ].map((s, i) => (
-                <div key={i} className="step">
-                  <div className="step-line">
-                    <div className="step-num">{i + 1}</div>
-                    <div className="step-connector" />
-                  </div>
-                  <div className="step-body">
-                    <p className="step-title">{s.t}</p>
-                    <p className="step-desc">{s.d}</p>
-                  </div>
-                </div>
+          <div className="carousel-controls">
+            <button type="button" className="carousel-btn" onClick={goPrev} disabled={index === 0} aria-label="Previous module">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div className="carousel-dots" role="tablist" aria-label="Choose a module">
+              {MODULES.map((mod, i) => (
+                <button
+                  key={mod.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === index}
+                  aria-label={`Go to module ${i + 1}: ${mod.title}`}
+                  className={`carousel-dot${i === index ? " is-active" : ""}`}
+                  style={{ ["--dot-accent" as string]: ACCENTS[mod.accent].main } as CSSProperties}
+                  onClick={() => goTo(i)}
+                />
               ))}
             </div>
+            <button type="button" className="carousel-btn" onClick={goNext} disabled={index === total - 1} aria-label="Next module">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
           </div>
+
+          <p className="sr-only" role="status" aria-live="polite">
+            Module {index + 1} of {total}: {activeModule.title}, {activeModule.status}.
+          </p>
         </div>
 
         <div className="contact-strip">
           <div>
-            <h2 className="contact-heading">Interested in using Open Bible Assessment for your church?</h2>
-            <p className="contact-desc">If you are a church leader, elder, or session clerk interested in the verified assessment feature when it launches, get in touch.</p>
+            <h2 className="contact-heading">Free now, free later</h2>
+            <p className="contact-desc">
+              Open Bible Assessment is free and will stay that way. It&apos;s a small effort, so these ideas move
+              faster with help — if you have feedback, or want to volunteer on any of them, say hello.
+            </p>
           </div>
-          <a className="contact-btn" href="mailto:contact@openbibleschool.com">Get in touch</a>
+          <button type="button" className="contact-btn" onClick={() => setContactOpen(true)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Feedback or volunteer
+          </button>
         </div>
       </main>
+
+      {contactOpen && (
+        <div className="modal-backdrop" onClick={() => setContactOpen(false)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-title"
+            onClick={e => e.stopPropagation()}
+          >
+            <button type="button" className="modal-close" onClick={() => setContactOpen(false)} aria-label="Close contact form">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 className="modal-title" id="contact-title">Get in touch</h2>
+            <p className="modal-sub">
+              This opens your email app with the message ready to send. Nothing is stored on this site.
+            </p>
+            <form className="modal-form" onSubmit={submitContact}>
+              <label className="field">
+                <span>Your name</span>
+                <input ref={firstFieldRef} name="name" type="text" autoComplete="name" required />
+              </label>
+              <label className="field">
+                <span>Reason</span>
+                <select name="reason" defaultValue="Feedback">
+                  <option>Feedback</option>
+                  <option>I&apos;d like to volunteer</option>
+                  <option>Question</option>
+                  <option>Something else</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Message</span>
+                <textarea name="message" rows={5} required />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="btn-ghost" onClick={() => setContactOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-send">Open in email app</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

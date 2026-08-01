@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { levelForScore, toDisplayScore } from "@/lib/bli";
 import {
   BIBLE_BOOKS,
@@ -14,9 +14,11 @@ import {
   loadPublicQuestionMetadata,
   type PublicQuestionMetadataRow,
 } from "@/lib/supabase/questionMetadata";
-import SemanticKnowledgeGraph, {
-  type KnowledgeEvidenceRow,
-} from "./SemanticKnowledgeGraph";
+import StarMap, {
+  type MoonNode,
+  type SectionNode,
+  type StarNode,
+} from "./StarMap";
 
 type SectionKey = OldTestamentSectionName;
 type DimensionKey =
@@ -321,9 +323,7 @@ function recommendationAssessmentHref(recommendation: BackendRecommendation) {
 export default function KnowledgeMapPage() {
   const [bankRows, setBankRows] = useState<PublicQuestionMetadataRow[]>([]);
   const [answerRows, setAnswerRows] = useState<AnswerRow[]>([]);
-  const [knowledgeEvidenceRows, setKnowledgeEvidenceRows] = useState<KnowledgeEvidenceRow[]>([]);
   const [recommendation, setRecommendation] = useState<BackendRecommendation | null>(null);
-  const [recommendationFocusVersion, setRecommendationFocusVersion] = useState(0);
   const [selectedSection, setSelectedSection] = useState<SectionKey>("Torah");
   const [selectedBookCode, setSelectedBookCode] = useState("GEN");
   const [signedIn, setSignedIn] = useState(false);
@@ -343,7 +343,6 @@ export default function KnowledgeMapPage() {
         const { data: sessionData } = await supabase.auth.getSession();
         const userId = sessionData.session?.user?.id ?? null;
         let answers: AnswerRow[] = [];
-        let knowledgeEvidence: KnowledgeEvidenceRow[] = [];
         let nextRecommendation: BackendRecommendation | null = null;
 
         if (userId) {
@@ -366,21 +365,11 @@ export default function KnowledgeMapPage() {
           nextRecommendation =
             ((recommendationData ?? [])[0] as BackendRecommendation | undefined)
             ?? null;
-
-          const { data: knowledgeEvidenceData, error: knowledgeEvidenceError } =
-            await supabase.rpc("obs_get_user_knowledge_evidence", {
-              p_user_id: userId,
-            });
-          if (!knowledgeEvidenceError) {
-            knowledgeEvidence =
-              (knowledgeEvidenceData ?? []) as KnowledgeEvidenceRow[];
-          }
         }
 
         if (!cancelled) {
           setBankRows(bank);
           setAnswerRows(answers);
-          setKnowledgeEvidenceRows(knowledgeEvidence);
           setRecommendation(nextRecommendation);
           setSignedIn(Boolean(userId));
           setLoading(false);
@@ -482,6 +471,68 @@ export default function KnowledgeMapPage() {
     ));
   }, [bankRows, evidence, selectedBook?.bookCode]);
 
+  const getDimensionScores = useCallback((bookCode: string) => DIMENSIONS.map((dimension) => makeScore(
+    `dimension:${bookCode}:${dimension.key}`,
+    dimension.label,
+    evidence.filter((row) => row.bookCode === bookCode && row.dimension === dimension.key),
+    bankRows.filter((row) => (
+      row.book_code?.toUpperCase() === bookCode
+      && dimensionForRow(row) === dimension.key
+    )).length,
+  )), [bankRows, evidence]);
+
+  const toStarNode = useCallback((score: KnowledgeScore): StarNode => {
+    const state = knowledgeState(score);
+    return {
+      stateKey: state.key,
+      stateLabel: state.label,
+      stateCopy: state.copy,
+      displayScore: score.displayScore,
+      answered: score.answered,
+      bankCount: score.bankCount,
+    };
+  }, []);
+
+  const starSections = useMemo<SectionNode[]>(() => SECTIONS.map((section) => {
+    const sectionScore = sectionScores.find((score) => score.key === section.key);
+    return {
+      key: section.key,
+      color: section.color,
+      range: section.range,
+      role: section.role,
+      description: section.description,
+      node: toStarNode(sectionScore ?? makeScore(section.key, section.key, [], 0)),
+      books: section.books.map((code) => {
+        const bookScore = bookScores.find((score) => score.bookCode === code);
+        return {
+          code,
+          name: BOOK_NAMES[code] ?? code,
+          node: toStarNode(bookScore ?? makeScore(`book:${code}`, code, [], 0, code)),
+          focusLabel: recommendation && recommendation.book_code === code
+            ? `Focus: ${BOOK_NAMES[code] ?? code} ${recommendation.start_chapter}-${recommendation.end_chapter}`
+            : null,
+        };
+      }),
+    };
+  }), [bookScores, recommendation, sectionScores, toStarNode]);
+
+  const getStarDimensions = useCallback(
+    (bookCode: string): MoonNode[] => getDimensionScores(bookCode).map((score, i) => ({
+      key: DIMENSIONS[i].key,
+      label: DIMENSIONS[i].label,
+      short: DIMENSIONS[i].short,
+      node: toStarNode(score),
+    })),
+    [getDimensionScores, toStarNode],
+  );
+
+  const exploreBook = useCallback((bookCode: string) => {
+    const owning = SECTIONS.find((item) => item.books.includes(bookCode));
+    if (owning) setSelectedSection(owning.key);
+    setSelectedBookCode(bookCode);
+    document.getElementById("semantic-knowledge-map")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   useEffect(() => {
     if (!recommendation || recommendationCenteredRef.current) return;
     const section = SECTIONS.find((item) => item.key === recommendation.section);
@@ -524,7 +575,6 @@ export default function KnowledgeMapPage() {
     const section = SECTIONS.find((item) => item.key === recommendation.section);
     if (section) setSelectedSection(section.key);
     setSelectedBookCode(recommendation.book_code);
-    setRecommendationFocusVersion((version) => version + 1);
     window.setTimeout(() => {
       document.getElementById("semantic-knowledge-map")?.scrollIntoView({
         behavior: "smooth",
@@ -548,7 +598,7 @@ export default function KnowledgeMapPage() {
         html { scroll-behavior: smooth; }
         body {
           margin: 0; min-height: 100vh; color: #edf4fb;
-          font-family: "Inter", system-ui, -apple-system, sans-serif;
+          font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
           background:
             radial-gradient(circle at 18% 16%, rgba(255,255,255,.68) 0 1px, transparent 1.6px),
             radial-gradient(circle at 72% 28%, rgba(114,231,255,.54) 0 1px, transparent 1.7px),
@@ -568,7 +618,7 @@ export default function KnowledgeMapPage() {
         }
         .nav-brand {
           color: #fff; text-decoration: none;
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 18px; font-weight: 700;
         }
         .nav-links { display: flex; align-items: center; gap: 7px; }
@@ -592,7 +642,7 @@ export default function KnowledgeMapPage() {
         }
         .title {
           margin: 0; color: #fff;
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: clamp(32px,4vw,48px); line-height: 1;
           letter-spacing: 0;
         }
@@ -611,7 +661,7 @@ export default function KnowledgeMapPage() {
         }
         .summary-value {
           display: block; color: #fff;
-          font-family: "Crimson Pro", Georgia, serif;
+          font-family: var(--font-crimson), Georgia, serif;
           font-size: 25px; font-weight: 750; line-height: 1;
         }
         .summary-label {
@@ -640,7 +690,7 @@ export default function KnowledgeMapPage() {
           letter-spacing: .12em; text-transform: uppercase;
         }
         .next-title {
-          margin: 0; color: #fff; font-family: "Crimson Pro",Georgia,serif;
+          margin: 0; color: #fff; font-family: var(--font-crimson),Georgia,serif;
           font-size: 26px; line-height: 1.05;
         }
         .next-copy {
@@ -662,10 +712,7 @@ export default function KnowledgeMapPage() {
         }
         button.btn-secondary { appearance: none; }
         .path-panel {
-          position: relative; padding: 23px;
-          border: 1px solid rgba(255,255,255,.13); border-radius: 8px;
-          background: rgba(4,8,20,.48); box-shadow: var(--shadow);
-          backdrop-filter: blur(10px);
+          position: relative; padding: 0;
         }
         .panel-head {
           display: flex; justify-content: space-between; align-items: flex-end;
@@ -673,7 +720,7 @@ export default function KnowledgeMapPage() {
         }
         .panel-title {
           margin: 0; color: #fff;
-          font-family: "Crimson Pro",Georgia,serif;
+          font-family: var(--font-crimson),Georgia,serif;
           font-size: 25px; line-height: 1;
         }
         .panel-copy {
@@ -731,7 +778,7 @@ export default function KnowledgeMapPage() {
         }
         .node-name {
           display: block; padding-right: 42px;
-          font-family: "Crimson Pro",Georgia,serif;
+          font-family: var(--font-crimson),Georgia,serif;
           font-size: 22px; font-weight: 750; line-height: 1.05;
         }
         .node-range { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
@@ -754,7 +801,7 @@ export default function KnowledgeMapPage() {
           border-radius: 50%; background: var(--state);
         }
         .node-score {
-          color: var(--navy); font-family: "Crimson Pro",Georgia,serif;
+          color: var(--navy); font-family: var(--font-crimson),Georgia,serif;
           font-size: 20px; font-weight: 750;
         }
         .book-spark-row {
@@ -828,7 +875,7 @@ export default function KnowledgeMapPage() {
           content: ""; width: 18px; height: 3px; border-radius: 999px; background: var(--section-color);
         }
         .explore-title {
-          margin: 0; color: #fff; font-family: "Crimson Pro",Georgia,serif;
+          margin: 0; color: #fff; font-family: var(--font-crimson),Georgia,serif;
           font-size: 28px; line-height: 1;
         }
         .explore-copy {
@@ -860,7 +907,7 @@ export default function KnowledgeMapPage() {
         .book-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
         .book-name { font-size: 13px; font-weight: 800; line-height: 1.2; }
         .book-score {
-          color: var(--navy); font-family: "Crimson Pro",Georgia,serif;
+          color: var(--navy); font-family: var(--font-crimson),Georgia,serif;
           font-size: 18px; font-weight: 750; line-height: 1;
         }
         .book-meta { margin-top: 6px; color: var(--muted); font-size: 9.5px; font-weight: 700; }
@@ -898,7 +945,7 @@ export default function KnowledgeMapPage() {
           font-size: 9px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase;
         }
         .detail-title {
-          margin: 0; font-family: "Crimson Pro",Georgia,serif;
+          margin: 0; font-family: var(--font-crimson),Georgia,serif;
           font-size: 30px; line-height: 1;
         }
         .detail-level { margin-top: 5px; color: var(--muted); font-size: 12px; }
@@ -910,7 +957,7 @@ export default function KnowledgeMapPage() {
           padding: 9px; border-left: 2px solid rgba(27,36,66,.12);
         }
         .detail-stat strong {
-          display: block; font-family: "Crimson Pro",Georgia,serif;
+          display: block; font-family: var(--font-crimson),Georgia,serif;
           font-size: 22px; line-height: 1;
         }
         .detail-stat span {
@@ -941,7 +988,7 @@ export default function KnowledgeMapPage() {
         .dimension-name span { display: block; margin-top: 2px; color: var(--muted); font-size: 8.5px; }
         .dimension-track { height: 6px; border-radius: 999px; background: rgba(27,36,66,.08); overflow: hidden; }
         .dimension-fill { height: 100%; border-radius: inherit; background: var(--state); }
-        .dimension-value { text-align: right; font-family: "Crimson Pro",Georgia,serif; font-size: 16px; font-weight: 750; }
+        .dimension-value { text-align: right; font-family: var(--font-crimson),Georgia,serif; font-size: 16px; font-weight: 750; }
         .unit-branch {
           position: relative; grid-column: 1 / -1; margin-top: 1px; padding: 17px 18px 17px 24px;
           border: 1px solid rgba(10,163,163,.30); border-radius: 7px;
@@ -956,7 +1003,7 @@ export default function KnowledgeMapPage() {
           gap: 18px; align-items: center;
         }
         .unit-title {
-          margin: 0; font-family: "Crimson Pro",Georgia,serif;
+          margin: 0; font-family: var(--font-crimson),Georgia,serif;
           font-size: 22px; line-height: 1.05;
         }
         .unit-copy { margin: 6px 0 0; color: #566070; font-size: 11.5px; line-height: 1.5; }
@@ -1001,7 +1048,7 @@ export default function KnowledgeMapPage() {
           .next-actions { justify-content: flex-start; }
           .panel-head, .explore-head { align-items: flex-start; flex-direction: column; }
           .legend { justify-content: flex-start; }
-          .path-panel { padding: 16px; }
+          .path-panel { padding: 0; }
           .path-grid { display: flex; flex-direction: column; gap: 0; }
           .section-node { min-height: 0; }
           .section-node.torah,
@@ -1098,37 +1145,20 @@ export default function KnowledgeMapPage() {
               </div>
             </section>
 
-            <section className="path-panel" aria-label="Old Testament knowledge hierarchy">
+            <section className="path-panel" id="star-map" aria-label="Old Testament hierarchy and chronology">
               <div className="panel-head">
                 <div>
                   <h2 className="panel-title">The learning hierarchy</h2>
                   <p className="panel-copy">
-                    Torah supplies the foundation. Former Prophets extends its narrative. Latter Prophets and Writings interpret, proclaim, worship, and reflect on that established history.
+                    Time runs down the page against the rail on the left, and each arrow points from a section to the ones that depend on it: Torah supplies the foundation, Former Prophets extends its narrative, and Latter Prophets and Writings interpret that established history. Each star&apos;s colour is its temperature — your BLI: ember red at the low end through yellow to blue-white at the top of the scale. Untested areas stay grey and dim; more answers make a star burn brighter. Zoom in for book-level dates.
                   </p>
-                </div>
-                <div className="legend" aria-label="Knowledge status legend">
-                  {[
-                    { label: "Direct evidence", color: "#f8fbff" },
-                    { label: "Likely known", color: "#d4a017" },
-                    { label: "Observed gap", color: "#c2410c" },
-                    { label: "Unknown", color: "#7b8493" },
-                  ].map((item) => (
-                    <span className="legend-item" key={item.label}>
-                      <span className="legend-dot" style={{ "--state": item.color } as CSSProperties} />
-                      {item.label}
-                    </span>
-                  ))}
                 </div>
               </div>
 
-              <SemanticKnowledgeGraph
-                sectionScores={sectionScores}
-                bookScores={bookScores}
-                evidenceRows={knowledgeEvidenceRows}
-                recommendation={recommendation}
-                focusRecommendationVersion={recommendationFocusVersion}
-                onSectionChange={setSelectedSection}
-                onBookChange={setSelectedBookCode}
+              <StarMap
+                sections={starSections}
+                getDimensions={getStarDimensions}
+                onExplore={exploreBook}
               />
 
               <section
