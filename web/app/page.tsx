@@ -6,6 +6,13 @@ import { supabase } from "@/lib/supabase/client";
 import { loadPublicQuestionMetadata, type PublicQuestionMetadataRow } from "@/lib/supabase/questionMetadata";
 import { BLI_LEVELS, levelForScore, toDisplayScore } from "@/lib/bli";
 import {
+  normalizeBliContractRow,
+  poolBliSections,
+  testamentHeadlineAsSection,
+  type BliContractScores,
+  type BliSectionScore,
+} from "@/lib/bliContract";
+import {
   BIBLE_BOOKS,
   BOOK_NAMES,
   OT_BOOK_CODES,
@@ -107,7 +114,11 @@ const BOOK_FOCUS_RANGES: Record<string, { label: string; range: string; start: n
   JOB: { label: "Job", range: "Job 1-14", start: 1, end: 14, focus: "Focus on suffering, righteousness, lament, and the opening dispute over God's justice." },
 };
 
-type SectionScoreMap = Record<string, {pct: number, total: number, weighted_pct: number}>;
+type SectionScoreMap = Record<string, {
+  accuracy_pct: number;
+  raw_bli_pct: number;
+  total: number;
+}>;
 type BreakdownTab = "sections" | "books" | "domains";
 type ScopeKind = "canon" | "section" | "book" | "domain";
 type ScopeScore = {
@@ -217,26 +228,6 @@ type NtPilotSummary = {
   booksAttempted: number;
   updatedAt: string;
 };
-type TestamentBliScores = {
-  ot_raw_bli: number;
-  ot_display_bli: number;
-  ot_bli_level: string;
-  ot_questions_answered: number;
-  ot_correct_answers: number;
-  ot_idk_answers: number;
-  ot_section_scores: Record<string, unknown>;
-  nt_raw_bli: number;
-  nt_display_bli: number;
-  nt_bli_level: string;
-  nt_questions_answered: number;
-  nt_correct_answers: number;
-  nt_idk_answers: number;
-  nt_section_scores: Record<string, unknown>;
-  combined_display_bli: number | null;
-  combined_questions_answered: number;
-  combined_available: boolean;
-};
-
 const SECTION_META = [
   { key: "ot", label: "Old Testament", subtitle: "Genesis - Malachi", kind: "canon" as const, className: "ot", testament: "OT" as const, backendScopeKey: "OT", books: OT_BOOK_CODES },
   { key: "torah", label: "Torah", subtitle: "Genesis - Deuteronomy", kind: "section" as const, className: "torah", testament: "OT" as const, backendScopeKey: "Torah", books: SECTION_BOOKS.Torah },
@@ -245,8 +236,7 @@ const SECTION_META = [
   { key: "latter", label: "Latter Prophets", subtitle: "Isaiah - Malachi", kind: "section" as const, className: "latter", testament: "OT" as const, backendScopeKey: "Latter Prophets", books: SECTION_BOOKS["Latter Prophets"] },
   { key: "writings", label: "Writings", subtitle: "Psalms, Proverbs, Job...", kind: "section" as const, className: "writings", testament: "OT" as const, backendScopeKey: "Writings", books: SECTION_BOOKS.Writings },
   { key: "nt", label: "New Testament", subtitle: "Matthew - Revelation", kind: "canon" as const, className: "nt", testament: "NT" as const, backendScopeKey: "NT", books: NT_BOOK_CODES },
-  { key: "gospels", label: "Gospels", subtitle: "Matthew - John", kind: "section" as const, className: "gospels", testament: "NT" as const, backendScopeKey: "GOSPELS", books: ["MAT", "MRK", "LUK", "JHN"] },
-  { key: "acts", label: "Acts", subtitle: "Acts of the Apostles", kind: "section" as const, className: "acts", testament: "NT" as const, backendScopeKey: "ACTS", books: ["ACT"] },
+  { key: "gospels-acts", label: "Gospels & Acts", subtitle: "Matthew - Acts", kind: "section" as const, className: "gospels", testament: "NT" as const, backendScopeKey: "GOSPELS_ACTS", books: SECTION_BOOKS["Gospels & Acts"] },
   { key: "pauline", label: "Pauline Epistles", subtitle: "Romans - Philemon", kind: "section" as const, className: "pauline", testament: "NT" as const, backendScopeKey: "PAULINE", books: SECTION_BOOKS["Pauline Epistles"] },
   { key: "general", label: "General Epistles", subtitle: "Hebrews - Jude", kind: "section" as const, className: "general", testament: "NT" as const, backendScopeKey: "GENERAL", books: SECTION_BOOKS["General Epistles"] },
   { key: "revelation", label: "Revelation", subtitle: "Revelation", kind: "section" as const, className: "revelation", testament: "NT" as const, backendScopeKey: "APOCALYPSE", books: SECTION_BOOKS.Apocalypse },
@@ -466,6 +456,53 @@ function buildScopeScores(bankRows: BankRow[], answerRows: AnswerRow[]) {
   return { sections, books, domains };
 }
 
+function canonicalBliForSectionScope(
+  scope: ScopeScore,
+  scores: BliContractScores,
+): BliSectionScore | null {
+  if (scope.key === "ot") return testamentHeadlineAsSection(scores, "OT");
+  if (scope.key === "nt") return testamentHeadlineAsSection(scores, "NT");
+  if (scope.key === "prophets") {
+    return poolBliSections(
+      scores.ot_section_scores,
+      ["Former Prophets", "Latter Prophets"],
+    );
+  }
+
+  const sectionScores = scope.testament === "OT"
+    ? scores.ot_section_scores
+    : scores.nt_section_scores;
+  const canonicalName = scope.label === "Revelation" ? "Apocalypse" : scope.label;
+  return sectionScores[canonicalName] ?? null;
+}
+
+function applyCanonicalBliToSectionScopes(
+  scopes: ScopeScore[],
+  scores: BliContractScores | null,
+): ScopeScore[] {
+  return scopes.map(scope => {
+    const canonical = scores ? canonicalBliForSectionScope(scope, scores) : null;
+    if (!canonical) {
+      return {
+        ...scope,
+        rawScore: null,
+        displayScore: null,
+        answered: 0,
+        correct: 0,
+        confidence: "none",
+      };
+    }
+    return {
+      ...scope,
+      rawScore: canonical.raw_bli_pct,
+      displayScore: canonical.display_bli,
+      answered: canonical.answered,
+      correct: canonical.correct,
+      confidence: confidenceForAnswers(canonical.answered),
+    };
+  });
+}
+
 function evidenceLabel(score: ScopeScore) {
   if (score.confidence === "high") return "High evidence";
   if (score.confidence === "moderate") return "Moderate evidence";
@@ -523,10 +560,10 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
 
   const earliestMajorGap = SECTION_RECOMMENDATIONS.find(section => {
     const score = sectionScores[section.name];
-    return !score || score.total < 4 || score.pct < 70;
+    return !score || score.total < 4 || score.accuracy_pct < 70;
   });
   const target = earliestMajorGap ?? [...SECTION_RECOMMENDATIONS]
-    .sort((a, b) => (sectionScores[a.name]?.pct ?? 100) - (sectionScores[b.name]?.pct ?? 100))[0];
+    .sort((a, b) => (sectionScores[a.name]?.accuracy_pct ?? 100) - (sectionScores[b.name]?.accuracy_pct ?? 100))[0];
   const score = sectionScores[target.name];
 
   return {
@@ -534,7 +571,7 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
     books: target.books,
     focus: target.focus,
     priority: score
-      ? `${score.pct}% across ${score.total} answered questions. ${target.priority}`
+      ? `${score.accuracy_pct}% accuracy across ${score.total} answered questions. ${target.priority}`
       : `Not enough answers here yet. ${target.priority}`,
     actionHref: "/assess",
     actionLabel: "Continue assessment",
@@ -545,7 +582,7 @@ export default function HomePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [dashboardUserId, setDashboardUserId] = useState<string | null>(null);
   const [assessmentData, setAssessmentData] = useState<{answered: number, correct: number, bli?: number} | null>(null);
-  const [sectionScores, setSectionScores] = useState<Record<string, {pct: number, total: number, weighted_pct: number}>>({});
+  const [sectionScores, setSectionScores] = useState<SectionScoreMap>({});
   const [scopeScores, setScopeScores] = useState<{sections: ScopeScore[]; books: ScopeScore[]; domains: ScopeScore[]}>(() => buildScopeScores([], []));
   const [activeBreakdownTab, setActiveBreakdownTab] = useState<BreakdownTab>("sections");
   const [profileTestament, setProfileTestament] = useState<BibleTestament>("OT");
@@ -568,7 +605,7 @@ export default function HomePage() {
   const [scopeSummaryLoading, setScopeSummaryLoading] = useState(false);
   const [scopeSummaryError, setScopeSummaryError] = useState<string | null>(null);
   const [ntPilotSummary, setNtPilotSummary] = useState<NtPilotSummary | null>(null);
-  const [testamentScores, setTestamentScores] = useState<TestamentBliScores | null>(null);
+  const [testamentScores, setTestamentScores] = useState<BliContractScores | null>(null);
   const [pendingRetestHref, setPendingRetestHref] = useState<string | null>(null);
   const tooltipCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assessmentHoldDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1021,13 +1058,13 @@ export default function HomePage() {
       }
       if (session?.user?.id) {
         const [
-          { data: testamentScoreData },
+          { data: testamentScoreData, error: testamentScoreError },
           bankData,
           { data: answerData },
           { data: recommendationData },
           { data: evidenceData },
         ] = await Promise.all([
-          supabase.rpc("obs_get_testament_bli_scores", { p_user_id: session.user.id }),
+          supabase.rpc("obs_get_bli_scores_v2", { p_user_id: session.user.id }),
           loadDimensionAwareQuestionBank(),
           supabase
             .from("assessment_answers")
@@ -1054,50 +1091,42 @@ export default function HomePage() {
         }
         setBliEvidence(resolvedEvidence);
 
+        if (testamentScoreError) {
+          console.error("Canonical BLI score load failed:", testamentScoreError);
+        }
+        const canonicalScores = normalizeBliContractRow((testamentScoreData ?? [])[0]);
         const scoped = buildScopeScores((bankData ?? []) as BankRow[], (answerData ?? []) as AnswerRow[]);
-        setScopeScores(scoped);
-        const sectionMap: Record<string, {pct: number, total: number, weighted_pct: number}> = {};
-        scoped.sections
-          .filter(score => ["Torah", "Former Prophets", "Latter Prophets", "Writings"].includes(score.label) && score.rawScore !== null)
-          .forEach(score => {
-            sectionMap[score.label] = {
-              pct: Math.round(score.rawScore ?? 0),
+        setScopeScores({
+          ...scoped,
+          sections: applyCanonicalBliToSectionScopes(scoped.sections, canonicalScores),
+        });
+        const sectionMap: SectionScoreMap = {};
+        if (canonicalScores) {
+          ["Torah", "Former Prophets", "Latter Prophets", "Writings"].forEach(sectionName => {
+            const score = canonicalScores.ot_section_scores[sectionName];
+            if (!score) return;
+            sectionMap[sectionName] = {
+              accuracy_pct: score.accuracy_pct,
               total: score.answered,
-              weighted_pct: Math.round(score.rawScore ?? 0),
+              raw_bli_pct: score.raw_bli_pct,
             };
           });
+        }
         setSectionScores(sectionMap);
 
-        if (testamentScoreData && testamentScoreData.length > 0) {
-          const rawScores = testamentScoreData[0] as TestamentBliScores;
-          const scores: TestamentBliScores = {
-            ...rawScores,
-            ot_raw_bli: Number(rawScores.ot_raw_bli ?? 0),
-            ot_display_bli: Number(rawScores.ot_display_bli ?? 0),
-            ot_questions_answered: Number(rawScores.ot_questions_answered ?? 0),
-            ot_correct_answers: Number(rawScores.ot_correct_answers ?? 0),
-            ot_idk_answers: Number(rawScores.ot_idk_answers ?? 0),
-            nt_raw_bli: Number(rawScores.nt_raw_bli ?? 0),
-            nt_display_bli: Number(rawScores.nt_display_bli ?? 0),
-            nt_questions_answered: Number(rawScores.nt_questions_answered ?? 0),
-            nt_correct_answers: Number(rawScores.nt_correct_answers ?? 0),
-            nt_idk_answers: Number(rawScores.nt_idk_answers ?? 0),
-            combined_display_bli: rawScores.combined_display_bli === null
-              ? null
-              : Number(rawScores.combined_display_bli),
-            combined_questions_answered: Number(rawScores.combined_questions_answered ?? 0),
-            combined_available: Boolean(rawScores.combined_available),
-          };
-          setTestamentScores(scores);
-          if (scores.ot_questions_answered > 0) {
+        setTestamentScores(canonicalScores);
+        if (canonicalScores) {
+          if (canonicalScores.ot_questions_answered > 0) {
             setAssessmentData({
-              answered: scores.ot_questions_answered,
-              correct: scores.ot_correct_answers,
-              bli: scores.ot_raw_bli,
+              answered: canonicalScores.ot_questions_answered,
+              correct: canonicalScores.ot_correct_answers,
+              bli: canonicalScores.ot_raw_bli_pct,
             });
           } else {
             setAssessmentData(null);
           }
+        } else {
+          setAssessmentData(null);
         }
       }
     });
@@ -3177,7 +3206,7 @@ export default function HomePage() {
           <div className="testament-score-item is-combined">
             <span className="testament-score-name">Combined</span>
             <span className="testament-score-range">
-              {testamentScores?.combined_available ? "OT + NT · 0-1600" : "Available after both assessments · 0-1600"}
+              {testamentScores?.combined_available ? "Pooled OT + NT · 0-800" : "Available after both assessments · 0-800"}
             </span>
             <span className={`testament-score-value ${testamentScores?.combined_available ? "" : "is-empty"}`}>
               {testamentScores?.combined_available ? testamentScores.combined_display_bli : "—"}
