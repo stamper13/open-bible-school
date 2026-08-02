@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { loadPublicQuestionMetadata, type PublicQuestionMetadataRow } from "@/lib/supabase/questionMetadata";
 import { BLI_LEVELS, levelForScore, toDisplayScore } from "@/lib/bli";
+import { normalizeBliContractRow } from "@/lib/bliContract";
 import { BOOK_NAMES, OT_BOOK_CODES, SECTION_BOOKS, sectionForBook } from "@/lib/bibleTaxonomy";
 
 const SKY_SEED_KEY = "obs_sky_seed";
@@ -98,7 +99,11 @@ const BOOK_FOCUS_RANGES: Record<string, { label: string; range: string; start: n
   JOB: { label: "Job", range: "Job 1-14", start: 1, end: 14, focus: "Focus on suffering, righteousness, lament, and the opening dispute over God's justice." },
 };
 
-type SectionScoreMap = Record<string, {pct: number, total: number, weighted_pct: number}>;
+type SectionScoreMap = Record<string, {
+  accuracy_pct: number;
+  raw_bli_pct: number;
+  total: number;
+}>;
 type BreakdownTab = "sections" | "books" | "domains";
 type ScopeKind = "canon" | "section" | "book" | "domain";
 type ScopeScore = {
@@ -448,10 +453,10 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
 
   const earliestMajorGap = SECTION_RECOMMENDATIONS.find(section => {
     const score = sectionScores[section.name];
-    return !score || score.total < 4 || score.pct < 70;
+    return !score || score.total < 4 || score.accuracy_pct < 70;
   });
   const target = earliestMajorGap ?? [...SECTION_RECOMMENDATIONS]
-    .sort((a, b) => (sectionScores[a.name]?.pct ?? 100) - (sectionScores[b.name]?.pct ?? 100))[0];
+    .sort((a, b) => (sectionScores[a.name]?.accuracy_pct ?? 100) - (sectionScores[b.name]?.accuracy_pct ?? 100))[0];
   const score = sectionScores[target.name];
 
   return {
@@ -459,7 +464,7 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
     books: target.books,
     focus: target.focus,
     priority: score
-      ? `${score.pct}% across ${score.total} answered questions. ${target.priority}`
+      ? `${score.accuracy_pct}% accuracy across ${score.total} answered questions. ${target.priority}`
       : `Not enough answers here yet. ${target.priority}`,
     actionHref: "/assess",
     actionLabel: "Continue assessment",
@@ -470,7 +475,7 @@ export default function HomePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [dashboardUserId, setDashboardUserId] = useState<string | null>(null);
   const [assessmentData, setAssessmentData] = useState<{answered: number, correct: number, bli?: number} | null>(null);
-  const [sectionScores, setSectionScores] = useState<Record<string, {pct: number, total: number, weighted_pct: number}>>({});
+  const [sectionScores, setSectionScores] = useState<SectionScoreMap>({});
   const [scopeScores, setScopeScores] = useState<{sections: ScopeScore[]; books: ScopeScore[]; domains: ScopeScore[]}>(() => buildScopeScores([], []));
   const [activeBreakdownTab, setActiveBreakdownTab] = useState<BreakdownTab>("sections");
   const [prophetsExpanded, setProphetsExpanded] = useState(false);
@@ -934,13 +939,13 @@ export default function HomePage() {
       }
       if (session?.user?.id) {
         const [
-          { data: bliData },
+          { data: testamentScoreData, error: testamentScoreError },
           bankData,
           { data: answerData },
           { data: recommendationData },
           { data: evidenceData },
         ] = await Promise.all([
-          supabase.rpc("compute_bli", { p_user_id: session.user.id }),
+          supabase.rpc("obs_get_bli_scores_v2", { p_user_id: session.user.id }),
           loadDimensionAwareQuestionBank(),
           supabase
             .from("assessment_answers")
@@ -967,29 +972,37 @@ export default function HomePage() {
         }
         setBliEvidence(resolvedEvidence);
 
+        if (testamentScoreError) {
+          console.error("Canonical BLI score load failed:", testamentScoreError);
+        }
+        // obs_get_bli_scores_v2 is the canonical scoring contract (see
+        // lib/bliContract.ts and web/SCHEMA.md). The previous RPC this called
+        // (compute_bli) was removed from the database 2026-08-18 and always
+        // errored, which silently left this dashboard's score display empty
+        // for every returning user.
+        const canonicalScores = normalizeBliContractRow((testamentScoreData ?? [])[0]);
         const scoped = buildScopeScores((bankData ?? []) as BankRow[], (answerData ?? []) as AnswerRow[]);
         setScopeScores(scoped);
-        const sectionMap: Record<string, {pct: number, total: number, weighted_pct: number}> = {};
+        const sectionMap: SectionScoreMap = {};
         scoped.sections
           .filter(score => ["Torah", "Former Prophets", "Latter Prophets", "Writings"].includes(score.label) && score.rawScore !== null)
           .forEach(score => {
             sectionMap[score.label] = {
-              pct: Math.round(score.rawScore ?? 0),
+              accuracy_pct: Math.round(score.rawScore ?? 0),
               total: score.answered,
-              weighted_pct: Math.round(score.rawScore ?? 0),
+              raw_bli_pct: Math.round(score.rawScore ?? 0),
             };
           });
         setSectionScores(sectionMap);
 
-        if (bliData && bliData.length > 0) {
-          const b = bliData[0];
-          if (b.questions_answered > 0) {
-            setAssessmentData({
-              answered: b.questions_answered,
-              correct: Math.round(b.total_weighted_earned),
-              bli: parseFloat(b.bli_score)
-            });
-          }
+        if (canonicalScores && canonicalScores.ot_questions_answered > 0) {
+          setAssessmentData({
+            answered: canonicalScores.ot_questions_answered,
+            correct: canonicalScores.ot_correct_answers,
+            bli: canonicalScores.ot_raw_bli_pct,
+          });
+        } else {
+          setAssessmentData(null);
         }
       }
     });
