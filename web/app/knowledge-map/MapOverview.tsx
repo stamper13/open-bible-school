@@ -17,6 +17,38 @@ import {
 import { sectionEvidence } from "@/lib/bliEvidence";
 import { GALAXY_ERAS, SECTION_CHRONO, bookChrono, formatYear, yearToPos } from "./chronology";
 import { MAP_OVERVIEW_STYLES } from "./mapOverviewStyles";
+import {
+  VIEW_W,
+  VIEW_H,
+  PAD_T,
+  PAD_B,
+  RAIL_LABEL_X,
+  RAIL_LINE_X,
+  FIELD_L,
+  FIELD_R,
+  LANE_ORDER,
+  LANE_COUNT,
+  LANE_WIDTH,
+  laneCenterX,
+  SUB_COL_OFFSET,
+  BOOK_MIN_GAP,
+  posToY,
+  yForYear,
+  HUB_R,
+  BOOK_R,
+  UNIT_R,
+  HUB_Y,
+  FILTERS,
+  LABEL_MIN_GAP,
+  layoutLane,
+  sectionHueFor,
+  evidenceStatusLabel,
+  unitAriaLabel,
+  type LaneKey,
+  type PlacedBook,
+  type PlacedHub,
+  type AtlasFilter,
+} from "./mapOverviewParts";
 
 /**
  * The whole Old Testament on one chart: every section, book, and chapter
@@ -39,122 +71,6 @@ import { MAP_OVERVIEW_STYLES } from "./mapOverviewStyles";
  * are tied to their own hub with a plain tether line, not a claimed
  * prerequisite.
  */
-
-const VIEW_W = 1180;
-const VIEW_H = 1580;
-const PAD_T = 56;
-const PAD_B = 50;
-const RAIL_LABEL_X = 76;
-const RAIL_LINE_X = 100;
-const FIELD_L = 118;
-const FIELD_R = 1140;
-
-const LANE_ORDER = ["TORAH", "FORMER", "LATTER", "WRITINGS"] as const;
-type LaneKey = (typeof LANE_ORDER)[number];
-const LANE_COUNT = LANE_ORDER.length;
-const LANE_WIDTH = (FIELD_R - FIELD_L) / LANE_COUNT;
-const laneCenterX = (i: number) => FIELD_L + LANE_WIDTH * (i + 0.5);
-const SUB_COL_OFFSET = 30;
-const BOOK_MIN_GAP = 32;
-
-const posToY = (pos: number) => PAD_T + 118 + pos * (VIEW_H - PAD_T - 118 - PAD_B);
-const yForYear = (year: number) => posToY(yearToPos(year));
-
-const HUB_R = 34;
-const BOOK_R = 11;
-const UNIT_R = 3;
-// Hubs sit in a fixed row well clear of the field's chronological range —
-// not at their own section's chronological anchor. A section's anchor tends
-// to fall right in the middle of its own books (Torah's is 1900 BC, and its
-// own books cluster 2100-1406 BC), so placing the hub *at* that year put it
-// on top of the very books it summarizes. Pinning it to a dedicated header
-// row keeps chronology accurate for books — the finer-grained, more useful
-// data — while giving the hub room to breathe.
-const HUB_Y = PAD_T + 52;
-
-type PlacedBook = {
-  book: ExploreBook;
-  x: number;
-  y: number;
-  labelVisible: boolean;
-  tone: ReturnType<typeof starTone>;
-};
-type PlacedHub = {
-  section: ExploreSection;
-  x: number;
-  y: number;
-  hue: string;
-  tone: ReturnType<typeof starTone>;
-};
-
-type AtlasFilter = "all" | "needs_work" | "below_baseline" | "insufficient_evidence" | "sufficient" | "recommended";
-const FILTERS: Array<{ key: AtlasFilter; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "needs_work", label: "Needs work" },
-  { key: "below_baseline", label: "Below baseline" },
-  { key: "insufficient_evidence", label: "Not enough evidence" },
-  { key: "sufficient", label: "Sufficient" },
-  { key: "recommended", label: "Recommended path" },
-];
-
-/** How close two books' labels can sit (in Y) before the later one's text
- *  gets suppressed to hover-only. Bigger than BOOK_MIN_GAP because this is
- *  about the *text* running into a neighbour, not just the circles — and
- *  labels from any sub-column land in roughly the same rightward strip,
- *  so this check is global across the lane, not per-column. */
-const LABEL_MIN_GAP = 20;
-
-/** Greedy multi-column layout: each book goes in whichever sub-column has
- *  the most vertical clearance from its last entry, then gets nudged down
- *  if it would still land closer than BOOK_MIN_GAP to that column's
- *  previous book. Order (chronological) is preserved within each column;
- *  only crowding is fixed. Dense lanes (Latter Prophets' seventeen books,
- *  mainly) get a third column — two columns' worth of vertical push-down
- *  was still landing books on top of each other's labels in that stretch.
- *  A second pass then decides which labels can stay on screen by default —
- *  the ones too close to the last visible label fall back to hover/focus
- *  instead of just disappearing. */
-function layoutLane(books: ExploreBook[], centerX: number): Array<{ book: ExploreBook; x: number; y: number; labelVisible: boolean }> {
-  // Descending by anchor year: these are BC years, so the *larger* number is
-  // *earlier* — descending order is chronological (and therefore top-to-
-  // bottom on screen), which the greedy push-down below depends on.
-  const sorted = [...books].sort((a, b) => bookChrono(b.bookCode).anchor - bookChrono(a.bookCode).anchor);
-  const colCount = books.length > 10 ? 3 : 2;
-  const cols = Array.from({ length: colCount }, (_, i) => ({
-    x: centerX + (i - (colCount - 1) / 2) * SUB_COL_OFFSET,
-    lastY: -Infinity,
-  }));
-  const placed = sorted.map((book) => {
-    const naturalY = yForYear(bookChrono(book.bookCode).anchor);
-    const col = cols.reduce((best, c) => (c.lastY < best.lastY ? c : best));
-    const y = Math.max(naturalY, col.lastY + BOOK_MIN_GAP);
-    col.lastY = y;
-    return { book, x: col.x, y };
-  });
-
-  let lastLabelY = -Infinity;
-  return placed.map((p) => {
-    const labelVisible = p.y - lastLabelY >= LABEL_MIN_GAP;
-    if (labelVisible) lastLabelY = p.y;
-    return { ...p, labelVisible };
-  });
-}
-
-function sectionHueFor(s: ExploreSection) {
-  return sectionHue({ node_key: s.sectionKey, label: s.sectionName });
-}
-
-function evidenceStatusLabel(state: FocusState, answered: number) {
-  const evidence = sectionEvidence(answered);
-  return `${STATE_LABELS[state]} · ${answered} answered · ${evidence.label}`;
-}
-
-function unitAriaLabel(unit: ExploreUnit, book: ExploreBook) {
-  const label = readableUnitLabel(unit.label);
-  const reference = bookPassage(book.bookName, unit.startCh, unit.endCh);
-  const address = label === reference ? label : `${label}. ${reference}`;
-  return `${address}. ${evidenceStatusLabel(unit.state, unit.answered)}.${unit.isFocus ? " Recommended." : ""}`;
-}
 
 export default function MapOverview({
   tree,
