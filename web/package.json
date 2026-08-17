@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:contract": "node --test tests/unit/bli-contract.test.mts",
+    "test:bli-evidence": "node --test tests/unit/bli-evidence.test.mts",
+    "test:bli-validation": "node scripts/validate-bli-profiles.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import BrandLogo from "@/components/BrandLogo";
 import { supabase } from "@/lib/supabase/client";
 
 type Testament = "OT" | "NT";
@@ -92,6 +93,45 @@ function AnswerDisplay({ value, ordered = false }: { value: string; ordered?: bo
   );
 }
 
+function isLegacySectionSortReview(row: Pick<AttemptReviewRow, "prompt" | "selected_choice_id">) {
+  return /\bwhich group consists entirely of books in the\b/i.test(row.prompt)
+    && (row.selected_choice_id === "A" || row.selected_choice_id === "B" || row.selected_choice_id === "__SECTION_SORT__");
+}
+
+function reviewPrompt(row: AttemptReviewRow) {
+  if (isLegacySectionSortReview(row)) {
+    return "Using Hebrew Bible divisions, drag each book to its correct section.";
+  }
+  return row.prompt;
+}
+
+function reviewSelectedAnswer(row: AttemptReviewRow, isSequence: boolean) {
+  if (row.is_idk) return "I don't know / skipped";
+  if (row.selected_choice_text) return row.selected_choice_text;
+  if (isLegacySectionSortReview(row)) {
+    return "Section-sort response recorded. The exact drag/drop placements were not snapshotted for this early division question.";
+  }
+  if (row.selected_choice_id) {
+    return `Recorded choice ${row.selected_choice_id} (exact wording unavailable for this older assessment)`;
+  }
+  if (isSequence) return "Sequence response unavailable";
+  return "No answer recorded";
+}
+
+function reviewCorrectAnswer(row: AttemptReviewRow) {
+  if (isLegacySectionSortReview(row)) {
+    return "Each displayed book belongs in its Hebrew Bible section: Torah, Former Prophets, Latter Prophets, or Writings.";
+  }
+  return row.correct_choice_text || row.correct_choice_id;
+}
+
+function reviewExplanation(row: AttemptReviewRow) {
+  if (isLegacySectionSortReview(row)) {
+    return "This was shown as a drag/drop division question. OBA uses Hebrew Bible/Tanakh divisions for Old Testament structure, so some books appear differently than in many English Bible contents pages.";
+  }
+  return row.explanation || "An explanation has not been added to this question yet.";
+}
+
 export default function AttemptResultsPage() {
   const params = useParams();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,51 +148,60 @@ export default function AttemptResultsPage() {
   const [errorKind, setErrorKind] = useState<"auth" | "notfound" | "failed" | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
+  // Standard site starfield: gradient + a soft teal nebula glow, both painted
+  // into the canvas itself (matching /bli, /about, /credential, /assess) —
+  // this page used to paint only twinkling stars over a flat CSS gradient
+  // with no nebula, which made it look like a different background.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let animationFrame = 0;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const skip = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    let raf = 0;
     let frame = 0;
-    const stars = Array.from({ length: 260 }, (_, index) => ({
-      x: ((index * 73) % 997) / 997,
-      y: ((index * 193) % 991) / 991,
-      radius: 0.45 + ((index * 17) % 18) / 10,
-      alpha: 0.24 + ((index * 29) % 65) / 100,
-      speed: 0.002 + ((index * 11) % 20) / 10000,
+
+    const stars = Array.from({ length: 200 }, () => ({
+      x: Math.random(), y: Math.random(),
+      r: (0.5 + Math.random() * 1.4) * DPR,
+      opacity: 0.3 + Math.random() * 0.5,
+      speed: 0.002 + Math.random() * 0.004,
+      offset: Math.random() * Math.PI * 2,
     }));
 
-    const resize = () => {
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = window.innerWidth * ratio;
-      canvas.height = window.innerHeight * ratio;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    };
-    const draw = () => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      context.clearRect(0, 0, width, height);
-      for (const star of stars) {
-        const alpha = star.alpha * (0.72 + Math.sin(frame * star.speed + star.x * 9) * 0.28);
-        context.beginPath();
-        context.arc(star.x * width, star.y * height, star.radius, 0, Math.PI * 2);
-        context.fillStyle = `rgba(255,255,255,${alpha})`;
-        context.fill();
-      }
-      frame += 1;
-      if (!prefersReducedMotion) animationFrame = requestAnimationFrame(draw);
-    };
+    function resize() {
+      if (!canvas) return;
+      canvas.width = window.innerWidth * DPR;
+      canvas.height = window.innerHeight * DPR;
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+    }
     resize();
-    draw();
     window.addEventListener("resize", resize);
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      window.removeEventListener("resize", resize);
-    };
+
+    function draw() {
+      if (!canvas || !ctx) return;
+      const w = canvas.width, h = canvas.height;
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, "#0b0f1e"); g.addColorStop(0.5, "#111827"); g.addColorStop(1, "#0d1530");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      const neb = ctx.createRadialGradient(w * 0.2, h * 0.25, 0, w * 0.2, h * 0.25, w * 0.42);
+      neb.addColorStop(0, "rgba(10,163,163,0.07)"); neb.addColorStop(1, "transparent");
+      ctx.fillStyle = neb; ctx.fillRect(0, 0, w, h);
+      for (const s of stars) {
+        const tw = skip ? 1 : 0.6 + 0.4 * Math.sin(frame * s.speed + s.offset);
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(255,255,255,${s.opacity * tw})`;
+        ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      frame++;
+      if (!skip) raf = requestAnimationFrame(draw);
+    }
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
   }, []);
 
   useEffect(() => {
@@ -233,13 +282,24 @@ export default function AttemptResultsPage() {
     window.location.href = "/assess";
   };
 
-  const score = summary?.snapshot?.display_bli ?? null;
+  const sessionAccuracy = summary
+    ? summary.accuracy ?? (summary.answered > 0 ? (summary.correct / summary.answered) * 100 : null)
+    : null;
+  const sessionAccuracyDisplay = sessionAccuracy === null
+    ? null
+    : `${Math.round(Math.max(0, Math.min(100, sessionAccuracy)))}%`;
   const pageError = attemptId ? error : "This results link is incomplete.";
-  const scoreLabel = summary?.snapshot?.bli_level
-    ? `${summary.snapshot.bli_level} · ${summary.testament === "NT" ? "New Testament BLI" : "Old Testament BLI"}`
-    : summary?.testament === "NT"
-      ? "New Testament assessment accuracy"
-      : "Attempt accuracy";
+  const scoreLabel = "Session accuracy";
+  // NOTE: despite the name, obs_get_attempt_summary's `completed_at` is
+  // max(answered_at) — the time of the most recent answer, not a real
+  // "attempt finished" flag. It's non-null after the very first question, so
+  // it can't be used to gate this page. The standard assessment is 20
+  // questions (TOTAL_INITIAL / NT_PILOT_TARGET in app/assess/page.tsx, same
+  // threshold the dashboard landing uses), so answered count is the only
+  // honest signal we have client-side that a real BLI result exists.
+  const ASSESSMENT_COMPLETE_THRESHOLD = 20;
+  const isComplete = Boolean(summary && summary.answered >= ASSESSMENT_COMPLETE_THRESHOLD);
+  const questionsRemaining = summary ? Math.max(0, ASSESSMENT_COMPLETE_THRESHOLD - summary.answered) : 0;
 
   return (
     <>
@@ -304,6 +364,7 @@ export default function AttemptResultsPage() {
           background: var(--card); border: 1px solid rgba(255,255,255,.55);
           border-radius: 8px; box-shadow: 0 24px 70px rgba(0,0,0,.34); overflow: hidden;
         }
+        .results-summary.is-in-progress { grid-template-columns: 1fr; }
         .score-signal {
           min-height: 220px; padding: 28px; display: flex; flex-direction: column; justify-content: center;
           border-right: 1px solid var(--line); background: rgba(10,163,163,.07);
@@ -322,14 +383,21 @@ export default function AttemptResultsPage() {
         .metric span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; margin-top: 5px; }
         .scope-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
         .scope-chip { color: var(--navy); background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; font-size: 11px; font-weight: 700; }
-        .results-actions { display: flex; align-items: center; gap: 10px; margin: 18px 0 38px; }
+        .results-actions { display: flex; align-items: center; gap: 14px; margin: 22px 0 40px; }
         .action-primary, .action-secondary {
-          min-height: 43px; display: inline-flex; align-items: center; justify-content: center;
-          border-radius: 999px; padding: 0 18px; font-size: 13px; font-weight: 750;
+          min-height: 54px; display: inline-flex; align-items: center; justify-content: center;
+          border-radius: 999px; padding: 0 32px; font-size: 15.5px; font-weight: 750;
           text-decoration: none; cursor: pointer; font-family: inherit;
+          transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
         }
-        .action-primary { color: #fff; border: 0; background: var(--navy); box-shadow: 0 10px 24px rgba(0,0,0,.25); }
-        .action-secondary { color: rgba(255,255,255,.78); border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); }
+        .action-primary {
+          color: #fff; border: 0; background: var(--navy); box-shadow: 0 12px 28px rgba(0,0,0,.3);
+        }
+        .action-primary:hover { background: #232f57; transform: translateY(-2px); box-shadow: 0 16px 34px rgba(0,0,0,.36); }
+        .action-secondary {
+          color: rgba(255,255,255,.85); border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.07);
+        }
+        .action-secondary:hover { background: rgba(255,255,255,.13); transform: translateY(-2px); }
         .review-section { background: var(--card); border: 1px solid rgba(255,255,255,.46); border-radius: 8px; overflow: hidden; }
         .review-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 24px 26px 18px; border-bottom: 1px solid var(--line); }
         .review-title { margin: 0; font: 700 25px/1.1 var(--font-crimson), Georgia, serif; }
@@ -417,7 +485,7 @@ export default function AttemptResultsPage() {
       <div className="results-page">
         <canvas ref={canvasRef} className="results-stars" aria-hidden="true" />
         <nav className="results-nav">
-          <Link className="results-brand" href="/">Open Bible Assessment</Link>
+          <BrandLogo className="results-brand" />
           <Link className="results-nav-link" href="/">Dashboard</Link>
         </nav>
 
@@ -455,31 +523,42 @@ export default function AttemptResultsPage() {
         ) : (
           <main className="results-shell">
             <p className="results-kicker">{summary.testament === "NT" ? "New Testament assessment" : "Old Testament assessment"}</p>
-            <h1 className="results-title">Your assessment results</h1>
-            <p className="results-date">{formatDate(summary.completed_at)}</p>
+            <h1 className="results-title">{isComplete ? "Your assessment results" : "Assessment in progress"}</h1>
+            <p className="results-date">
+              {isComplete ? formatDate(summary.completed_at) : `${summary.answered} of ${ASSESSMENT_COMPLETE_THRESHOLD} answered so far`}
+            </p>
 
-            <section className="results-summary" aria-label="Assessment summary">
-              <div className="score-signal">
-                <div className="score-value">
-                  {score ?? Math.round(summary.accuracy ?? 0)}
-                  {score === null && <span>%</span>}
+            <section className={`results-summary ${isComplete ? "" : "is-in-progress"}`} aria-label="Assessment summary">
+              {isComplete && (
+                <div className="score-signal">
+                  <div className="score-value">
+                    {sessionAccuracyDisplay ?? "--"}
+                  </div>
+                  <div className="score-label">{scoreLabel}</div>
                 </div>
-                <div className="score-label">{scoreLabel}</div>
-              </div>
+              )}
               <div className="summary-body">
                 <h2 className="summary-heading">
-                  {summary.testament === "NT" ? "Your latest NT BLI snapshot" : "Your latest OT BLI snapshot"}
+                  {isComplete
+                    ? (summary.testament === "NT" ? "Your NT session review" : "Your OT session review")
+                    : "This assessment isn't finished yet"}
                 </h2>
                 <p className="summary-copy">
-                  Review the session below when you want to study specific misses or revisit questions you skipped.
+                  {isComplete
+                    ? "Review the session below when you want to study specific misses or revisit questions you skipped."
+                    : "Your score and section breakdown are only meaningful once the standard 20-question assessment is complete — finish it to see them."}
                 </p>
                 <div className="metric-row">
                   <div className="metric"><strong>{summary.answered}</strong><span>Answered</span></div>
                   <div className="metric"><strong>{summary.correct}</strong><span>Correct</span></div>
                   <div className="metric"><strong>{summary.idk}</strong><span>Skipped</span></div>
-                  <div className="metric"><strong>{Math.round(summary.accuracy ?? 0)}%</strong><span>Accuracy</span></div>
+                  {isComplete ? (
+                    <div className="metric"><strong>{Math.round(summary.accuracy ?? 0)}%</strong><span>Accuracy</span></div>
+                  ) : (
+                    <div className="metric"><strong>{questionsRemaining}</strong><span>Remaining</span></div>
+                  )}
                 </div>
-                {sectionBreakdown.length > 0 && (
+                {isComplete && sectionBreakdown.length > 0 && (
                   <div className="scope-strip" aria-label="Section breakdown">
                     {sectionBreakdown.map(item => (
                       <span className="scope-chip" key={item.key}>
@@ -493,9 +572,9 @@ export default function AttemptResultsPage() {
 
             <div className="results-actions">
               <button className="action-primary" type="button" onClick={continueAssessment}>
-                Continue assessment
+                Continue with assessment
               </button>
-              <Link className="action-secondary" href="/">Dashboard</Link>
+              <Link className="action-secondary" href="/">See my dashboard</Link>
             </div>
 
             <section className="review-section" aria-labelledby="review-heading">
@@ -538,7 +617,7 @@ export default function AttemptResultsPage() {
                       >
                         <span className={`status-dot ${state}`} aria-hidden="true" />
                         <span className="review-prompt">
-                          {row.prompt}
+                          {reviewPrompt(row)}
                           <span className="review-meta">
                             {row.book_code} · {row.section} · {titleCase(row.dimension_key)}
                           </span>
@@ -552,21 +631,14 @@ export default function AttemptResultsPage() {
                             <strong>Your answer</strong>
                             <AnswerDisplay
                               ordered={isSequence}
-                              value={
-                                row.is_idk
-                                  ? "I don't know / skipped"
-                                  : row.selected_choice_text
-                                    || (row.selected_choice_id
-                                      ? `Recorded choice ${row.selected_choice_id} (exact wording unavailable for this older assessment)`
-                                      : "No answer recorded")
-                              }
+                              value={reviewSelectedAnswer(row, isSequence)}
                             />
                           </div>
                           <div className="answer-line correct-answer">
                             <strong>Correct answer</strong>
                             <AnswerDisplay
                               ordered={isSequence}
-                              value={row.correct_choice_text || row.correct_choice_id}
+                              value={reviewCorrectAnswer(row)}
                             />
                           </div>
                           {row.source_ref && (
@@ -577,7 +649,7 @@ export default function AttemptResultsPage() {
                           )}
                           <div className="answer-line">
                             <strong>Explanation</strong>
-                            <span className="explanation">{row.explanation || "An explanation has not been added to this question yet."}</span>
+                            <span className="explanation">{reviewExplanation(row)}</span>
                           </div>
                         </div>
                       )}

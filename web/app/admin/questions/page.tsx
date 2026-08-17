@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
+import { authCallbackUrl } from "@/lib/auth/redirect";
 import { BIBLE_BOOK_CODES } from "@/lib/bibleTaxonomy";
 
 type RawRow = Record<string, unknown>;
@@ -33,6 +34,7 @@ type AuditData = {
   repetition: RawRow[];
   difficulty: RawRow[];
   distractors: RawRow[];
+  malformed: RawRow[];
 };
 type AuditColumn = {
   key: string;
@@ -57,6 +59,7 @@ const EMPTY_AUDIT: AuditData = {
   repetition: [],
   difficulty: [],
   distractors: [],
+  malformed: [],
 };
 
 function stringValue(row: RawRow, ...keys: string[]) {
@@ -239,6 +242,7 @@ export default function QuestionQualityPage() {
         repetition: body.audit?.repetition ?? [],
         difficulty: body.audit?.difficulty ?? [],
         distractors: body.audit?.distractors ?? [],
+        malformed: body.audit?.malformed ?? [],
       });
       setAuditLoaded(true);
     } catch (error) {
@@ -267,7 +271,7 @@ export default function QuestionQualityPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/admin/questions`,
+        redirectTo: authCallbackUrl({ next: "/admin/questions" }),
       },
     });
   };
@@ -325,20 +329,20 @@ export default function QuestionQualityPage() {
       <style>{`
         :root { --navy:#1b2442; --muted:#5b6474; --teal:#0a8989; --line:#d9dee7; --soft:#f4f6f8; --danger:#a52a2a; }
         * { box-sizing:border-box; }
-        body { margin:0; background:#edf0f3; color:var(--navy); font-family:"Inter",system-ui,sans-serif; }
+        body { margin:0; background:#edf0f3; color:var(--navy); font-family:var(--font-inter),system-ui,sans-serif; }
         button, input, select, textarea { font:inherit; }
         .admin-shell { min-height:100vh; }
         .admin-nav {
           height:58px; padding:0 24px; display:flex; align-items:center; justify-content:space-between;
           background:#11182b; color:#fff; border-bottom:1px solid rgba(255,255,255,.10);
         }
-        .admin-brand { font:700 18px/1 "Crimson Pro",Georgia,serif; }
+        .admin-brand { font:700 18px/1 var(--font-crimson),Georgia,serif; }
         .admin-nav-meta { display:flex; align-items:center; gap:14px; font-size:11px; color:rgba(255,255,255,.64); }
         .admin-nav a { color:#fff; text-decoration:none; font-weight:750; }
         .admin-main { max-width:1480px; margin:0 auto; padding:24px; }
         .admin-head { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:18px; }
         .admin-kicker { margin:0 0 5px; color:var(--teal); font-size:10px; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
-        .admin-title { margin:0; font:700 29px/1.08 "Crimson Pro",Georgia,serif; }
+        .admin-title { margin:0; font:700 29px/1.08 var(--font-crimson),Georgia,serif; }
         .admin-sub { margin:5px 0 0; color:var(--muted); font-size:12px; }
         .view-tabs { display:inline-flex; padding:3px; border:1px solid var(--line); background:#fff; border-radius:999px; }
         .view-tab { border:0; border-radius:999px; padding:8px 13px; background:transparent; color:var(--muted); font-size:11px; font-weight:800; cursor:pointer; }
@@ -384,7 +388,7 @@ export default function QuestionQualityPage() {
         .review-panel { border-left:1px solid var(--line); background:#fbfcfd; padding:20px; overflow-y:auto; }
         .review-empty { min-height:500px; display:grid; place-content:center; text-align:center; color:var(--muted); font-size:12px; }
         .review-kicker { margin:0 0 6px; color:var(--teal); font-size:9px; font-weight:850; letter-spacing:.1em; text-transform:uppercase; }
-        .review-title { margin:0; font:700 22px/1.18 "Crimson Pro",Georgia,serif; }
+        .review-title { margin:0; font:700 22px/1.18 var(--font-crimson),Georgia,serif; }
         .review-id { margin:7px 0 16px; color:#7b8492; font:9px/1.4 ui-monospace,SFMono-Regular,monospace; overflow-wrap:anywhere; }
         .review-meta { display:grid; grid-template-columns:1fr 1fr; gap:0; margin-bottom:18px; border-top:1px solid var(--line); }
         .review-meta div { padding:10px 8px 10px 0; border-bottom:1px solid var(--line); }
@@ -404,7 +408,7 @@ export default function QuestionQualityPage() {
         .review-save:disabled, .review-quarantine:disabled { opacity:.5; cursor:not-allowed; }
         .save-message { min-height:16px; color:var(--muted); font-size:10px; }
         .queue-state { min-height:500px; display:grid; place-content:center; text-align:center; padding:30px; color:var(--muted); font-size:12px; }
-        .queue-state strong { display:block; margin-bottom:6px; color:var(--navy); font:700 20px/1.1 "Crimson Pro",Georgia,serif; }
+        .queue-state strong { display:block; margin-bottom:6px; color:var(--navy); font:700 20px/1.1 var(--font-crimson),Georgia,serif; }
         .pager { display:flex; justify-content:space-between; align-items:center; padding:11px 13px; border-top:1px solid var(--line); background:#f8f9fa; }
         .pager span { color:var(--muted); font-size:10px; }
         .pager button { border:1px solid var(--line); border-radius:5px; background:#fff; padding:7px 10px; color:var(--navy); font-size:10px; font-weight:800; cursor:pointer; }
@@ -427,11 +431,11 @@ export default function QuestionQualityPage() {
         .audit-metric.ok { border-top-color:#16805b; }
         .audit-metric-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
         .audit-metric-label { margin:0; font-size:11px; font-weight:850; line-height:1.35; }
-        .audit-metric-count { font:750 25px/1 "Crimson Pro",Georgia,serif; }
+        .audit-metric-count { font:750 25px/1 var(--font-crimson),Georgia,serif; }
         .audit-metric-detail { margin:9px 0 0; color:var(--muted); font-size:10px; line-height:1.4; }
         .audit-panel { overflow:auto; background:#fff; border:1px solid var(--line); border-radius:8px; }
         .audit-panel-head { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; padding:14px 16px; border-bottom:1px solid var(--line); }
-        .audit-panel-title { margin:0; font:700 18px/1.15 "Crimson Pro",Georgia,serif; }
+        .audit-panel-title { margin:0; font:700 18px/1.15 var(--font-crimson),Georgia,serif; }
         .audit-panel-copy { margin:4px 0 0; color:var(--muted); font-size:10px; line-height:1.4; }
         .audit-panel-count { color:var(--muted); font-size:10px; font-weight:800; white-space:nowrap; }
         .audit-table { width:100%; border-collapse:collapse; font-size:10px; }
@@ -745,6 +749,20 @@ function QuestionBankAudit({ audit, loading }: { audit: AuditData; loading: bool
             { key: "distractor_status", label: "Status" },
           ]}
         />
+        <AuditTable
+          title="Malformed assessment questions"
+          copy="Questions that failed submission or delivery, were skipped without scoring, and should be fixed or deleted."
+          rows={audit.malformed}
+          columns={[
+            { key: "status", label: "Report" },
+            { key: "is_quarantined", label: "Quarantined" },
+            { key: "recorded_as_non_scoring_skip", label: "Skipped" },
+            { key: "question_type", label: "Type" },
+            { key: "error_code", label: "Code" },
+            { key: "error_message", label: "Error" },
+            { key: "prompt", label: "Question" },
+          ]}
+        />
       </div>
     </section>
   );
@@ -802,7 +820,7 @@ function ConsoleState({title, copy, action}: {title: string; copy: string; actio
       fontFamily: "Inter, system-ui, sans-serif",
     }}>
       <div style={{maxWidth: 440, textAlign: "center"}}>
-        <p style={{margin: 0, fontFamily: '"Crimson Pro", Georgia, serif', fontSize: 30, fontWeight: 700}}>{title}</p>
+        <p style={{margin: 0, fontFamily: 'var(--font-crimson), Georgia, serif', fontSize: 30, fontWeight: 700}}>{title}</p>
         <p style={{margin: "10px 0 20px", color: "rgba(255,255,255,.62)", fontSize: 13, lineHeight: 1.55}}>{copy}</p>
         {action}
         <style>{`

@@ -6,7 +6,6 @@ import {
   BackgroundVariant,
   Controls,
   Handle,
-  MarkerType,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -259,9 +258,15 @@ function KnowledgeNode({ data, sourcePosition, targetPosition }: NodeProps<Node<
   return (
     <div
       className={`${styles.node} ${data.selected ? styles.selected : ""} ${data.recommended ? styles.recommended : ""}`}
-      style={{ "--node-color": data.status.color } as CSSProperties}
+      data-nodetype={data.item.type}
+      data-status={data.status.key}
+      style={{
+        "--node-color": data.status.color,
+        "--arrive-delay": `${(data.arriveIndex as number ?? 0) * 55}ms`,
+      } as CSSProperties}
     >
       <Handle className={styles.handle} type="target" position={targetPosition ?? Position.Left} />
+      <span className={styles.evidenceStar} aria-hidden="true" />
       <span className={styles.nodeKicker}>{data.item.kicker}</span>
       <span className={styles.nodeLabel}>{data.item.label}</span>
       <span className={styles.nodeSubtitle}>{data.item.subtitle}</span>
@@ -269,7 +274,7 @@ function KnowledgeNode({ data, sourcePosition, targetPosition }: NodeProps<Node<
         <span className={styles.status}>{data.status.label}</span>
         <span className={styles.score}>{data.displayScore ?? "--"}</span>
       </span>
-      {data.hasChildren && <span className={styles.childrenHint} aria-hidden="true">+</span>}
+      {data.hasChildren && <span className={styles.childrenHint} aria-hidden="true">⌖</span>}
       <Handle className={styles.handle} type="source" position={sourcePosition ?? Position.Right} />
     </div>
   );
@@ -326,11 +331,12 @@ function graphLayout(items: GraphItem[], parent: GraphItem) {
   const nodes: Array<{ item: GraphItem; position: { x: number; y: number } }> = [];
 
   if (parent.type === "root") {
+    // Torah is the foundation: it anchors the base and knowledge rises from it.
     const positions = [
-      { x: 30, y: 190 },
-      { x: 330, y: 190 },
-      { x: 650, y: 70 },
-      { x: 650, y: 310 },
+      { x: 300, y: 430 },
+      { x: 300, y: 225 },
+      { x: 60, y: 30 },
+      { x: 540, y: 30 },
     ];
     items.forEach((item, index) => nodes.push({ item, position: positions[index] }));
     return nodes;
@@ -486,8 +492,8 @@ function SemanticGraphInner({
         position,
         draggable: false,
         selectable: true,
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
+        sourcePosition: parent.type === "root" ? Position.Top : Position.Right,
+        targetPosition: parent.type === "root" ? Position.Bottom : Position.Left,
         style: {
           width: parent.type === "section" ? 188 : 220,
           height: parent.type === "section" ? 112 : 126,
@@ -500,23 +506,19 @@ function SemanticGraphInner({
           hasChildren: itemHasChildren(item),
           selected: item.id === selectedId,
           recommended: isRecommended(item),
+          arriveIndex: 0,
         },
       };
     })
-  ), [evidenceForItem, isRecommended, items, parent, selectedId]);
+  ).map((node, index) => ({ ...node, data: { ...node.data, arriveIndex: index } })), [evidenceForItem, isRecommended, items, parent, selectedId]);
 
   const edges = useMemo<Edge[]>(() => {
-    const edge = (source: string, target: string, animated = false): Edge => ({
+    const edge = (source: string, target: string, primary = false): Edge => ({
       id: `${source}->${target}`,
       source,
       target,
-      type: "smoothstep",
-      animated,
-      markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(210,232,245,.62)" },
-      style: {
-        stroke: "rgba(210,232,245,.42)",
-        strokeWidth: 1.8,
-      },
+      type: "default",
+      className: primary ? "edge-primary" : "edge-faint",
     });
 
     if (parent.type === "root") {
@@ -652,6 +654,8 @@ function SemanticGraphInner({
         maxZoom={1.8}
         nodesDraggable={false}
         nodesConnectable={false}
+        zoomOnScroll={false}
+        preventScrolling={false}
         elementsSelectable
         onNodeClick={(_event, node) => {
           const item = node.data.item;

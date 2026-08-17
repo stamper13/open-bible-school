@@ -1,0 +1,952 @@
+[
+  {
+    "book_code": "GEN",
+    "slug": "patriarchal_route",
+    "kind": "book",
+    "prompt": "Which geographic movement best describes the family story in Genesis after the call of Abram?",
+    "answer": "From Mesopotamia and Haran into Canaan, with the family eventually going down to Egypt",
+    "distractors": [
+      "From Egypt through Sinai and the wilderness toward the plains of Moab",
+      "From Shiloh through the Philistine frontier and wilderness to Jerusalem",
+      "From Babylon through the Persian provinces to rebuilt Jerusalem"
+    ],
+    "source_ref": "Gen 11:31-12:7; 46:1-7",
+    "explanation": "Genesis follows Abram from Mesopotamia and Haran into Canaan and ends with Jacob's family living in Egypt.",
+    "centrality": "essential",
+    "importance_context": 94,
+    "importance_conceptual": 94,
+    "retest_stage": "foundation",
+    "irt_b": -1.0
+  },
+  {
+    "book_code": "EXO",
+    "slug": "major_settings_exclusion",
+    "kind": "book",
+    "prompt": "Which place is not a major setting in Exodus?",
+    "answer": "Babylon",
+    "distractors": [
+      "Egypt",
+      "Midian",
+      "Sinai"
+    ],
+    "source_ref": "Exod 1:1-14; 14:1-31; 19:1-2",
+    "explanation": "Exodus moves from Egypt through the sea and wilderness to Mount Sinai. Babylon is not a setting in the book.",
+    "centrality": "essential",
+    "importance_context": 96,
+    "importance_conceptual": 93,
+    "retest_stage": "foundation",
+    "irt_b": -1.05
+  },
+  {
+    "book_code": "LEV",
+    "slug": "sinai_tabernacle_setting",
+    "kind": "book",
+    "prompt": "Where are the instructions of Leviticus situated within Israel's journey?",
+    "answer": "At Israel's camp at Sinai, centered on the tabernacle",
+    "distractors": [
+      "On the plains of Moab as Israel prepares to cross the Jordan",
+      "At Shiloh after the land has been divided among the tribes",
+      "At the Jerusalem temple after Solomon becomes king"
+    ],
+    "source_ref": "Lev 1:1; 25:1; 26:46; 27:34",
+    "explanation": "Leviticus presents the LORD's instructions at Sinai, with worship centered on the tabernacle.",
+    "centrality": "supporting",
+    "importance_context": 76,
+    "importance_conceptual": 70,
+    "retest_stage": "foundation",
+    "irt_b": -0.8
+  },
+  {
+    "book_code": "NUM",
+    "slug": "wilderness_route",
+    "kind": "book",
+    "prompt": "Which route best summarizes the movement of Israel in Numbers?",
+    "answer": "From Sinai through the wilderness toward the plains of Moab",
+    "distractors": [
+      "From Canaan back to Egypt by way of the Philistine coast",
+      "From Babylon to Jerusalem under Persian protection",
+      "From Shiloh to Gibeah and then to Jerusalem"
+    ],
+    "source_ref": "Num 1:1; 10:11-12; 22:1; 36:13",
+    "explanation": "Numbers begins at Sinai, follows Israel through the wilderness, and ends on the plains of Moab.",
+    "centrality": "essential",
+    "importance_context": 93,
+    "importance_conceptual": 90,
+    "retest_stage": "foundation",
+    "irt_b": -0.95
+  },
+  {
+    "book_code": "DEU",
+    "slug": "geographic_standpoint",
+    "kind": "book",
+    "prompt": "Which description best captures the geographic standpoint of Deuteronomy?",
+    "answer": "Israel is east of the Jordan on the plains of Moab, looking toward Canaan",
+    "distractors": [
+      "Israel is at Mount Sinai immediately after leaving Egypt",
+      "Israel is gathered at Shiloh after Joshua divides the land",
+      "Judah is in Babylon preparing to return to Jerusalem"
+    ],
+    "source_ref": "Deut 1:1-5; 34:1-8",
+    "explanation": "Moses addresses Israel on the plains of Moab before the people cross the Jordan into Canaan.",
+    "centrality": "essential",
+    "importance_context": 94,
+    "importance_conceptual": 91,
+    "retest_stage": "foundation",
+    "irt_b": -0.95
+  },
+  {
+    "book_code": "JOS",
+    "slug": "jordan_entry",
+    "kind": "book",
+    "prompt": "Which geographic movement launches the main action of Joshua?",
+    "answer": "Israel crosses the Jordan from the east and enters Canaan",
+    "distractors": [
+      "Israel crosses the Euphrates and enters Babylon",
+      "Israel leaves Jerusalem and settles in Egypt",
+      "Israel sails from Joppa and arrives in Nineveh"
+    ],
+    "source_ref": "Josh 1:1-2; 3:14-17",
+    "explanation": "Joshua's main narrative begins as Israel crosses the Jordan and enters the promised land.",
+    "centrality": "essential",
+    "importance_context": 94,
+    "importance_conceptual": 92,
+    "retest_stage": "foundation",
+    "irt_b": -1.0
+  },
+  {
+    "book_code": "JDG",
+    "slug": "tribal_borderlands",
+    "kind": "book",
+    "prompt": "Which setting best describes most of the events in Judges?",
+    "answer": "Israel's tribal territories in Canaan and their surrounding borderlands",
+    "distractors": [
+      "The Judean exile communities living throughout Babylonia and Persia",
+      "The Persian royal court at Susa and the provinces of the empire",
+      "Israel's camp at Sinai and the wilderness route toward Moab"
+    ],
+    "source_ref": "Judg 1:1-36; 2:6-23",
+    "explanation": "Judges moves among Israel's tribal territories and neighboring peoples in and around Canaan.",
+    "centrality": "essential",
+    "importance_context": 86,
+    "importance_conceptual": 82,
+    "retest_stage": "foundation",
+    "irt_b": -0.9
+  },
+  {
+    "book_code": "RUT",
+    "slug": "moab_bethlehem_route",
+    "kind": "book",
+    "prompt": "Which movement provides the geographic frame for Ruth?",
+    "answer": "From Moab to Bethlehem in Judah",
+    "distractors": [
+      "From Egypt to Mount Sinai",
+      "From Susa to Jerusalem",
+      "From Joppa to Nineveh"
+    ],
+    "source_ref": "Ruth 1:1-22",
+    "explanation": "Naomi returns from Moab to Bethlehem, and Ruth accompanies her into Judah.",
+    "centrality": "essential",
+    "importance_context": 86,
+    "importance_conceptual": 80,
+    "retest_stage": "foundation",
+    "irt_b": -0.95
+  },
+  {
+    "book_code": "1SA",
+    "slug": "major_settings",
+    "kind": "book",
+    "prompt": "Which group contains only important settings in 1 Samuel?",
+    "answer": "Shiloh, Gibeah, the Philistine frontier, and the wilderness of Judah",
+    "distractors": [
+      "Babylon, Susa, Nineveh, and the Kebar canal",
+      "Mount Sinai, Kadesh-barnea, Moab, and Mount Nebo",
+      "Samaria, Damascus, Babylon, and the Persian court"
+    ],
+    "source_ref": "1 Sam 1:3; 10:26; 17:1-3; 23:14",
+    "explanation": "First Samuel moves from Shiloh through Saul's center at Gibeah, conflict with Philistia, and David's wilderness flight.",
+    "centrality": "essential",
+    "importance_context": 84,
+    "importance_conceptual": 80,
+    "retest_stage": "foundation",
+    "irt_b": -0.75
+  },
+  {
+    "book_code": "2SA",
+    "slug": "hebron_to_jerusalem",
+    "kind": "book",
+    "prompt": "David's rule in 2 Samuel shifts from which city to which city?",
+    "answer": "From Hebron to Jerusalem",
+    "distractors": [
+      "From Shiloh to Bethel",
+      "From Samaria to Damascus",
+      "From Bethlehem to Babylon"
+    ],
+    "source_ref": "2 Sam 2:1-4; 5:1-10",
+    "explanation": "David first reigns over Judah from Hebron and later establishes Jerusalem as the capital of all Israel.",
+    "centrality": "essential",
+    "importance_context": 91,
+    "importance_conceptual": 88,
+    "retest_stage": "foundation",
+    "irt_b": -0.95
+  },
+  {
+    "book_code": "1KI",
+    "slug": "divided_kingdom_geography",
+    "kind": "book",
+    "prompt": "Which geographic division becomes central after Solomon's death in 1 Kings?",
+    "answer": "The northern kingdom of Israel separates from Judah in the south",
+    "distractors": [
+      "Edom divides into eastern and western kingdoms",
+      "Babylon separates from Persia and occupies Egypt",
+      "Philistia divides Jerusalem from the tribe of Benjamin"
+    ],
+    "source_ref": "1 Kgs 12:1-24; 16:23-24",
+    "explanation": "After Solomon, the kingdom divides into northern Israel and southern Judah; Samaria later becomes the northern capital.",
+    "centrality": "essential",
+    "importance_context": 95,
+    "importance_conceptual": 94,
+    "retest_stage": "foundation",
+    "irt_b": -0.9
+  },
+  {
+    "book_code": "2KI",
+    "slug": "two_capitals_fall",
+    "kind": "book",
+    "prompt": "Which two royal capitals fall to foreign empires in 2 Kings?",
+    "answer": "Samaria falls to Assyria, and Jerusalem falls to Babylon",
+    "distractors": [
+      "Damascus falls to Egypt, and Nineveh falls to Persia",
+      "Hebron falls to Moab, and Bethel falls to Edom",
+      "Susa falls to Greece, and Babylon falls to Rome"
+    ],
+    "source_ref": "2 Kgs 17:5-6; 25:1-11",
+    "explanation": "Second Kings narrates Assyria's capture of Samaria and Babylon's later destruction of Jerusalem.",
+    "centrality": "essential",
+    "importance_context": 97,
+    "importance_conceptual": 96,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "1CH",
+    "slug": "jerusalem_focus",
+    "kind": "book",
+    "prompt": "Which city becomes the geographic focus of David's reign in 1 Chronicles?",
+    "answer": "Jerusalem",
+    "distractors": [
+      "Samaria",
+      "Susa",
+      "Nineveh"
+    ],
+    "source_ref": "1 Chr 11:4-9; 15:1-3; 22:1-5",
+    "explanation": "First Chronicles centers David's kingship, the ark, and temple preparation in Jerusalem.",
+    "centrality": "essential",
+    "importance_context": 84,
+    "importance_conceptual": 80,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "2CH",
+    "slug": "judah_temple_focus",
+    "kind": "book",
+    "prompt": "Which geographic and political center receives the main attention in 2 Chronicles?",
+    "answer": "Judah and the temple in Jerusalem",
+    "distractors": [
+      "The northern kingdom and its capital at Samaria",
+      "The Assyrian court and the city of Nineveh",
+      "The Persian provinces surrounding Susa"
+    ],
+    "source_ref": "2 Chr 1:1-6; 10:16-19; 36:15-23",
+    "explanation": "Second Chronicles concentrates on Judah's kings and the temple in Jerusalem through exile and the decree to return.",
+    "centrality": "essential",
+    "importance_context": 87,
+    "importance_conceptual": 84,
+    "retest_stage": "foundation",
+    "irt_b": -0.8
+  },
+  {
+    "book_code": "EZR",
+    "slug": "exile_to_jerusalem",
+    "kind": "book",
+    "prompt": "Which movement provides the broad geographic frame for Ezra?",
+    "answer": "Jewish exiles travel from the Babylonian and Persian world to Jerusalem",
+    "distractors": [
+      "Israelite tribes travel from Egypt to Mount Sinai",
+      "Judean soldiers travel from Jerusalem to conquer Samaria",
+      "Assyrian officials travel from Nineveh to rebuild Babylon"
+    ],
+    "source_ref": "Ezra 1:1-5; 7:6-9",
+    "explanation": "Ezra recounts returns from exile to Jerusalem for temple restoration and covenant reform.",
+    "centrality": "essential",
+    "importance_context": 91,
+    "importance_conceptual": 88,
+    "retest_stage": "foundation",
+    "irt_b": -0.9
+  },
+  {
+    "book_code": "NEH",
+    "slug": "susa_to_jerusalem",
+    "kind": "book",
+    "prompt": "Which journey begins Nehemiah's work?",
+    "answer": "From the Persian court at Susa to Jerusalem",
+    "distractors": [
+      "From Jerusalem to the Assyrian court at Nineveh",
+      "From Egypt to the wilderness of Sinai",
+      "From Bethlehem to the land of Moab"
+    ],
+    "source_ref": "Neh 1:1-4; 2:1-11",
+    "explanation": "Nehemiah leaves his service in Susa and travels to Jerusalem to rebuild the city's walls.",
+    "centrality": "essential",
+    "importance_context": 90,
+    "importance_conceptual": 86,
+    "retest_stage": "foundation",
+    "irt_b": -0.9
+  },
+  {
+    "book_code": "EST",
+    "slug": "susa_persian_court",
+    "kind": "book",
+    "prompt": "Where does most of the court action in Esther take place?",
+    "answer": "At Susa in the Persian Empire",
+    "distractors": [
+      "At Samaria in the northern kingdom",
+      "At Nineveh in the Assyrian Empire",
+      "At Hebron during David's early reign"
+    ],
+    "source_ref": "Esth 1:2; 2:5-8",
+    "explanation": "Esther is set chiefly at the Persian royal citadel in Susa.",
+    "centrality": "essential",
+    "importance_context": 88,
+    "importance_conceptual": 82,
+    "retest_stage": "foundation",
+    "irt_b": -0.9
+  },
+  {
+    "book_code": "JOB",
+    "slug": "land_of_uz",
+    "kind": "book",
+    "prompt": "In which land does the opening narrative place Job?",
+    "answer": "The land of Uz",
+    "distractors": [
+      "The land of Goshen",
+      "The plain of Shinar",
+      "The hill country of Ephraim"
+    ],
+    "source_ref": "Job 1:1",
+    "explanation": "The book introduces Job as a man living in the land of Uz.",
+    "centrality": "supporting",
+    "importance_context": 58,
+    "importance_conceptual": 48,
+    "retest_stage": "core",
+    "irt_b": -0.15
+  },
+  {
+    "book_code": "PSA",
+    "slug": "zion_jerusalem_focus",
+    "kind": "book",
+    "prompt": "Which location is repeatedly celebrated in Psalms as the city of God and a center of worship and royal hope?",
+    "answer": "Zion and Jerusalem",
+    "distractors": [
+      "Nineveh and Asshur",
+      "Susa and Persepolis",
+      "Babylon and Ur"
+    ],
+    "source_ref": "Ps 2:6; 48:1-3; 87:1-3; 122:1-5",
+    "explanation": "Many psalms present Zion or Jerusalem as the place of God's rule, worship, and royal hope.",
+    "centrality": "essential",
+    "importance_context": 86,
+    "importance_conceptual": 85,
+    "retest_stage": "foundation",
+    "irt_b": -0.8
+  },
+  {
+    "book_code": "PRO",
+    "slug": "city_gates",
+    "kind": "book",
+    "prompt": "Which public setting appears repeatedly in Proverbs as a place of instruction, commerce, and judgment?",
+    "answer": "The city gates",
+    "distractors": [
+      "The wilderness camp",
+      "The royal tombs",
+      "The battlefield watchtowers"
+    ],
+    "source_ref": "Prov 1:20-21; 8:1-3; 22:22; 31:23",
+    "explanation": "Proverbs repeatedly uses the city gates as a public setting for wisdom, legal decisions, and community life.",
+    "centrality": "supporting",
+    "importance_context": 55,
+    "importance_conceptual": 46,
+    "retest_stage": "core",
+    "irt_b": -0.1
+  },
+  {
+    "book_code": "ECC",
+    "slug": "jerusalem_royal_context",
+    "kind": "book",
+    "prompt": "Which city supplies the Teacher's stated royal setting in Ecclesiastes?",
+    "answer": "Jerusalem",
+    "distractors": [
+      "Samaria",
+      "Nineveh",
+      "Susa"
+    ],
+    "source_ref": "Eccl 1:1, 12",
+    "explanation": "The Teacher identifies himself with royal rule over Israel in Jerusalem.",
+    "centrality": "supporting",
+    "importance_context": 53,
+    "importance_conceptual": 44,
+    "retest_stage": "core",
+    "irt_b": -0.05
+  },
+  {
+    "book_code": "SNG",
+    "slug": "poetic_places_exclusion",
+    "kind": "book",
+    "prompt": "Which place is not part of the geographic imagery in Song of Songs?",
+    "answer": "Babylon",
+    "distractors": [
+      "Jerusalem",
+      "Lebanon",
+      "En Gedi"
+    ],
+    "source_ref": "Song 1:5, 14; 4:8",
+    "explanation": "Song of Songs names Jerusalem, Lebanon, and En Gedi in its poetry, but not Babylon.",
+    "centrality": "supporting",
+    "importance_context": 48,
+    "importance_conceptual": 38,
+    "retest_stage": "core",
+    "irt_b": 0.05
+  },
+  {
+    "book_code": "ISA",
+    "slug": "zion_assyrian_crisis",
+    "kind": "book",
+    "prompt": "Which city and region form the central earthly setting of Isaiah's warnings and hopes?",
+    "answer": "Jerusalem or Zion and the kingdom of Judah",
+    "distractors": [
+      "Nineveh and the heartland of Assyria",
+      "Susa and the provinces of Persia",
+      "Samaria alone, with no attention to Judah"
+    ],
+    "source_ref": "Isa 1:1, 8-9; 2:1-4; 36:1-2",
+    "explanation": "Isaiah addresses Judah and Jerusalem, especially Zion, amid Assyrian pressure and promises of restoration.",
+    "centrality": "essential",
+    "importance_context": 94,
+    "importance_conceptual": 93,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "JER",
+    "slug": "judah_fall_and_dispersion",
+    "kind": "book",
+    "prompt": "Which geographic movement best fits the closing crisis of Jeremiah?",
+    "answer": "Jerusalem falls, people are exiled to Babylon, and a remnant flees to Egypt",
+    "distractors": [
+      "Samaria conquers Judah and moves its people to Nineveh",
+      "Persia destroys Babylon and forces Judah into Edom",
+      "Egypt captures Assyria and settles its people in Jerusalem"
+    ],
+    "source_ref": "Jer 39:1-10; 43:1-7; 52:27-30",
+    "explanation": "Jeremiah's closing crisis includes Jerusalem's fall, Babylonian exile, and the flight of a remnant to Egypt.",
+    "centrality": "essential",
+    "importance_context": 95,
+    "importance_conceptual": 92,
+    "retest_stage": "foundation",
+    "irt_b": -0.75
+  },
+  {
+    "book_code": "LAM",
+    "slug": "jerusalem_ruins",
+    "kind": "book",
+    "prompt": "Which city's destruction provides the setting and subject of Lamentations?",
+    "answer": "Jerusalem",
+    "distractors": [
+      "Nineveh",
+      "Samaria",
+      "Susa"
+    ],
+    "source_ref": "Lam 1:1-4; 2:1-10",
+    "explanation": "Lamentations grieves over devastated Jerusalem and the suffering that followed its fall.",
+    "centrality": "essential",
+    "importance_context": 94,
+    "importance_conceptual": 91,
+    "retest_stage": "foundation",
+    "irt_b": -1.0
+  },
+  {
+    "book_code": "EZE",
+    "slug": "babylon_and_jerusalem",
+    "kind": "book",
+    "prompt": "Which two locations frame much of Ezekiel's prophetic perspective?",
+    "answer": "The exiles in Babylonia by the Kebar canal and the city of Jerusalem",
+    "distractors": [
+      "The royal court in Susa and the city of Nineveh",
+      "The wilderness of Sinai and the plains of Moab",
+      "The city of Samaria and the island of Cyprus"
+    ],
+    "source_ref": "Ezek 1:1-3; 8:1-4; 40:1-2",
+    "explanation": "Ezekiel prophesies among exiles in Babylonia while many visions and messages concern Jerusalem.",
+    "centrality": "essential",
+    "importance_context": 94,
+    "importance_conceptual": 92,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "DAN",
+    "slug": "imperial_court_setting",
+    "kind": "book",
+    "prompt": "Which setting best describes the court narratives in Daniel?",
+    "answer": "Jewish exiles serving under Babylonian and Persian rule",
+    "distractors": [
+      "Israelite judges defending tribal Canaan",
+      "Priests serving at the tabernacle on Mount Sinai",
+      "Judean farmers rebuilding walls under Roman rule"
+    ],
+    "source_ref": "Dan 1:1-7; 5:30-6:3",
+    "explanation": "Daniel's court narratives follow Jewish exiles under Babylonian and then Persian imperial rule.",
+    "centrality": "essential",
+    "importance_context": 92,
+    "importance_conceptual": 89,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "HOS",
+    "slug": "northern_kingdom_audience",
+    "kind": "book",
+    "prompt": "Which kingdom, often called Ephraim, is the main geographic and political focus of Hosea?",
+    "answer": "The northern kingdom of Israel",
+    "distractors": [
+      "The southern kingdom of Judah alone",
+      "The kingdom of Edom",
+      "The Persian Empire"
+    ],
+    "source_ref": "Hos 1:1; 4:1; 5:3",
+    "explanation": "Hosea chiefly addresses northern Israel, frequently referring to it as Ephraim.",
+    "centrality": "essential",
+    "importance_context": 88,
+    "importance_conceptual": 84,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "JOL",
+    "slug": "zion_jerusalem_judah",
+    "kind": "book",
+    "prompt": "Which place is central to Joel's calls to repentance and promises of deliverance?",
+    "answer": "Zion or Jerusalem in Judah",
+    "distractors": [
+      "Nineveh in Assyria",
+      "Susa in Persia",
+      "Samaria in northern Israel"
+    ],
+    "source_ref": "Joel 1:14; 2:1, 15, 32; 3:1, 16-17",
+    "explanation": "Joel repeatedly addresses Zion, Jerusalem, and Judah in its warnings and promises.",
+    "centrality": "essential",
+    "importance_context": 82,
+    "importance_conceptual": 78,
+    "retest_stage": "foundation",
+    "irt_b": -0.75
+  },
+  {
+    "book_code": "AMO",
+    "slug": "tekoa_to_bethel",
+    "kind": "book",
+    "prompt": "Which geographic contrast helps locate Amos's ministry?",
+    "answer": "He comes from Tekoa in Judah but prophesies chiefly to northern Israel, including Bethel",
+    "distractors": [
+      "He comes from Nineveh but prophesies chiefly in Babylon",
+      "He comes from Susa but prophesies chiefly in Egypt",
+      "He comes from Moab but prophesies chiefly in Edom"
+    ],
+    "source_ref": "Amos 1:1; 7:10-15",
+    "explanation": "Amos is from Tekoa in Judah, yet his central ministry is directed toward northern Israel.",
+    "centrality": "essential",
+    "importance_context": 86,
+    "importance_conceptual": 81,
+    "retest_stage": "foundation",
+    "irt_b": -0.8
+  },
+  {
+    "book_code": "OBA",
+    "slug": "edom_and_jerusalem",
+    "kind": "book",
+    "prompt": "Which two lands stand in sharp opposition in Obadiah?",
+    "answer": "Edom and Judah, especially Jerusalem",
+    "distractors": [
+      "Assyria and Babylon, especially Nineveh",
+      "Egypt and Cush, especially Memphis",
+      "Persia and Media, especially Susa"
+    ],
+    "source_ref": "Obad 1-4, 10-14, 17-21",
+    "explanation": "Obadiah condemns Edom for violence against Judah and Jerusalem and promises restoration for Zion.",
+    "centrality": "essential",
+    "importance_context": 89,
+    "importance_conceptual": 84,
+    "retest_stage": "foundation",
+    "irt_b": -0.75
+  },
+  {
+    "book_code": "JON",
+    "slug": "joppa_sea_nineveh",
+    "kind": "book",
+    "prompt": "Which route best summarizes Jonah's geographic movement?",
+    "answer": "From Israel to Joppa and the sea, and eventually to Nineveh",
+    "distractors": [
+      "From Babylon to Susa and eventually to Jerusalem",
+      "From Moab to Bethlehem and eventually to Hebron",
+      "From Egypt to Sinai and eventually to the plains of Moab"
+    ],
+    "source_ref": "Jonah 1:1-3, 15-17; 3:1-3",
+    "explanation": "Jonah travels to Joppa to flee by sea but is eventually sent to Nineveh.",
+    "centrality": "essential",
+    "importance_context": 91,
+    "importance_conceptual": 87,
+    "retest_stage": "foundation",
+    "irt_b": -0.9
+  },
+  {
+    "book_code": "MIC",
+    "slug": "two_capitals",
+    "kind": "book",
+    "prompt": "Which two capitals frame Micah's indictments of Israel and Judah?",
+    "answer": "Samaria and Jerusalem",
+    "distractors": [
+      "Nineveh and Babylon",
+      "Susa and Persepolis",
+      "Damascus and Tyre"
+    ],
+    "source_ref": "Mic 1:1, 5-9",
+    "explanation": "Micah announces judgment concerning Samaria in northern Israel and Jerusalem in Judah.",
+    "centrality": "essential",
+    "importance_context": 86,
+    "importance_conceptual": 82,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "NAM",
+    "slug": "nineveh_target",
+    "kind": "book",
+    "prompt": "Which city's fall is the geographic focus of Nahum?",
+    "answer": "Nineveh",
+    "distractors": [
+      "Jerusalem",
+      "Samaria",
+      "Susa"
+    ],
+    "source_ref": "Nah 1:1; 2:8; 3:7",
+    "explanation": "Nahum announces and vividly portrays the fall of Nineveh, the Assyrian capital.",
+    "centrality": "essential",
+    "importance_context": 90,
+    "importance_conceptual": 85,
+    "retest_stage": "foundation",
+    "irt_b": -0.95
+  },
+  {
+    "book_code": "HAB",
+    "slug": "judah_and_chaldeans",
+    "kind": "book",
+    "prompt": "Which geopolitical setting drives Habakkuk's complaints and the LORD's answer?",
+    "answer": "Violence in Judah and the rise of the Babylonian or Chaldean power",
+    "distractors": [
+      "A Persian invasion of Egypt and the fall of Susa",
+      "A Philistine conquest of Babylon and the fall of Nineveh",
+      "A Moabite invasion of Assyria and the fall of Damascus"
+    ],
+    "source_ref": "Hab 1:2-11",
+    "explanation": "Habakkuk laments violence and hears that the Chaldeans are being raised up as an instrument of judgment.",
+    "centrality": "essential",
+    "importance_context": 86,
+    "importance_conceptual": 83,
+    "retest_stage": "foundation",
+    "irt_b": -0.65
+  },
+  {
+    "book_code": "ZEP",
+    "slug": "judah_jerusalem_and_nations",
+    "kind": "book",
+    "prompt": "Which place stands at the center of Zephaniah's judgment before the book turns to surrounding nations?",
+    "answer": "Judah and Jerusalem",
+    "distractors": [
+      "Persia and Susa",
+      "Assyria and Babylon alone",
+      "Egypt and Memphis"
+    ],
+    "source_ref": "Zeph 1:4-13; 2:4-15; 3:1-8",
+    "explanation": "Zephaniah begins with judgment on Judah and Jerusalem and then addresses neighboring nations.",
+    "centrality": "essential",
+    "importance_context": 82,
+    "importance_conceptual": 78,
+    "retest_stage": "foundation",
+    "irt_b": -0.7
+  },
+  {
+    "book_code": "HAG",
+    "slug": "restored_jerusalem_temple",
+    "kind": "book",
+    "prompt": "Which city and building project provide the setting for Haggai?",
+    "answer": "Jerusalem and the rebuilding of the temple",
+    "distractors": [
+      "Samaria and the rebuilding of its royal palace",
+      "Nineveh and the rebuilding of its walls",
+      "Hebron and the rebuilding of David's tomb"
+    ],
+    "source_ref": "Hag 1:2-8, 14; 2:3-9",
+    "explanation": "Haggai addresses the returned community in Jerusalem and urges completion of the temple.",
+    "centrality": "essential",
+    "importance_context": 88,
+    "importance_conceptual": 84,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "ZEC",
+    "slug": "jerusalem_restoration",
+    "kind": "book",
+    "prompt": "Which city is the central location of Zechariah's restoration visions and temple encouragement?",
+    "answer": "Jerusalem",
+    "distractors": [
+      "Samaria",
+      "Nineveh",
+      "Susa"
+    ],
+    "source_ref": "Zech 1:12-17; 2:1-5; 8:1-8",
+    "explanation": "Zechariah's visions repeatedly concern Jerusalem, its temple, and its future restoration.",
+    "centrality": "essential",
+    "importance_context": 90,
+    "importance_conceptual": 87,
+    "retest_stage": "foundation",
+    "irt_b": -0.85
+  },
+  {
+    "book_code": "MAL",
+    "slug": "restored_temple_context",
+    "kind": "book",
+    "prompt": "Which setting best fits Malachi's rebukes of priests, offerings, and covenant unfaithfulness?",
+    "answer": "Restored Judah with functioning temple and altar worship",
+    "distractors": [
+      "Israel at Sinai before the tabernacle is built",
+      "Northern Israel before the kingdom divides",
+      "Jewish exiles serving in the court at Babylon"
+    ],
+    "source_ref": "Mal 1:6-14; 2:11; 3:1, 10",
+    "explanation": "Malachi addresses a restored community in Judah whose temple worship and covenant life have become corrupt.",
+    "centrality": "supporting",
+    "importance_context": 76,
+    "importance_conceptual": 70,
+    "retest_stage": "foundation",
+    "irt_b": -0.65
+  },
+  {
+    "book_code": "EXO",
+    "slug": "moses_flees_midian",
+    "kind": "episode",
+    "prompt": "To what land does Moses flee after killing the Egyptian?",
+    "answer": "Midian",
+    "distractors": [
+      "Moab",
+      "Edom",
+      "Philistia"
+    ],
+    "source_ref": "Exod 2:11-22",
+    "explanation": "Moses flees from Pharaoh to Midian, where he lives before returning to Egypt.",
+    "centrality": "episode",
+    "importance_context": 58,
+    "importance_conceptual": 45,
+    "retest_stage": "core",
+    "irt_b": -0.05
+  },
+  {
+    "book_code": "NUM",
+    "slug": "spies_from_paran",
+    "kind": "episode",
+    "prompt": "From which wilderness does Moses send the spies to explore Canaan?",
+    "answer": "The wilderness of Paran",
+    "distractors": [
+      "The wilderness of Zin",
+      "The wilderness of Shur",
+      "The wilderness of Tekoa"
+    ],
+    "source_ref": "Num 12:16-13:3",
+    "explanation": "Israel camps in the wilderness of Paran when Moses sends the spies into Canaan.",
+    "centrality": "episode",
+    "importance_context": 56,
+    "importance_conceptual": 42,
+    "retest_stage": "core",
+    "irt_b": 0.05
+  },
+  {
+    "book_code": "DEU",
+    "slug": "moses_views_from_nebo",
+    "kind": "episode",
+    "prompt": "From which mountain does Moses view the promised land near the end of Deuteronomy?",
+    "answer": "Mount Nebo",
+    "distractors": [
+      "Mount Carmel",
+      "Mount Tabor",
+      "Mount Gerizim"
+    ],
+    "source_ref": "Deut 34:1-4",
+    "explanation": "Moses ascends Mount Nebo and views the land before his death.",
+    "centrality": "episode",
+    "importance_context": 58,
+    "importance_conceptual": 46,
+    "retest_stage": "core",
+    "irt_b": 0.0
+  },
+  {
+    "book_code": "JOS",
+    "slug": "covenant_renewal_shechem",
+    "kind": "episode",
+    "prompt": "At which city does Joshua gather Israel for the covenant-renewal assembly near the end of the book?",
+    "answer": "Shechem",
+    "distractors": [
+      "Jericho",
+      "Gibeon",
+      "Hebron"
+    ],
+    "source_ref": "Josh 24:1, 25",
+    "explanation": "Joshua gathers the tribes at Shechem and renews the covenant there.",
+    "centrality": "episode",
+    "importance_context": 62,
+    "importance_conceptual": 54,
+    "retest_stage": "core",
+    "irt_b": 0.0
+  },
+  {
+    "book_code": "JDG",
+    "slug": "sisera_kishon",
+    "kind": "episode",
+    "prompt": "Near which river is Sisera's army swept into defeat in the account of Deborah and Barak?",
+    "answer": "The Kishon River",
+    "distractors": [
+      "The Jordan River",
+      "The Arnon River",
+      "The Euphrates River"
+    ],
+    "source_ref": "Judg 4:7, 13; 5:21",
+    "explanation": "The battle is fought near the Kishon, which Deborah's song describes as sweeping the enemy away.",
+    "centrality": "episode",
+    "importance_context": 52,
+    "importance_conceptual": 38,
+    "retest_stage": "core",
+    "irt_b": 0.15
+  },
+  {
+    "book_code": "1SA",
+    "slug": "robe_cave_en_gedi",
+    "kind": "episode",
+    "prompt": "In what area does David cut off the corner of Saul's robe while hiding in a cave?",
+    "answer": "The wilderness of En Gedi",
+    "distractors": [
+      "The wilderness of Paran",
+      "The hill country of Bethel",
+      "The plain of Jezreel"
+    ],
+    "source_ref": "1 Sam 24:1-4",
+    "explanation": "David and his men are hiding in a cave in the wilderness of En Gedi when Saul enters.",
+    "centrality": "episode",
+    "importance_context": 50,
+    "importance_conceptual": 34,
+    "retest_stage": "core",
+    "irt_b": 0.1
+  },
+  {
+    "book_code": "2SA",
+    "slug": "first_capital_hebron",
+    "kind": "episode",
+    "prompt": "From which city does David first rule Judah before becoming king over all Israel?",
+    "answer": "Hebron",
+    "distractors": [
+      "Gibeah",
+      "Bethlehem",
+      "Jericho"
+    ],
+    "source_ref": "2 Sam 2:1-4; 5:1-5",
+    "explanation": "David reigns over Judah from Hebron before moving his capital to Jerusalem.",
+    "centrality": "episode",
+    "importance_context": 66,
+    "importance_conceptual": 57,
+    "retest_stage": "core",
+    "irt_b": -0.1
+  },
+  {
+    "book_code": "1KI",
+    "slug": "elijah_mount_carmel",
+    "kind": "episode",
+    "prompt": "On which mountain does Elijah confront the prophets of Baal?",
+    "answer": "Mount Carmel",
+    "distractors": [
+      "Mount Tabor",
+      "Mount Nebo",
+      "Mount Gerizim"
+    ],
+    "source_ref": "1 Kgs 18:19-40",
+    "explanation": "Elijah summons Israel and the prophets of Baal to Mount Carmel for the contest.",
+    "centrality": "episode",
+    "importance_context": 68,
+    "importance_conceptual": 58,
+    "retest_stage": "core",
+    "irt_b": -0.05
+  },
+  {
+    "book_code": "2KI",
+    "slug": "naaman_jordan",
+    "kind": "episode",
+    "prompt": "In which river does Naaman wash after following Elisha's instruction?",
+    "answer": "The Jordan River",
+    "distractors": [
+      "The Kishon River",
+      "The Euphrates River",
+      "The Nile River"
+    ],
+    "source_ref": "2 Kgs 5:9-14",
+    "explanation": "Naaman washes seven times in the Jordan and is healed.",
+    "centrality": "episode",
+    "importance_context": 56,
+    "importance_conceptual": 42,
+    "retest_stage": "core",
+    "irt_b": 0.0
+  },
+  {
+    "book_code": "EZR",
+    "slug": "gathering_at_ahava",
+    "kind": "episode",
+    "prompt": "At what river or canal does Ezra gather the returning group before the journey to Jerusalem?",
+    "answer": "The river or canal of Ahava",
+    "distractors": [
+      "The river of Kebar",
+      "The brook Kidron",
+      "The river Kishon"
+    ],
+    "source_ref": "Ezra 8:15, 21, 31",
+    "explanation": "Ezra gathers the travelers at Ahava, proclaims a fast, and begins the journey from there.",
+    "centrality": "episode",
+    "importance_context": 46,
+    "importance_conceptual": 32,
+    "retest_stage": "core",
+    "irt_b": 0.2
+  },
+  {
+    "book_code": "JER",
+    "slug": "field_at_anathoth",
+    "kind": "episode",
+    "prompt": "Where is the field Jeremiah buys as a sign that property will again be possessed in the land?",
+    "answer": "Anathoth",
+    "distractors": [
+      "Lachish",
+      "Tekoa",
+      "Mizpah"
+    ],
+    "source_ref": "Jer 32:6-15",
+    "explanation": "Jeremiah buys a field at Anathoth as a sign of future restoration.",
+    "centrality": "episode",
+    "importance_context": 55,
+    "importance_conceptual": 46,
+    "retest_stage": "core",
+    "irt_b": 0.15
+  }
+]

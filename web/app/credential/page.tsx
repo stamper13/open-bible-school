@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
+import SiteFooter from "@/components/SiteFooter";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
 type AccentKey = "teal" | "gold" | "blue" | "purple";
@@ -29,7 +31,7 @@ const MODULES: RoadmapModule[] = [
     status: "In development",
     accent: "teal",
     motif: "teal",
-    description: "Generate a custom paper assessment targeted at an individual's current level, administer it under supervision, and use the result to verify an online BLI or confirm specific strengths and gaps. The offline half of the two-tier model.",
+    description: "Generate a paper assessment matched to an individual's current level, administer it under supervision, and use the result to verify an online BLI or confirm specific strengths and gaps. It is the offline counterpart to the online assessment.",
   },
   {
     id: "biblical-languages",
@@ -45,7 +47,7 @@ const MODULES: RoadmapModule[] = [
     status: "Planned",
     accent: "blue",
     motif: "blue",
-    description: "From the apostolic era to the present: councils, creeds, movements, and the figures who shaped them, assessed with the same denominationally neutral approach.",
+    description: "From the apostolic era to the present: councils, creeds, movements, and the figures behind them, assessed with the same denominationally neutral approach.",
   },
   {
     id: "systematic-theology",
@@ -370,44 +372,11 @@ export default function CredentialPage() {
           color: #fff; letter-spacing: .005em; margin-bottom: 18px;
         }
         .hero-lead { font-size: 16px; line-height: 1.75; color: rgba(255,255,255,.62); margin-bottom: 24px; }
-        .hero-note {
-          display: flex; align-items: flex-start; gap: 8px;
-          background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
-          border-radius: 10px; padding: 12px 16px; font-size: 13px; color: rgba(255,255,255,.68); line-height: 1.55;
-        }
-        .hero-note svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; color: var(--accent); }
 
         .section-eyebrow {
           font-size: 11px; font-weight: 700; letter-spacing: .10em;
           text-transform: uppercase; color: rgba(255,255,255,.45); margin-bottom: 16px;
         }
-
-        .focus-card {
-          position: relative; overflow: hidden;
-          border: 1px solid var(--accent-line); border-radius: 18px;
-          background:
-            radial-gradient(circle at 8% 12%, rgba(10,163,163,.16), transparent 46%),
-            linear-gradient(150deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-          backdrop-filter: blur(14px);
-          padding: 26px 28px; margin-bottom: 46px;
-          box-shadow: 0 18px 44px rgba(0,0,0,.34);
-        }
-        .focus-kicker {
-          display: inline-flex; align-items: center; gap: 8px;
-          font-size: 11px; font-weight: 850; letter-spacing: .11em;
-          text-transform: uppercase; color: #6fe0e0; margin-bottom: 11px;
-        }
-        .focus-dot {
-          width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-          box-shadow: 0 0 0 4px rgba(10,163,163,.18);
-          animation: statusPulse 1.8s ease-in-out infinite;
-        }
-        .focus-title {
-          font-family: var(--font-crimson), Georgia, serif;
-          font-size: clamp(20px, 2.6vw, 25px); font-weight: 600; line-height: 1.2;
-          color: #fff; margin-bottom: 10px;
-        }
-        .focus-copy { font-size: 14.5px; line-height: 1.72; color: rgba(255,255,255,.66); max-width: 620px; }
 
         /* Carousel */
         .carousel {
@@ -689,42 +658,30 @@ export default function CredentialPage() {
       </div>
 
       <nav className="nav">
-        <Link className="nav-brand" href="/">Open Bible Assessment</Link>
+        <BrandLogo className="nav-brand" />
         <div className="nav-links">
           <Link className="nav-link" href="/">Dashboard</Link>
+          <Link className="nav-link" href="/assess">Assess</Link>
+          <Link className="nav-link" href="/knowledge-map">Knowledge Map</Link>
           <Link className="nav-link" href="/about">About</Link>
+          <Link className="nav-link" href="/bli">How BLI Works</Link>
         </div>
-        <Link className="nav-btn" href="/">Start Assessment</Link>
+        <Link className="nav-btn" href="/assess">Start Assessment</Link>
       </nav>
 
       <main className="page">
         <header className="hero">
           <div className="hero-eyebrow">Future ideas</div>
-          <h1 className="hero-heading">Where this could go next</h1>
+          <h1 className="hero-heading">Future Ideas</h1>
+          <p className="hero-lead" style={{ marginBottom: 14 }}>
+            Open Bible Assessment has just launched a beta system that evaluates Old and New Testament content
+            knowledge. The question bank and the scoring behind it are still being developed, and the current priority
+            is making them more reliable rather than adding anything new.
+          </p>
           <p className="hero-lead">
-            Open Bible Assessment measures Old and New Testament content knowledge today. The four modules below are
-            goals, not commitments — directions worth taking the same independent, denominationally neutral approach,
-            if there&apos;s time and help to build them. None of them exist yet, and none are on a schedule.
+            The four modules below are ideas for what could follow.
           </p>
-          <div className="hero-note">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            Open Bible Assessment is free, and anything that comes out of this list will stay free. Swipe or use the
-            arrows to look through the ideas.
-          </div>
         </header>
-
-        <section className="focus-card" aria-labelledby="focus-title">
-          <span className="focus-kicker">
-            <span className="focus-dot" />
-            Current focus
-          </span>
-          <h2 className="focus-title" id="focus-title">Getting the BLI right comes first</h2>
-          <p className="focus-copy">
-            Before any of this gets built, the priority is making the existing Biblical Literacy Index — Old and New
-            Testament — genuinely reliable: fixing and improving the question bank, and making sure scores mean what
-            they claim to mean. Everything below waits until that&apos;s solid.
-          </p>
-        </section>
 
         <p className="section-eyebrow">Ideas — {index + 1} of {total}</p>
 
@@ -799,10 +756,9 @@ export default function CredentialPage() {
 
         <div className="contact-strip">
           <div>
-            <h2 className="contact-heading">Free now, free later</h2>
+            <h2 className="contact-heading">Feedback and help wanted</h2>
             <p className="contact-desc">
-              Open Bible Assessment is free and will stay that way. It&apos;s a small effort, so these ideas move
-              faster with help — if you have feedback, or want to volunteer on any of them, say hello.
+              If you have feedback on the website, or want to volunteer, get in touch.
             </p>
           </div>
           <button type="button" className="contact-btn" onClick={() => setContactOpen(true)}>
@@ -811,6 +767,7 @@ export default function CredentialPage() {
           </button>
         </div>
       </main>
+      <SiteFooter />
 
       {contactOpen && (
         <div className="modal-backdrop" onClick={() => setContactOpen(false)}>

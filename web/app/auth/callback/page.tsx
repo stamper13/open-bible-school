@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
+import { claimPendingTransfer, clearPendingTransfer } from "@/lib/auth/anonymousTransfer";
 import { useRouter } from "next/navigation";
 
 type Status =
@@ -21,6 +22,7 @@ export default function AuthCallback() {
   const doneRef = useRef(false);
 
   const clearGuestStorage = useCallback(() => {
+    clearPendingTransfer(localStorage);
     localStorage.removeItem("obs_anon_user_id");
     localStorage.removeItem("obs_answered");
     localStorage.removeItem("obs_correct");
@@ -86,30 +88,43 @@ export default function AuthCallback() {
           return;
         }
 
-        const newUserId = session.user.id;
+        // Guest progress is claimed with a single-use capability minted while
+        // the visitor was still signed in anonymously. The source account is
+        // derived server-side from that token.
+        //
+        // Nothing here reads an account id from the URL. The previous flow took
+        // the guest account id from an "anon" query parameter, preferred ahead
+        // of browser storage, which let a crafted callback link claim another
+        // visitor's progress. A UUID identifies an account; it never proves
+        // control of one. Do not reintroduce a URL parameter here —
+        // tests/unit/anonymous-transfer.test.mts fails the build if one
+        // reappears in any sign-in redirect or in this callback.
+        // Passing the signed-in id lets the helper drop a record whose source
+        // is the account that just signed in — that flow upgraded nothing.
+        // The flow id proves this callback is the completion of the sign-in
+        // that minted the capability. Without it an unrelated sign-in reaching
+        // this page could spend an abandoned record — on a shared browser that
+        // means one visitor's progress landing in the next person's account.
+        // This is a correlator, not a credential: it authorizes nothing on its
+        // own, unlike the guest UUID this flow used to carry.
+        const outcome = await claimPendingTransfer(
+          supabase, localStorage, session.user.id, params.get("flow"),
+        );
 
-        const anonFromUrl = params.get("anon");
-        const anonFromLocal = localStorage.getItem("obs_anon_user_id");
-        const anonFromSession = sessionStorage.getItem("obs_anon_user_id");
-        const anonUserId = anonFromUrl || anonFromLocal || anonFromSession;
-
-        if (anonUserId && anonUserId !== newUserId && anonUserId.length > 10) {
-          const { error } = await supabase.rpc("migrate_anonymous_data", {
-            p_anonymous_user_id: anonUserId,
-            p_new_user_id: newUserId,
-          });
-
-          if (error) {
-            // The account is valid, so do not fail the sign-in. Say plainly
-            // that the guest progress did not carry over, and leave the guest
-            // keys in place so nothing is destroyed on a failed transfer.
-            console.error("Progress transfer failed:", error);
-            doneRef.current = true;
-            if (!cancelled) setStatus({ kind: "transfer-failed", next: nextPath });
-            return;
-          }
+        if (outcome.kind === "retryable") {
+          // The account is valid, so do not fail the sign-in. Say plainly that
+          // the guest progress did not carry over. The capability is still
+          // good, so it and the guest keys are left in place — nothing is
+          // destroyed and the transfer can be retried.
+          console.error("Progress transfer failed:", outcome.message);
+          doneRef.current = true;
+          if (!cancelled) setStatus({ kind: "transfer-failed", next: nextPath });
+          return;
         }
 
+        // "transferred", "nothing-to-claim" and "spent" all end here. A spent
+        // capability means the progress was already claimed, so there is
+        // nothing left to carry over and the guest keys are safe to clear.
         clearGuestStorage();
         doneRef.current = true;
         router.push(nextPath);

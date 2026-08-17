@@ -26,14 +26,18 @@ export const BLI_LEVELS: BliLevelBand[] = [
     name: "Unfamiliar",
     min: 0,
     max: 120,
-    color: "#566070",
+    // Darker and cooler than Acquainted so the two lowest bands read as
+    // distinct steps rather than the same gray at a glance.
+    color: "#454e60",
     description: "You do not yet have a steady grasp of the Old Testament's major plot, events, characters, and book locations.",
   },
   {
     name: "Acquainted",
     min: 121,
     max: 312,
-    color: "#6b7f8a",
+    // Bridges toward Familiar's teal, so the ramp gains a hue step here
+    // instead of only a lightness step.
+    color: "#7a99a3",
     description: "You recognize some major people and stories, but many core events, sequences, and book-level connections are still forming.",
   },
   {

@@ -1,9 +1,24 @@
 import type { Metadata } from "next";
+import { Crimson_Pro, Inter } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const crimsonPro = Crimson_Pro({
+  subsets: ["latin"],
+  variable: "--font-crimson",
+});
 
 export const metadata: Metadata = {
   title: "Open Bible Assessment",
   description: "A free, adaptive tool to find out what you actually know about the Bible.",
+  icons: {
+    icon: "/brand/oba-emblem.png",
+    apple: "/brand/oba-emblem.png",
+  },
 };
 
 export default function RootLayout({
@@ -13,12 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:opsz,wght@14..32,300..700&display=swap" rel="stylesheet" />
-      </head>
-      <body>{children}</body>
+      <body className={`${inter.variable} ${crimsonPro.variable}`}>{children}</body>
     </html>
   );
 }

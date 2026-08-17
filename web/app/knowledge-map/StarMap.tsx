@@ -380,8 +380,13 @@ export default function StarMap({
           font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
           fill: rgba(255,255,255,.4); text-anchor: end;
         }
-        .sm-twinkle { animation: smTwinkle 3.6s ease-in-out infinite; }
-        @keyframes smTwinkle { 0%,100% { filter: brightness(.92); } 50% { filter: brightness(1.18); } }
+        /* transform-based, not filter:brightness() — see FocusStarMap.tsx's
+           .fsm-twinkle for why: filter animations on many simultaneous
+           stars force a repaint per frame instead of a cheap
+           compositor-only pass, which showed up as intermittent color
+           flicker/"glitching" under load. */
+        .sm-twinkle { animation: smTwinkle 3.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+        @keyframes smTwinkle { 0%,100% { transform: scale(.96); } 50% { transform: scale(1.06); } }
 
         .sm-panel {
           margin-top: 14px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px; align-items: center;

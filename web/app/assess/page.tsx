@@ -1,9 +1,71 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { beginPendingTransfer, clearPendingTransfer, newFlowId } from "@/lib/auth/anonymousTransfer";
+import { authCallbackUrl } from "@/lib/auth/redirect";
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { BOOK_NAMES } from "@/lib/bibleTaxonomy";
+import BlackHoleEvent from "./BlackHoleEvent";
+import {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  NEBULA_STAGE_NAMES,
+  NT_PILOT_ENABLED,
+  NT_PILOT_TARGET,
+  NT_SECTION_LABELS,
+  NT_ATTEMPT_ID_KEY,
+  OT_ATTEMPT_ID_KEY,
+  SECTION_COLORS,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+  TOTAL_INITIAL,
+} from "./constants";
+import {
+  HEBREW_BIBLE_DIVISION_NOTE,
+  getSectionSortInteraction,
+  hashString,
+  isBroadSectionLevelQuestion,
+  isHebrewBibleTraditionSensitiveMiss,
+  isOrderResponseQuestion,
+  normalizeNtSection,
+  ntScopeFromKey,
+  prepareChoicesForDisplay,
+  promptAsksForBookAnswer,
+  promptAsksForSectionAnswer,
+  skyDiscoveryMilestone,
+} from "./assessmentHelpers";
+import { BIBLE_SKY_FACTS } from "./skyFacts";
+import {
+  SectionSortDropZone,
+  SectionSortLabelChip,
+  SortableSequenceItem,
+} from "./QuestionInteractionItems";
+import type {
+  AssessmentMode,
+  BibleSkyFact,
+  BliEvidence,
+  Choice,
+  NtAssessmentQuestionRow,
+  NtAssessmentStartRow,
+  NtAssessmentStatusRow,
+  NtBookMetadata,
+  NtPilotQuestion,
+  NtScopeOption,
+  OtAssessmentRequest,
+  OtAssessmentStartRow,
+  OtSubmitResult,
+  Phase,
+  Question,
+  QuestionPrefetch,
+  ReportCategory,
+  RpcErrorLike,
+  SectionSortKey,
+  SectionSortLabel,
+  SectionSortSubmitResult,
+  Testament,
+} from "./types";
 import {
   closestCenter,
   DndContext,
@@ -17,267 +79,33 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { nebulaStageIndex, useAssessmentStarfield } from "./useAssessmentStarfield";
 
-const SKY_SEED_KEY = "obs_sky_seed";
-function createSeededRandom(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
-function getOrCreateSkySeed() {
-  if (typeof window === "undefined") return 1;
-  const existing = sessionStorage.getItem(SKY_SEED_KEY);
-  if (existing) return Number(existing) || 1;
-  const seed = Math.floor(Math.random() * 4294967295) || 1;
-  sessionStorage.setItem(SKY_SEED_KEY, String(seed));
-  return seed;
+function rpcErrorMessageText(err: RpcErrorLike) {
+  return typeof err?.message === "string" && err.message.trim()
+    ? err.message
+    : "Answer submission failed without a detailed error message";
 }
 
-type Choice = { id: string; text: string };
-type Testament = "OT" | "NT";
-type AssessmentMode = Testament | "select";
-type NtSectionKey = "GOSPELS_ACTS" | "PAULINE" | "GENERAL" | "APOCALYPSE";
-type Question = {
-  out_generated_question_id: string;
-  prompt: string;
-  question_type: string;
-  choices: Choice[];
-  event_title: string;
-  book_code: string;
-  importance_tier: number;
-  section: string;
-};
-type Phase = "starting" | "question" | "feedback" | "complete" | "error";
-type ReportCategory = "wrong_answer" | "inaccurate" | "poorly_worded" | "other";
-type NtBookMetadata = {
-  book_code: string;
-  canon_order: number;
-  name: string;
-  nt_division: NtSectionKey;
-};
-type NtScopeOption = {
-  kind: "all" | "section" | "book";
-  value: string;
-  rpcValue?: string;
-  label: string;
-  description: string;
-};
-type NtPilotQuestion = Question & {
-  book_name: string;
-  nt_division: NtSectionKey;
-};
-type NtAssessmentQuestionRow = {
-  out_generated_question_id: string | null;
-  prompt: string | null;
-  question_type: string | null;
-  choices: unknown;
-  book_code: string | null;
-  book_name: string | null;
-  nt_division: string | null;
-  answered_count: number | null;
-  target_question_count: number | null;
-};
-type NtAssessmentStartRow = {
-  attempt_id: string;
-  user_id: string;
-  testament: "NT";
-  scope_key: string;
-  target_question_count: number;
-  available_question_count: number;
-};
-type NtAssessmentStatusRow = {
-  attempt_id: string;
-  scope_key: string;
-  answered_count: number;
-  correct_count: number;
-  idk_count: number;
-  target_question_count: number;
-  target_reached: boolean;
-  completed_at: string | null;
-};
-type OtAssessmentRequest = {
-  unitKey: string | null;
-  scopeKey: string | null;
-  bookCode: string | null;
-  startChapter: number | null;
-  endChapter: number | null;
-  label: string | null;
-  dimensionKey: string | null;
-  targetQuestionCount: number;
-};
-type OtAssessmentStartRow = {
-  attempt_id: string;
-  user_id: string;
-  assessment_kind: "ot_adaptive" | "ot_focused";
-  scope_key: string;
-  unit_key: string | null;
-  label: string;
-  book_code: string | null;
-  start_chapter: number | null;
-  end_chapter: number | null;
-  target_question_count: number;
-  available_question_count: number;
-  answered_count: number;
-  correct_count: number;
-  idk_count: number;
-  target_reached: boolean;
-  resumed: boolean;
-};
-type BliEvidence = {
-  scope: string;
-  theta: number;
-  theta_se: number;
-  theta_lower_95: number;
-  theta_upper_95: number;
-  n_responses: number;
-  evidence_level: "Very limited" | "Limited" | "Developing" | "Strong" | "Very strong";
-  evidence_description: string;
-};
+function rpcErrorCodeText(err: RpcErrorLike) {
+  return typeof err?.code === "string" && err.code.trim() ? err.code : null;
+}
+
+function isStatementTimeoutError(err: RpcErrorLike) {
+  return rpcErrorCodeText(err) === "57014"
+    || /statement timeout/i.test(rpcErrorMessageText(err));
+}
+
 const IDK_CHOICE_ID = "__IDK__";
-const IDK_CHOICE: Choice = { id: IDK_CHOICE_ID, text: "I don't know - skip" };
+const IDK_CHOICE: Choice = { id: IDK_CHOICE_ID, text: "I don't know" };
 const REPORT_OPTIONS: { value: ReportCategory; label: string }[] = [
   { value: "wrong_answer", label: "Wrong answer" },
   { value: "inaccurate", label: "Inaccurate" },
   { value: "poorly_worded", label: "Poorly worded" },
   { value: "other", label: "Other" },
 ];
-
-function promptAsksForBookAnswer(question: Pick<Question, "prompt" | "question_type">) {
-  if (
-    question.question_type === "book_orientation_mcq_v1"
-    || question.question_type.includes("book_identification")
-  ) {
-    return true;
-  }
-
-  const prompt = question.prompt.trim().toLowerCase();
-  return (
-    /\b(?:which|what)\s+(?:[a-z]+\s+){0,3}book\b/.test(prompt)
-    || /\b(?:in|from)\s+(?:which|what)\s+book\b/.test(prompt)
-    || /\b(?:name|identify)\s+(?:the\s+)?(?:biblical\s+)?book\b/.test(prompt)
-  );
-}
-const SECTION_COLORS: Record<string, string> = {
-  "Torah": "#d4a017",
-  "Former Prophets": "#0e8c6a",
-  "Latter Prophets": "#2563c4",
-  "Writings": "#7c3aed",
-  "Old Testament": "#0aa3a3",
-};
-
-const TOTAL_INITIAL = 20;
-const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
-const ANON_USER_ID_KEY = "obs_anon_user_id";
-const SESSION_ANSWERED_KEY = "obs_session_answered";
-const SESSION_CORRECT_KEY = "obs_session_correct";
-const OT_ATTEMPT_ID_KEY = "obs_ot_attempt_id";
-const NT_ATTEMPT_ID_KEY = "obs_nt_attempt_id";
-const NT_PILOT_TARGET = 20;
-const NT_PILOT_ENABLED = process.env.NEXT_PUBLIC_NT_PILOT_ENABLED !== "false";
-const NT_SECTION_LABELS: Record<NtSectionKey, string> = {
-  GOSPELS_ACTS: "Gospels and Acts",
-  PAULINE: "Pauline Epistles",
-  GENERAL: "General Epistles",
-  APOCALYPSE: "Revelation",
-};
-const NT_SECTION_RPC_VALUES: Record<NtSectionKey, string> = {
-  GOSPELS_ACTS: "Gospels_Acts",
-  PAULINE: "Pauline",
-  GENERAL: "General",
-  APOCALYPSE: "Apocalypse",
-};
-// Deterministic per-index pseudo-random: star #29 always looks like star #29.
-function nebHash(i: number) {
-  const s = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-  return s - Math.floor(s);
-}
-
-const NEBULA_STAGE_NAMES = ["Wisp", "Nebula", "Ignition", "Stellar nursery", "Deep field"];
-
-function nebulaStageIndex(n: number) {
-  if (n < 20) return 0;
-  if (n < 50) return 1;
-  if (n < 100) return 2;
-  if (n < 200) return 3;
-  return 4;
-}
-
-const EVIDENCE_VISUAL_STRENGTH: Record<BliEvidence["evidence_level"], number> = {
-  "Very limited": 18,
-  "Limited": 36,
-  "Developing": 58,
-  "Strong": 80,
-  "Very strong": 96,
-};
-
-function normalizeNtSection(value: string | null | undefined): NtSectionKey | null {
-  const normalized = (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
-  if (normalized === "GOSPELS_ACTS" || normalized === "GOSPELS_AND_ACTS") return "GOSPELS_ACTS";
-  if (normalized === "PAULINE" || normalized === "PAULINE_EPISTLES") return "PAULINE";
-  if (normalized === "GENERAL" || normalized === "GENERAL_EPISTLES") return "GENERAL";
-  if (normalized === "APOCALYPSE" || normalized === "REVELATION") return "APOCALYPSE";
-  return null;
-}
-
-function ntScopeFromKey(scopeKey: string, books: NtBookMetadata[]): NtScopeOption {
-  const normalized = scopeKey.trim().toUpperCase();
-  if (normalized === "NT" || normalized === "ALL") {
-    return {
-      kind: "all",
-      value: "ALL",
-      label: "All New Testament",
-      description: "Adaptive questions across all 27 New Testament books.",
-    };
-  }
-  if (normalized === "GOSPELS") {
-    return {
-      kind: "section",
-      value: "GOSPELS",
-      rpcValue: "Gospels",
-      label: "Gospels",
-      description: "Matthew, Mark, Luke, and John",
-    };
-  }
-  if (normalized === "ACTS") {
-    return {
-      kind: "section",
-      value: "ACTS",
-      rpcValue: "Acts",
-      label: "Acts",
-      description: "Acts of the Apostles",
-    };
-  }
-  const section = normalizeNtSection(normalized);
-  if (section) {
-    return {
-      kind: "section",
-      value: section,
-      rpcValue: NT_SECTION_RPC_VALUES[section],
-      label: NT_SECTION_LABELS[section],
-      description: `${books.filter(book => book.nt_division === section).length} New Testament books`,
-    };
-  }
-  const book = books.find(item => item.book_code === normalized);
-  return book
-    ? {
-        kind: "book",
-        value: book.book_code,
-        label: book.name,
-        description: NT_SECTION_LABELS[book.nt_division],
-      }
-    : {
-        kind: "all",
-        value: "ALL",
-        label: "All New Testament",
-        description: "Adaptive questions across all 27 New Testament books.",
-      };
-}
 
 function clearAssessmentBrowserStorage() {
   localStorage.removeItem("obs_answered");
@@ -293,91 +121,7 @@ function clearAssessmentBrowserStorage() {
   sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
 }
 
-function SortableSequenceItem({
-  item,
-  index,
-  disabled,
-  isFirst,
-  isLast,
-  onMove,
-}: {
-  item: Choice;
-  index: number;
-  disabled: boolean;
-  isFirst: boolean;
-  isLast: boolean;
-  onMove: (itemId: string, direction: -1 | 1) => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id, disabled });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`sequence-item ${isDragging ? "is-dragging" : ""}`}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }}
-    >
-      <span className="sequence-number" aria-hidden="true">{index + 1}</span>
-      <button
-        type="button"
-        className="sequence-handle"
-        aria-label={`Drag ${item.text}`}
-        title="Drag to reorder"
-        disabled={disabled}
-        {...attributes}
-        {...listeners}
-      >
-        <span aria-hidden="true">⠿</span>
-      </button>
-      <span className="sequence-text">{item.text}</span>
-      <span className="sequence-step-controls">
-        <button
-          type="button"
-          aria-label={`Move ${item.text} earlier`}
-          title="Move earlier"
-          disabled={disabled || isFirst}
-          onClick={() => onMove(item.id, -1)}
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          aria-label={`Move ${item.text} later`}
-          title="Move later"
-          disabled={disabled || isLast}
-          onClick={() => onMove(item.id, 1)}
-        >
-          ↓
-        </button>
-      </span>
-    </div>
-  );
-}
-
 export default function AssessPage() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>(0);
-  const skyFrameRef = useRef(0);
-  const offsetRef = useRef({ x: 0, y: 0 });
-  const targetOffsetRef = useRef({ x: 0, y: 0 });
-  const travelersRef = useRef<Array<{ sx: number; sy: number; cx: number; cy: number; t: number; dur: number }>>([]);
-  const nebulaPulseRef = useRef(-999);
-  const evidenceStrengthRef = useRef(0);
-  const answeredCountRef = useRef(0);
-  const flareMilestoneRef = useRef(-1);
-  const flareFrameRef = useRef(-999);
-  const pendingSpawnRef = useRef<{ x: number; y: number } | null>(null);
-  const transitioningRef = useRef(false);
-
   const [assessmentMode, setAssessmentMode] = useState<AssessmentMode>("OT");
   const [modeReady, setModeReady] = useState(false);
   const [phase, setPhase] = useState<Phase>("starting");
@@ -385,12 +129,20 @@ export default function AssessPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [question, setQuestion] = useState<Question | null>(null);
   const [sequenceOrder, setSequenceOrder] = useState<Choice[]>([]);
+  const [sectionSortAssignments, setSectionSortAssignments] = useState<Record<string, SectionSortKey | null>>({});
+  const [sectionSortFeedback, setSectionSortFeedback] = useState<{ correct: number; total: number } | null>(null);
+  const [sectionSortTraditionNote, setSectionSortTraditionNote] = useState("");
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [correctChoiceId, setCorrectChoiceId] = useState<string | null>(null);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const isSubmittingAnswerRef = useRef(false);
+  const isLoadingQuestionRef = useRef(false);
+  const questionInteractionLockedUntilRef = useRef(0);
   const activeQuestionIdRef = useRef<string | null>(null);
+  const pendingQuestionNoticeRef = useRef("");
+  const otQuestionPrefetchRef = useRef<QuestionPrefetch<Question> | null>(null);
+  const ntQuestionPrefetchRef = useRef<QuestionPrefetch<NtAssessmentQuestionRow> | null>(null);
   const ntResumeStartedRef = useRef(false);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
@@ -404,6 +156,7 @@ export default function AssessPage() {
   const [saved, setSaved] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [isDashboardTransitioning, setIsDashboardTransitioning] = useState(false);
+  const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportCategory, setReportCategory] = useState<ReportCategory>("wrong_answer");
   const [reportText, setReportText] = useState("");
@@ -417,7 +170,11 @@ export default function AssessPage() {
   const [ntRequestedTargetCount, setNtRequestedTargetCount] = useState(NT_PILOT_TARGET);
   const [ntMetadataLoaded, setNtMetadataLoaded] = useState(false);
   const [ntError, setNtError] = useState("");
+  const [debugErrorMsg, setDebugErrorMsg] = useState("");
+  const [startupWaitLevel, setStartupWaitLevel] = useState<0 | 1 | 2>(0);
   const [scoreEvidence, setScoreEvidence] = useState<BliEvidence | null>(null);
+  const [activeBibleFact, setActiveBibleFact] = useState<BibleSkyFact | null>(null);
+  const [dismissedSkyDiscoveries, setDismissedSkyDiscoveries] = useState<Set<number>>(() => new Set());
   const [otRequest, setOtRequest] = useState<OtAssessmentRequest>({
     unitKey: null,
     scopeKey: null,
@@ -427,6 +184,7 @@ export default function AssessPage() {
     label: null,
     dimensionKey: null,
     targetQuestionCount: TOTAL_INITIAL,
+    forceNew: false,
   });
   const [otAssessment, setOtAssessment] = useState<OtAssessmentStartRow | null>(null);
   const [otTargetCount, setOtTargetCount] = useState(TOTAL_INITIAL);
@@ -434,6 +192,18 @@ export default function AssessPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+  const {
+    canvasRef,
+    skyFrameRef,
+    offsetRef,
+    pendingSpawnRef,
+    spawnTraveler,
+    shiftSky,
+  } = useAssessmentStarfield({
+    answeredCount,
+    scoreEvidence,
+    isDashboardTransitioning,
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -456,6 +226,16 @@ export default function AssessPage() {
       const requestedTarget = parsePositiveInteger(params.get("target"));
       const isFocused = params.get("mode") === "focus";
       const isScopeTest = params.get("mode") === "scope";
+      const forceNew = params.get("fresh") === "1";
+      if (forceNew) {
+        params.delete("fresh");
+        const nextSearch = params.toString();
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`,
+        );
+      }
       setOtRequest({
         unitKey: isFocused ? params.get("unit") : null,
         scopeKey: isScopeTest ? params.get("scope")?.toUpperCase() ?? null : null,
@@ -465,6 +245,7 @@ export default function AssessPage() {
         label: isFocused || isScopeTest ? params.get("label") : null,
         dimensionKey: isFocused ? params.get("dimension") : null,
         targetQuestionCount: Math.min(50, Math.max(1, requestedTarget ?? TOTAL_INITIAL)),
+        forceNew,
       });
       setAssessmentMode("OT");
       setPhase("starting");
@@ -472,405 +253,39 @@ export default function AssessPage() {
     setModeReady(true);
   }, []);
 
-  useEffect(() => {
-    evidenceStrengthRef.current = scoreEvidence
-      ? EVIDENCE_VISUAL_STRENGTH[scoreEvidence.evidence_level]
-      : 0;
-  }, [scoreEvidence]);
-  useEffect(() => {
-    // Lifetime responses drive the nebula; the attempt counter resets each session.
-    answeredCountRef.current = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
-  }, [answeredCount, scoreEvidence]);
-  useEffect(() => { transitioningRef.current = isDashboardTransitioning; }, [isDashboardTransitioning]);
+  const isQuestionInteractionLocked = useCallback(() => (
+    isLoadingQuestionRef.current
+    || isSubmittingAnswerRef.current
+    || Date.now() < questionInteractionLockedUntilRef.current
+  ), []);
 
-  const spawnTraveler = useCallback(() => {
-    const p = pendingSpawnRef.current;
-    if (!p) return;
-    const tx = window.innerWidth - 110;
-    const ty = window.innerHeight - 130;
-    travelersRef.current.push({
-      sx: p.x,
-      sy: p.y,
-      cx: (p.x + tx) / 2 + (Math.random() - 0.5) * 160,
-      cy: Math.min(p.y, ty) - 80 - Math.random() * 120,
-      t: 0,
-      dur: 66,
-    });
+  const beginQuestionLoad = useCallback(() => {
+    if (isLoadingQuestionRef.current) return false;
+    isLoadingQuestionRef.current = true;
+    isSubmittingAnswerRef.current = true;
+    questionInteractionLockedUntilRef.current = Date.now() + 650;
+    activeQuestionIdRef.current = null;
     pendingSpawnRef.current = null;
-  }, []);
+    setIsLoadingNextQuestion(true);
+    setIsSubmittingAnswer(true);
+    setQuestion(null);
+    setSelectedChoice(null);
+    setIsCorrect(null);
+    setCorrectChoiceId(null);
+    setSectionSortFeedback(null);
+    setSectionSortTraditionNote("");
+    setRetryNotice("");
+    setPhase("starting");
+    return true;
+  }, [pendingSpawnRef]);
 
-  // Starry canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const DPR = Math.min(window.devicePixelRatio || 1, 2);
-    const SKY_OVERSCAN = 2.35;
-    const random = createSeededRandom(getOrCreateSkySeed());
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    function resize() {
-      if (!canvas) return;
-      const skyWidth = window.innerWidth * SKY_OVERSCAN;
-      const skyHeight = window.innerHeight * SKY_OVERSCAN;
-      canvas.width = skyWidth * DPR;
-      canvas.height = skyHeight * DPR;
-      canvas.style.width = skyWidth + "px";
-      canvas.style.height = skyHeight + "px";
-    }
-    resize();
-    window.addEventListener("resize", resize);
-
-    const STAR_COUNT = 1400;
-    const stars = Array.from({ length: STAR_COUNT }, () => ({
-      x: random(), y: random(),
-      r: (0.5 + random() * 1.8) * DPR,
-      opacity: 0.5 + random() * 0.5,
-      twinkleSpeed: 0.002 + random() * 0.004,
-      twinkleOffset: random() * Math.PI * 2,
-    }));
-
-    const shootingPalettes = [
-      { core: "255,255,255", glow: "173,232,255" },
-      { core: "240,253,255", glow: "10,163,163" },
-      { core: "255,248,214", glow: "212,160,23" },
-      { core: "245,240,255", glow: "124,58,237" },
-    ];
-    const createShootingStar = (startFrame: number) => {
-      const palette = shootingPalettes[Math.floor(random() * shootingPalettes.length)];
-      // Enter from any of the four edges, exit across the sky at a random angle.
-      const edge = Math.floor(random() * 4);
-      let x = 0;
-      let y = 0;
-      let dx = 0;
-      let dy = 0;
-      const speed = 1.35 + random() * 0.5;
-      const drift = (random() - 0.5) * 1.1;
-      if (edge === 0) { x = -0.2; y = random(); dx = speed; dy = drift; }
-      else if (edge === 1) { x = 1.2; y = random(); dx = -speed; dy = drift; }
-      else if (edge === 2) { x = random(); y = -0.2; dy = speed; dx = drift; }
-      else { x = random(); y = 1.2; dy = -speed; dx = drift; }
-      return {
-        x,
-        y,
-        dx,
-        dy,
-        startFrame,
-        duration: 104 + Math.floor(random() * 64),
-        length: (105 + random() * 95) * DPR,
-        width: (1.25 + random() * 0.8) * DPR,
-        palette,
-      };
-    };
-
-    // Satellites: slow, tailless, steady points that blink as they cross.
-    const createSatellite = (startFrame: number) => {
-      const horizontal = random() > 0.45;
-      const speed = 1.25 + random() * 0.25;
-      const drift = (random() - 0.5) * 0.35;
-      const forward = random() > 0.5 ? 1 : -1;
-      return {
-        x: horizontal ? (forward > 0 ? -0.08 : 1.08) : random(),
-        y: horizontal ? random() * 0.9 + 0.05 : (forward > 0 ? -0.08 : 1.08),
-        dx: horizontal ? forward * speed : drift,
-        dy: horizontal ? drift : forward * speed,
-        startFrame,
-        duration: 900 + Math.floor(random() * 700),
-        r: (0.9 + random() * 0.7) * DPR,
-        blink: 0.03 + random() * 0.05,
-        warm: random() > 0.6,
-      };
-    };
-    const shootingStars = Array.from({ length: 4 }, () => createShootingStar(60 + Math.floor(random() * 420)));
-    const satellites = Array.from({ length: 2 }, () => createSatellite(90 + Math.floor(random() * 500)));
-
-    let frame = 0;
-    function resetShootingStar(star: (typeof shootingStars)[number]) {
-      Object.assign(star, createShootingStar(frame + 260 + Math.floor(random() * 700)));
-    }
-    function resetSatellite(sat: (typeof satellites)[number]) {
-      Object.assign(sat, createSatellite(frame + 500 + Math.floor(random() * 1400)));
-    }
-
-    function draw() {
-      if (!canvas || !ctx) return;
-      const w = canvas.width;
-      const h = canvas.height;
-
-      // Smooth pan
-      offsetRef.current.x += (targetOffsetRef.current.x - offsetRef.current.x) * 0.03;
-      offsetRef.current.y += (targetOffsetRef.current.y - offsetRef.current.y) * 0.03;
-      const ox = offsetRef.current.x * DPR;
-      const oy = offsetRef.current.y * DPR;
-
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, "#0b0f1e");
-      grad.addColorStop(0.5, "#111827");
-      grad.addColorStop(1, "#0d1530");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
-      stars.forEach(star => {
-        const twinkle = Math.sin(frame * star.twinkleSpeed + star.twinkleOffset);
-        const opacity = star.opacity * (0.6 + 0.4 * twinkle);
-        // Wrap stars with parallax offset
-        const sx = ((star.x * w + ox) % (w + 40) + w + 40) % (w + 40) - 20;
-        const sy = ((star.y * h + oy) % (h + 40) + h + 40) % (h + 40) - 20;
-        ctx.beginPath();
-        ctx.arc(sx, sy, star.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${opacity})`;
-        ctx.fill();
-      });
-
-      satellites.forEach(sat => {
-        const progress = (frame - sat.startFrame) / sat.duration;
-        if (progress > 1) {
-          resetSatellite(sat);
-          return;
-        }
-        if (progress < 0) return;
-        const fade = Math.min(1, Math.sin(progress * Math.PI) * 2.4);
-        const blink = 0.45 + 0.55 * Math.pow(Math.abs(Math.sin(frame * sat.blink)), 3);
-        const px3 = sat.x * w + progress * w * sat.dx + ox * 0.06;
-        const py3 = sat.y * h + progress * h * sat.dy + oy * 0.06;
-        ctx.save();
-        ctx.shadowColor = sat.warm ? "rgba(255,214,150,.7)" : "rgba(200,235,255,.7)";
-        ctx.shadowBlur = 6 * DPR;
-        ctx.fillStyle = sat.warm
-          ? `rgba(255,226,176,${0.72 * fade * blink})`
-          : `rgba(226,244,255,${0.72 * fade * blink})`;
-        ctx.beginPath();
-        ctx.arc(px3, py3, sat.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      });
-
-      shootingStars.forEach(star => {
-        const progress = (frame - star.startFrame) / star.duration;
-        if (progress > 1) {
-          resetShootingStar(star);
-          return;
-        }
-        if (progress < 0) return;
-
-        const opacity = Math.sin(progress * Math.PI) * 0.9;
-        const headX = star.x * w + progress * w * star.dx + ox * 0.12;
-        const headY = star.y * h + progress * h * star.dy + oy * 0.12;
-        const angle = Math.atan2(h * star.dy, w * star.dx);
-        const tailX = headX - Math.cos(angle) * star.length;
-        const tailY = headY - Math.sin(angle) * star.length;
-        const streak = ctx.createLinearGradient(tailX, tailY, headX, headY);
-        streak.addColorStop(0, "rgba(255,255,255,0)");
-        streak.addColorStop(0.52, `rgba(${star.palette.glow},${opacity * 0.46})`);
-        streak.addColorStop(0.86, `rgba(${star.palette.glow},${opacity * 0.72})`);
-        streak.addColorStop(1, `rgba(${star.palette.core},${opacity})`);
-
-        ctx.save();
-        ctx.lineCap = "round";
-        ctx.shadowColor = `rgba(${star.palette.glow},${opacity * 0.45})`;
-        ctx.shadowBlur = 10 * DPR;
-        ctx.lineWidth = star.width;
-        ctx.strokeStyle = streak;
-        ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(headX, headY);
-        ctx.stroke();
-        ctx.restore();
-      });
-
-      // Teal nebula glow
-      const nebula = ctx.createRadialGradient(w * 0.7 + ox * 0.1, h * 0.3, 0, w * 0.7, h * 0.3, w * 0.4);
-      nebula.addColorStop(0, "rgba(10,163,163,0.05)");
-      nebula.addColorStop(1, "transparent");
-      ctx.fillStyle = nebula;
-      ctx.fillRect(0, 0, w, h);
-
-      // --- Evidence nebula & traveler stars (viewport-fixed) ---
-      if (!transitioningRef.current) {
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        const toCX = (vx: number) => (vx + (w / DPR - vw) / 2) * DPR;
-        const toCY = (vy: number) => (vy + (h / DPR - vh) / 2) * DPR;
-        const ax = toCX(vw - 110);
-        const ay = toCY(vh - 130);
-        const evidenceStrength = evidenceStrengthRef.current;
-        const nAns = answeredCountRef.current;
-        if (nAns > 0) {
-          const pulseAge = frame - nebulaPulseRef.current;
-          const pulse = pulseAge >= 0 && pulseAge < 36 ? Math.sin((pulseAge / 36) * Math.PI) : 0;
-
-          // Stage drives structure; growth stays logarithmic so nothing ever freezes.
-          const stage = nebulaStageIndex(nAns);
-          const growth = Math.log(1 + nAns) / Math.log(1001);
-          const evidenceBoost = 0.74 + (evidenceStrength / 96) * 0.46;
-
-          // One-time flare each 100 answers; skipped on first paint so reloads stay calm.
-          const milestone = Math.floor(nAns / 100);
-          if (flareMilestoneRef.current < 0) {
-            flareMilestoneRef.current = milestone;
-          } else if (milestone > flareMilestoneRef.current) {
-            flareMilestoneRef.current = milestone;
-            flareFrameRef.current = frame;
-          }
-          const flareAge = frame - flareFrameRef.current;
-          const flare = flareAge >= 0 && flareAge < 90 ? 1 - flareAge / 90 : 0;
-
-          const baseR = (52 + 206 * growth) * DPR * (1 + pulse * 0.14 + flare * 0.1);
-          const alpha = (0.16 + 0.72 * growth) * evidenceBoost * (1 + pulse * 0.9);
-
-          // Cloud layers accumulate with stage; hue drifts slowly forever past stage 5.
-          const layerCount = stage === 0 ? 2 : stage === 1 ? 3 : stage === 2 ? 4 : 5;
-          const hueDrift = stage >= 4 ? ((nAns - 200) / 800) * 42 : 0;
-          const hues = [180, 265, 320, 45, 195];
-          for (let i = 0; i < layerCount; i++) {
-            const wob = frame * (0.004 + i * 0.0021) + i * 1.7;
-            const nx = ax + Math.cos(wob) * (8 + i * 11) * DPR;
-            const ny = ay + Math.sin(wob * 0.8) * (7 + i * 9) * DPR;
-            const r = baseR * (1 - i * 0.16);
-            const hue = (hues[i] + hueDrift) % 360;
-            const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, r);
-            g.addColorStop(0, `hsla(${hue},78%,62%,${alpha * (0.9 - i * 0.12)})`);
-            g.addColorStop(1, "transparent");
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.arc(nx, ny, r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          // Spiral arms tighten with log(n): loose at 200, defined by 600, wound by 1000.
-          if (stage >= 4) {
-            const winding = 1.35 + Math.log(nAns / 200 + 1) * 0.95;
-            ctx.save();
-            ctx.lineWidth = 1.2 * DPR;
-            ctx.strokeStyle = `hsla(${(196 + hueDrift) % 360},85%,76%,${0.14 + 0.1 * growth})`;
-            for (let arm = 0; arm < 2; arm++) {
-              ctx.beginPath();
-              for (let t = 0; t <= 1.001; t += 0.05) {
-                const ang = arm * Math.PI + t * Math.PI * winding + frame * 0.0016;
-                const rr = baseR * 0.2 + t * baseR * 0.7;
-                const px2 = ax + Math.cos(ang) * rr;
-                const py2 = ay + Math.sin(ang) * rr * 0.72;
-                if (t === 0) ctx.moveTo(px2, py2);
-                else ctx.lineTo(px2, py2);
-              }
-              ctx.stroke();
-            }
-            ctx.restore();
-          }
-
-          // Orbiting stars: one born per 25 answers past 100, forever (capped for perf).
-          const starCount = stage >= 3 ? Math.min(48, Math.floor((nAns - 100) / 25)) : 0;
-          for (let i = 0; i < starCount; i++) {
-            const r1 = nebHash(i);
-            const r2 = nebHash(i + 91);
-            const r3 = nebHash(i + 187);
-            const orbit = baseR * (0.3 + r1 * 0.6);
-            const ang = i * 2.399 + frame * (0.0022 + r2 * 0.0034);
-            const sx2 = ax + Math.cos(ang) * orbit;
-            const sy2 = ay + Math.sin(ang) * orbit * 0.74;
-            const tw = 0.55 + 0.45 * Math.sin(frame * 0.03 + i * 1.7);
-            const isAnchor = i < milestone;
-            const sr = (isAnchor ? 3.1 : 1.9) * DPR * (0.8 + r3 * 0.5);
-            ctx.save();
-            ctx.shadowColor = isAnchor ? "rgba(245,200,66,.9)" : "rgba(200,240,255,.8)";
-            ctx.shadowBlur = (isAnchor ? 11 : 6) * DPR;
-            ctx.fillStyle = isAnchor
-              ? `rgba(255,228,158,${0.88 * tw + flare * 0.28})`
-              : `rgba(235,250,255,${0.74 * tw})`;
-            ctx.beginPath();
-            ctx.arc(sx2, sy2, sr, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
-
-          // Expanding ring on each 100-question milestone.
-          if (flare > 0) {
-            ctx.save();
-            ctx.lineWidth = 2.2 * DPR * flare;
-            ctx.strokeStyle = `rgba(255,236,182,${0.5 * flare})`;
-            ctx.shadowColor = "rgba(255,220,140,.85)";
-            ctx.shadowBlur = 14 * DPR;
-            ctx.beginPath();
-            ctx.arc(ax, ay, baseR * (0.24 + (1 - flare) * 1.1), 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.restore();
-          }
-
-          // Core ignites at stage 3 and keeps condensing.
-          const ignited = stage >= 2;
-          const coreR = (12 + 46 * growth) * DPR * (1 + pulse) * (ignited ? 1.25 : 1);
-          const breathe = ignited ? 0.9 + 0.1 * Math.sin(frame * 0.021) : 1;
-          const core = ctx.createRadialGradient(ax, ay, 0, ax, ay, coreR);
-          core.addColorStop(0, `rgba(255,252,238,${(0.5 + pulse * 0.4) * breathe + flare * 0.3})`);
-          if (ignited) core.addColorStop(0.45, `rgba(255,224,150,${0.3 * breathe})`);
-          core.addColorStop(1, "transparent");
-          ctx.fillStyle = core;
-          ctx.beginPath();
-          ctx.arc(ax, ay, coreR, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        const list = travelersRef.current;
-        for (let i = list.length - 1; i >= 0; i--) {
-          const tr = list[i];
-          tr.t += 1;
-          const p = Math.min(1, tr.t / tr.dur);
-          const ease = p * p * (3 - 2 * p);
-          const x0 = toCX(tr.sx);
-          const y0 = toCY(tr.sy);
-          const x1 = toCX(tr.cx);
-          const y1 = toCY(tr.cy);
-          const mt = 1 - ease;
-          const px = mt * mt * x0 + 2 * mt * ease * x1 + ease * ease * ax;
-          const py = mt * mt * y0 + 2 * mt * ease * y1 + ease * ease * ay;
-          const tp = Math.max(0, ease - 0.12);
-          const tmt = 1 - tp;
-          const trailX = tmt * tmt * x0 + 2 * tmt * tp * x1 + tp * tp * ax;
-          const trailY = tmt * tmt * y0 + 2 * tmt * tp * y1 + tp * tp * ay;
-          const trail = ctx.createLinearGradient(trailX, trailY, px, py);
-          trail.addColorStop(0, "rgba(173,232,255,0)");
-          trail.addColorStop(1, `rgba(173,232,255,${0.75 * (1 - p * 0.3)})`);
-          ctx.save();
-          ctx.lineCap = "round";
-          ctx.lineWidth = 2.2 * DPR;
-          ctx.strokeStyle = trail;
-          ctx.beginPath();
-          ctx.moveTo(trailX, trailY);
-          ctx.lineTo(px, py);
-          ctx.stroke();
-          ctx.shadowColor = "rgba(173,232,255,0.8)";
-          ctx.shadowBlur = 8 * DPR;
-          ctx.fillStyle = "rgba(255,255,255,0.95)";
-          ctx.beginPath();
-          ctx.arc(px, py, 2.6 * DPR, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-          if (p >= 1) {
-            list.splice(i, 1);
-            nebulaPulseRef.current = frame;
-          }
-        }
-      }
-
-      frame++;
-      skyFrameRef.current = frame;
-      if (!prefersReducedMotion) animRef.current = requestAnimationFrame(draw);
-    }
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animRef.current);
-      window.removeEventListener("resize", resize);
-    };
-  }, []);
-
-  // Shift sky on next question
-  const shiftSky = useCallback(() => {
-    targetOffsetRef.current = {
-      x: targetOffsetRef.current.x + (Math.random() - 0.5) * 300,
-      y: targetOffsetRef.current.y + (Math.random() - 0.5) * 150,
-    };
+  const finishQuestionLoad = useCallback((questionId: string | null = null) => {
+    activeQuestionIdRef.current = questionId;
+    isLoadingQuestionRef.current = false;
+    isSubmittingAnswerRef.current = false;
+    questionInteractionLockedUntilRef.current = 0;
+    setIsLoadingNextQuestion(false);
+    setIsSubmittingAnswer(false);
   }, []);
 
   const loadScoreEvidence = useCallback(async (uid: string, scope: Testament) => {
@@ -890,45 +305,136 @@ export default function AssessPage() {
     setScoreEvidence(evidence);
   }, []);
 
-  const loadQuestion = useCallback(async (aid: string) => {
-    const { data, error } = await supabase.rpc("obs_get_next_ot_assessment_question", {
-      p_attempt_id: aid,
-    });
-    if (error) {
-      if (error.message.includes("assessment_answers_user_id_fkey")) {
-        await supabase.auth.signOut();
-        clearAssessmentBrowserStorage();
-        setErrorMsg("Your anonymous assessment session expired after Supabase restarted. Start a fresh assessment and the questions should work again.");
-      } else {
-        console.error("Question load failed:", error);
-        setErrorMsg("We could not load the next question. This is usually a temporary connection problem.");
-      }
-      setPhase("error");
-      return;
-    }
-    if (!data || data.length === 0) { setPhase("complete"); return; }
-
-    const q = data[0];
+  const applyOtQuestionRow = useCallback((row: Question) => {
     let choices: Choice[] = [];
-    if (Array.isArray(q.choices)) {
-      choices = q.choices.map((c: { id: string; text: string }) => ({ id: c.id, text: c.text }));
+    if (Array.isArray(row.choices)) {
+      choices = row.choices.map((c: { id: string; text: string }) => ({ id: c.id, text: c.text }));
     }
-    activeQuestionIdRef.current = q.out_generated_question_id;
-    isSubmittingAnswerRef.current = false;
-    setIsSubmittingAnswer(false);
-    setQuestion({ ...q, choices });
-    setSequenceOrder(choices);
+    const rawQuestion = {
+      ...row,
+    } as Question;
+    const parsedQuestion = {
+      ...rawQuestion,
+      choices: prepareChoicesForDisplay(rawQuestion, choices),
+    } as Question;
+    const sectionSort = getSectionSortInteraction(parsedQuestion);
+    setQuestion(parsedQuestion);
+    setSequenceOrder(parsedQuestion.choices);
+    setSectionSortAssignments(Object.fromEntries(
+      (sectionSort?.dragLabels ?? []).map(label => [label.id, null]),
+    ));
+    setSectionSortFeedback(null);
+    setSectionSortTraditionNote("");
     setSelectedChoice(null);
     setIsCorrect(null);
     setCorrectChoiceId(null);
+    setRetryNotice(pendingQuestionNoticeRef.current);
+    pendingQuestionNoticeRef.current = "";
     setShowReportModal(false);
     setReportCategory("wrong_answer");
     setReportText("");
     setReportStatus("idle");
     setReportError("");
+    finishQuestionLoad(row.out_generated_question_id);
     setPhase("question");
     shiftSky();
-  }, [shiftSky]);
+  }, [finishQuestionLoad, shiftSky]);
+
+  const handleOtQuestionResult = useCallback(async (
+    aid: string,
+    data: Question[] | null,
+    error: RpcErrorLike,
+  ) => {
+    if (error) {
+      finishQuestionLoad(null);
+      if (rpcErrorMessageText(error).includes("assessment_answers_user_id_fkey")) {
+        await supabase.auth.signOut();
+        clearAssessmentBrowserStorage();
+        setErrorMsg("Your anonymous assessment session expired after Supabase restarted. Start a fresh assessment and the questions should work again.");
+      } else {
+        console.error("Question load failed:", error);
+        setDebugErrorMsg(`${rpcErrorCodeText(error) ? `${rpcErrorCodeText(error)}: ` : ""}${rpcErrorMessageText(error)}`);
+        setErrorMsg("We could not load the next question. This is usually a temporary connection problem.");
+      }
+      setPhase("error");
+      return;
+    }
+    if (!data || data.length === 0) {
+      finishQuestionLoad(null);
+      setPhase("complete");
+      return;
+    }
+
+    setAttemptId(aid);
+    applyOtQuestionRow(data[0]);
+  }, [applyOtQuestionRow, finishQuestionLoad]);
+
+  const prefetchOtQuestion = useCallback((aid: string, afterAnsweredCount: number) => {
+    const existing = otQuestionPrefetchRef.current;
+    if (
+      existing
+      && existing.attemptId === aid
+      && existing.afterAnsweredCount === afterAnsweredCount
+    ) return;
+
+    const prefetch: QuestionPrefetch<Question> = {
+      attemptId: aid,
+      afterAnsweredCount,
+      settled: false,
+      data: null,
+      error: null,
+      promise: Promise.resolve(),
+    };
+    prefetch.promise = (async () => {
+      try {
+        const { data, error } = await supabase.rpc("obs_get_next_ot_assessment_question", {
+          p_attempt_id: aid,
+        });
+        prefetch.data = (data ?? null) as Question[] | null;
+        prefetch.error = error;
+      } catch (error: unknown) {
+        prefetch.error = error instanceof Error ? { message: error.message } : { message: "Question prefetch failed" };
+      } finally {
+        prefetch.settled = true;
+      }
+    })();
+    otQuestionPrefetchRef.current = prefetch;
+  }, []);
+
+  const consumePrefetchedOtQuestion = useCallback(async (aid: string, afterAnsweredCount: number) => {
+    const prefetch = otQuestionPrefetchRef.current;
+    if (
+      !prefetch
+      || prefetch.attemptId !== aid
+      || prefetch.afterAnsweredCount !== afterAnsweredCount
+    ) {
+      return false;
+    }
+
+    await prefetch.promise;
+    if (otQuestionPrefetchRef.current !== prefetch) return false;
+    otQuestionPrefetchRef.current = null;
+    if (isStatementTimeoutError(prefetch.error)) return false;
+    await handleOtQuestionResult(aid, prefetch.data, prefetch.error);
+    return true;
+  }, [handleOtQuestionResult]);
+
+  const loadQuestion = useCallback(async (aid: string) => {
+    setDebugErrorMsg("");
+    setIsLoadingNextQuestion(true);
+    let lastData: Question[] | null = null;
+    let lastError: RpcErrorLike = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { data, error } = await supabase.rpc("obs_get_next_ot_assessment_question", {
+        p_attempt_id: aid,
+      });
+      lastData = (data ?? null) as Question[] | null;
+      lastError = error;
+      if (!isStatementTimeoutError(error)) break;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    await handleOtQuestionResult(aid, lastData, lastError);
+  }, [handleOtQuestionResult]);
 
   const loadNtMetadata = useCallback(async () => {
     if (!NT_PILOT_ENABLED) return;
@@ -976,6 +482,21 @@ export default function AssessPage() {
     void loadNtMetadata();
   }, [assessmentMode, loadNtMetadata, modeReady]);
 
+  useEffect(() => {
+    if (phase !== "starting" || assessmentMode === "select") {
+      setStartupWaitLevel(0);
+      return;
+    }
+
+    setStartupWaitLevel(0);
+    const slowTimer = window.setTimeout(() => setStartupWaitLevel(1), 3200);
+    const verySlowTimer = window.setTimeout(() => setStartupWaitLevel(2), 8000);
+    return () => {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(verySlowTimer);
+    };
+  }, [assessmentMode, phase]);
+
   const ensureAssessmentSession = useCallback(async () => {
     let { data: { session } } = await supabase.auth.getSession();
     if (session?.user && !session.user.email) {
@@ -1009,25 +530,12 @@ export default function AssessPage() {
     return uid;
   }, []);
 
-  const loadNtQuestion = useCallback(async (aid: string, scope: NtScopeOption) => {
-    const { data, error } = await supabase.rpc("obs_get_next_nt_assessment_question", {
-      p_attempt_id: aid,
-    });
-
-    if (error) {
-      console.error("NT question load failed:", error);
-      const friendly = "We could not load the next question. This is usually a temporary connection problem.";
-      setNtError(friendly);
-      setErrorMsg(friendly);
-      setPhase("error");
-      return;
-    }
-
-    const row = ((data ?? [])[0] as NtAssessmentQuestionRow | undefined) ?? null;
+  const applyNtQuestionRow = useCallback((aid: string, scope: NtScopeOption, row: NtAssessmentQuestionRow) => {
     if (!row) {
+      finishQuestionLoad(null);
       setQuestion(null);
       setPhase("complete");
-      return;
+      return false;
     }
 
     const choices = Array.isArray(row.choices)
@@ -1040,14 +548,15 @@ export default function AssessPage() {
           .map(choice => ({ id: choice.id, text: choice.text }))
       : [];
     if (!row.out_generated_question_id || !row.prompt || choices.length === 0) {
+      finishQuestionLoad(null);
       setNtError("The next New Testament question could not be loaded.");
       setErrorMsg("The next New Testament question could not be loaded.");
       setPhase("error");
-      return;
+      return false;
     }
 
     const section = normalizeNtSection(row.nt_division) ?? "GOSPELS_ACTS";
-    const parsed: NtPilotQuestion = {
+    const rawParsed: NtPilotQuestion = {
       out_generated_question_id: row.out_generated_question_id,
       prompt: row.prompt,
       question_type: row.question_type ?? "nt_adaptive",
@@ -1059,21 +568,118 @@ export default function AssessPage() {
       section: NT_SECTION_LABELS[section],
       nt_division: section,
     };
+    const displayChoices = prepareChoicesForDisplay(rawParsed, rawParsed.choices);
+    const parsed: NtPilotQuestion = {
+      ...rawParsed,
+      choices: displayChoices,
+    };
 
     setAttemptId(aid);
     setAnsweredCount(Number(row.answered_count ?? 0));
     setNtTargetCount(Number(row.target_question_count ?? NT_PILOT_TARGET));
-    activeQuestionIdRef.current = parsed.out_generated_question_id;
-    isSubmittingAnswerRef.current = false;
-    setIsSubmittingAnswer(false);
+    const sectionSort = getSectionSortInteraction(parsed);
     setQuestion(parsed);
-    setSequenceOrder(choices);
+    setSequenceOrder(displayChoices);
+    setSectionSortAssignments(Object.fromEntries(
+      (sectionSort?.dragLabels ?? []).map(label => [label.id, null]),
+    ));
+    setSectionSortFeedback(null);
+    setSectionSortTraditionNote("");
     setSelectedChoice(null);
     setIsCorrect(null);
     setCorrectChoiceId(null);
+    finishQuestionLoad(parsed.out_generated_question_id);
     setPhase("question");
     shiftSky();
-  }, [shiftSky]);
+    return true;
+  }, [finishQuestionLoad, shiftSky]);
+
+  const handleNtQuestionResult = useCallback((
+    aid: string,
+    scope: NtScopeOption,
+    data: NtAssessmentQuestionRow[] | null,
+    error: RpcErrorLike,
+  ) => {
+    if (error) {
+      finishQuestionLoad(null);
+      console.error("NT question load failed:", error);
+      const friendly = "We could not load the next question. This is usually a temporary connection problem.";
+      setNtError(friendly);
+      setErrorMsg(friendly);
+      setPhase("error");
+      return;
+    }
+
+    const row = ((data ?? [])[0] as NtAssessmentQuestionRow | undefined) ?? null;
+    if (!row) {
+      finishQuestionLoad(null);
+      setQuestion(null);
+      setPhase("complete");
+      return;
+    }
+    applyNtQuestionRow(aid, scope, row);
+  }, [applyNtQuestionRow, finishQuestionLoad]);
+
+  const prefetchNtQuestion = useCallback((aid: string, afterAnsweredCount: number) => {
+    const existing = ntQuestionPrefetchRef.current;
+    if (
+      existing
+      && existing.attemptId === aid
+      && existing.afterAnsweredCount === afterAnsweredCount
+    ) return;
+
+    const prefetch: QuestionPrefetch<NtAssessmentQuestionRow> = {
+      attemptId: aid,
+      afterAnsweredCount,
+      settled: false,
+      data: null,
+      error: null,
+      promise: Promise.resolve(),
+    };
+    prefetch.promise = (async () => {
+      try {
+        const { data, error } = await supabase.rpc("obs_get_next_nt_assessment_question", {
+          p_attempt_id: aid,
+        });
+        prefetch.data = (data ?? null) as NtAssessmentQuestionRow[] | null;
+        prefetch.error = error;
+      } catch (error: unknown) {
+        prefetch.error = error instanceof Error ? { message: error.message } : { message: "Question prefetch failed" };
+      } finally {
+        prefetch.settled = true;
+      }
+    })();
+    ntQuestionPrefetchRef.current = prefetch;
+  }, []);
+
+  const consumePrefetchedNtQuestion = useCallback(async (
+    aid: string,
+    scope: NtScopeOption,
+    afterAnsweredCount: number,
+  ) => {
+    const prefetch = ntQuestionPrefetchRef.current;
+    if (
+      !prefetch
+      || prefetch.attemptId !== aid
+      || prefetch.afterAnsweredCount !== afterAnsweredCount
+    ) {
+      return false;
+    }
+
+    await prefetch.promise;
+    if (ntQuestionPrefetchRef.current !== prefetch) return false;
+    ntQuestionPrefetchRef.current = null;
+    handleNtQuestionResult(aid, scope, prefetch.data, prefetch.error);
+    return true;
+  }, [handleNtQuestionResult]);
+
+  const loadNtQuestion = useCallback(async (aid: string, scope: NtScopeOption) => {
+    setIsLoadingNextQuestion(true);
+    const { data, error } = await supabase.rpc("obs_get_next_nt_assessment_question", {
+      p_attempt_id: aid,
+    });
+    handleNtQuestionResult(aid, scope, (data ?? null) as NtAssessmentQuestionRow[] | null, error);
+  }, [handleNtQuestionResult]);
 
   const startNtPilot = useCallback(async (
     scope: NtScopeOption = ntScope,
@@ -1091,6 +697,7 @@ export default function AssessPage() {
     setSelectedChoice(null);
     setIsCorrect(null);
     setCorrectChoiceId(null);
+    ntQuestionPrefetchRef.current = null;
     localStorage.removeItem("oba_nt_pilot_summary");
 
     try {
@@ -1178,6 +785,7 @@ export default function AssessPage() {
     async function init() {
       if (!modeReady || assessmentMode !== "OT") return;
       try {
+        setDebugErrorMsg("");
         const uid = await ensureAssessmentSession();
         await loadScoreEvidence(uid, "OT");
 
@@ -1186,7 +794,7 @@ export default function AssessPage() {
               p_scope_key: otRequest.scopeKey,
               p_label: otRequest.label,
               p_target_question_count: otRequest.targetQuestionCount,
-              p_force_new: false,
+              p_force_new: otRequest.forceNew,
             })
           : await supabase.rpc("obs_start_or_resume_ot_assessment_v2", {
               p_unit_key: otRequest.unitKey,
@@ -1194,7 +802,7 @@ export default function AssessPage() {
               p_start_chapter: otRequest.startChapter,
               p_end_chapter: otRequest.endChapter,
               p_target_question_count: otRequest.targetQuestionCount,
-              p_force_new: false,
+              p_force_new: otRequest.forceNew,
               p_dimension_key: otRequest.dimensionKey,
             });
         if (error) throw error;
@@ -1207,9 +815,16 @@ export default function AssessPage() {
         setAttemptId(attempt.attempt_id);
         setAnsweredCount(Number(attempt.answered_count || 0));
         setCorrectCount(Number(attempt.correct_count || 0));
+        otQuestionPrefetchRef.current = null;
         sessionStorage.setItem(OT_ATTEMPT_ID_KEY, attempt.attempt_id);
 
-        if (attempt.target_reached) {
+        // A targeted retest (a specific book/section/dimension) has a real,
+        // small endpoint and should still stop there. The standard baseline
+        // assessment doesn't — hitting "target reached" on resume just means
+        // it's time to keep going, so fall through to load another question
+        // instead of blocking on the "Assessment complete" interstitial.
+        const isTargetedResume = attempt.assessment_kind === "ot_focused" || Boolean(otRequest.scopeKey);
+        if (attempt.target_reached && isTargetedResume) {
           setPhase("complete");
           return;
         }
@@ -1220,6 +835,10 @@ export default function AssessPage() {
           : typeof err === "object" && err && "message" in err
             ? String((err as { message?: unknown }).message)
             : "Failed to start assessment";
+        const code = typeof err === "object" && err && "code" in err
+          ? String((err as { code?: unknown }).code ?? "")
+          : "";
+        setDebugErrorMsg(code ? `${code}: ${message}` : message);
         setErrorMsg(message);
         setPhase("error");
       }
@@ -1228,14 +847,158 @@ export default function AssessPage() {
   }, [assessmentMode, ensureAssessmentSession, loadQuestion, loadScoreEvidence, modeReady, otRequest]);
 
   // The backend is first-write-wins: an exact retry returns the original
-  // result, but a *changed* retry is rejected with errcode 22023. That is not a
-  // failure the user needs to see as an error — their first answer stands, so
+  // result, but a *changed* retry is rejected as already answered. That is not
+  // a failure the user needs to see as an error — their first answer stands, so
   // recover by moving on rather than dead-ending the assessment.
-  const isChangedRetryRejection = (err: { code?: string; message?: string } | null) =>
-    Boolean(err && (err.code === "22023" || /already answered/i.test(err.message ?? "")));
+  const rpcErrorMessage = useCallback((err: RpcErrorLike) => (
+    typeof err?.message === "string" && err.message.trim()
+      ? err.message
+      : "Answer submission failed without a detailed error message"
+  ), []);
+
+  const rpcErrorCode = useCallback((err: RpcErrorLike) => (
+    typeof err?.code === "string" && err.code.trim() ? err.code : null
+  ), []);
+
+  const isChangedRetryRejection = useCallback((err: RpcErrorLike) =>
+    Boolean(err && /already answered/i.test(rpcErrorMessage(err))), [rpcErrorMessage]);
+
+  const logQuestionMisfire = useCallback(async ({
+    submittedQuestionId,
+    error,
+    context,
+  }: {
+    submittedQuestionId: string;
+    error: RpcErrorLike;
+    context: Record<string, unknown>;
+  }) => {
+    if (!attemptId || !userId) return;
+
+    const errorMessage = error
+      ? rpcErrorMessage(error)
+      : "No result returned from answer submission";
+    const prompt = typeof context.prompt === "string" ? context.prompt : question?.prompt ?? null;
+    const feedbackText = [
+      "Answer submission failed without advancing the assessment.",
+      `Error code: ${rpcErrorCode(error) ?? "unknown"}`,
+      `Error message: ${errorMessage}`,
+      `Context: ${JSON.stringify(context)}`,
+    ].join("\n").slice(0, 2000);
+
+    const { error: reportError } = await supabase
+      .from("question_reports")
+      .insert({
+        generated_question_id: submittedQuestionId,
+        attempt_id: attemptId,
+        user_id: userId,
+        report_category: "malformed_question",
+        feedback_text: feedbackText,
+        selected_choice_id: null,
+        correct_choice_id: null,
+        question_prompt: prompt,
+      });
+
+    if (reportError) {
+      console.warn("Could not log failed answer submission:", reportError);
+    }
+  }, [attemptId, question?.prompt, rpcErrorCode, rpcErrorMessage, userId]);
+
+  const failAnswerSubmission = useCallback(async ({
+    submittedQuestionId,
+    error,
+    context,
+  }: {
+    submittedQuestionId: string;
+    error: RpcErrorLike;
+    context: Record<string, unknown>;
+  }) => {
+    console.warn("Answer submission failed:", {
+      code: rpcErrorCode(error),
+      message: error ? rpcErrorMessage(error) : "No result returned from answer submission",
+      context,
+    });
+
+    if (activeQuestionIdRef.current !== submittedQuestionId) return;
+    const skipContext = {
+      ...context,
+      skipped_after_submit_failure: true,
+    };
+    const { data: skippedData, error: skipError } = await supabase.rpc("obs_skip_broken_assessment_question", {
+      p_attempt_id: attemptId,
+      p_generated_question_id: submittedQuestionId,
+      p_error_code: rpcErrorCode(error),
+      p_error_message: error ? rpcErrorMessage(error) : "No result returned from answer submission",
+      p_context: skipContext,
+    });
+
+    if (activeQuestionIdRef.current !== submittedQuestionId) return;
+
+    if (skipError) {
+      await logQuestionMisfire({ submittedQuestionId, error: error ?? skipError, context });
+      isSubmittingAnswerRef.current = false;
+      setIsSubmittingAnswer(false);
+      setDebugErrorMsg(`${rpcErrorCode(skipError) ? `${rpcErrorCode(skipError)}: ` : ""}${rpcErrorMessage(skipError)}`);
+      setErrorMsg("We could not record or skip that question. This is usually a temporary connection problem.");
+      setPhase("error");
+      return;
+    }
+
+    const skippedResult = skippedData?.[0] as Pick<OtSubmitResult, "answered_count" | "correct_count" | "target_question_count"> | undefined;
+    const newAnswered = Number(skippedResult?.answered_count ?? answeredCount);
+    const newCorrect = Number(skippedResult?.correct_count ?? correctCount);
+    const newTarget = Number(skippedResult?.target_question_count ?? (assessmentMode === "NT" ? ntTargetCount : otTargetCount));
+    setAnsweredCount(newAnswered);
+    setCorrectCount(newCorrect);
+    if (assessmentMode === "NT") setNtTargetCount(newTarget);
+    else setOtTargetCount(newTarget);
+    sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
+    sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
+    if (userId) void loadScoreEvidence(userId, assessmentMode === "NT" ? "NT" : "OT");
+
+    isSubmittingAnswerRef.current = false;
+    setIsSubmittingAnswer(false);
+    setDebugErrorMsg("");
+    setErrorMsg("");
+
+    // Same exception as nextQuestion() below: only block on "complete" for a
+    // targeted retest, which has a real fixed endpoint. The standard
+    // baseline assessment just keeps going past its initial target.
+    // (Computed inline rather than via the isTargetedOtAssessment const
+    // below — that's declared later in the component, so referencing it
+    // from a callback defined up here would hit the temporal dead zone.)
+    const isTargetedOt = otAssessment?.assessment_kind === "ot_focused" || Boolean(otRequest.scopeKey);
+    const isStandardOtAssessment = assessmentMode === "OT" && !isTargetedOt;
+    if (newAnswered >= newTarget && !isStandardOtAssessment) {
+      setPhase("complete");
+      return;
+    }
+
+    if (!attemptId || !beginQuestionLoad()) return;
+    pendingQuestionNoticeRef.current = "That question misfired, so we skipped it and logged it for review. It will not count toward your total.";
+    if (assessmentMode === "NT") await loadNtQuestion(attemptId, ntScope);
+    else await loadQuestion(attemptId);
+  }, [
+    answeredCount,
+    assessmentMode,
+    attemptId,
+    beginQuestionLoad,
+    correctCount,
+    loadNtQuestion,
+    loadQuestion,
+    loadScoreEvidence,
+    logQuestionMisfire,
+    ntScope,
+    ntTargetCount,
+    otAssessment,
+    otRequest,
+    otTargetCount,
+    rpcErrorCode,
+    rpcErrorMessage,
+    userId,
+  ]);
 
   const submitAnswer = useCallback(async (choiceId: string) => {
-    if (!attemptId || !userId || !question || isSubmittingAnswerRef.current) return;
+    if (!attemptId || !userId || !question || phase !== "question" || isQuestionInteractionLocked()) return;
     const submittedQuestionId = question.out_generated_question_id;
     const isSequenceResponse = choiceId.startsWith("__ORDER__:");
     const displayedChoices = isSequenceResponse
@@ -1260,56 +1023,87 @@ export default function AssessPage() {
 
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
 
+    const result = data?.[0] as OtSubmitResult | undefined;
+
     if (error) {
-      isSubmittingAnswerRef.current = false;
-      setIsSubmittingAnswer(false);
       if (isChangedRetryRejection(error)) {
+        isSubmittingAnswerRef.current = false;
+        setIsSubmittingAnswer(false);
         setRetryNotice("Your first answer to that question was already recorded, so it has been kept.");
-        setSelectedChoice(null);
-        await loadQuestion(attemptId);
+        setPhase("feedback");
         return;
       }
-      if (error.message.includes("assessment_answers_user_id_fkey")) {
+      if (rpcErrorMessage(error).includes("assessment_answers_user_id_fkey")) {
+        isSubmittingAnswerRef.current = false;
+        setIsSubmittingAnswer(false);
         await supabase.auth.signOut();
         clearAssessmentBrowserStorage();
         setErrorMsg("Your anonymous assessment session expired after Supabase restarted. Start a fresh assessment and the questions should work again.");
+        setPhase("error");
       } else {
-        console.error("Answer submission failed:", error);
-        setErrorMsg("We could not record that answer. This is usually a temporary connection problem.");
+        await failAnswerSubmission({
+          submittedQuestionId,
+          error,
+          context: {
+            surface: "ot_answer",
+            question_type: question.question_type,
+            prompt: question.prompt,
+            selected_choice_id: choiceId,
+            displayed_choices: displayedChoices,
+          },
+        });
       }
-      setPhase("error");
       return;
     }
 
-    const result = data?.[0];
+    if (!result) {
+      await failAnswerSubmission({
+        submittedQuestionId,
+        error: null,
+        context: {
+          surface: "ot_answer",
+          question_type: question.question_type,
+          prompt: question.prompt,
+          selected_choice_id: choiceId,
+          no_result: true,
+        },
+      });
+      return;
+    }
+
     if (result) {
       setIsCorrect(result.is_correct);
-      setCorrectChoiceId(result.correct_choice_id);
+      setCorrectChoiceId(result.correct_choice_id ?? null);
       const newAnswered = Number(result.answered_count ?? answeredCount + 1);
       const newCorrect = Number(result.correct_count ?? correctCount + (result.is_correct ? 1 : 0));
+      const newTarget = Number(result.target_question_count ?? otTargetCount);
       setAnsweredCount(newAnswered);
       setCorrectCount(newCorrect);
-      setOtTargetCount(Number(result.target_question_count ?? otTargetCount));
+      setOtTargetCount(newTarget);
       sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
       sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
       void loadScoreEvidence(userId, "OT");
+      if (newAnswered < newTarget) prefetchOtQuestion(attemptId, newAnswered);
+      else otQuestionPrefetchRef.current = null;
       spawnTraveler();
     }
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setPhase("feedback");
-  }, [attemptId, userId, question, sequenceOrder, answeredCount, correctCount, loadQuestion, loadScoreEvidence, otTargetCount, spawnTraveler]);
+  }, [attemptId, userId, question, phase, isQuestionInteractionLocked, sequenceOrder, answeredCount, correctCount, failAnswerSubmission, isChangedRetryRejection, loadScoreEvidence, otTargetCount, prefetchOtQuestion, rpcErrorMessage, spawnTraveler]);
 
   const moveSequenceItem = useCallback((itemId: string, direction: -1 | 1) => {
+    if (phase !== "question" || isQuestionInteractionLocked()) return;
     setSequenceOrder(current => {
       const currentIndex = current.findIndex(item => item.id === itemId);
       const nextIndex = currentIndex + direction;
       if (currentIndex < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
       return arrayMove(current, currentIndex, nextIndex);
     });
-  }, []);
+  }, [isQuestionInteractionLocked, phase]);
 
   const handleSequenceDragEnd = useCallback((event: DragEndEvent) => {
+    if (phase !== "question" || isQuestionInteractionLocked()) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     setSequenceOrder(current => {
@@ -1318,15 +1112,53 @@ export default function AssessPage() {
       if (oldIndex < 0 || newIndex < 0) return current;
       return arrayMove(current, oldIndex, newIndex);
     });
-  }, []);
+  }, [isQuestionInteractionLocked, phase]);
 
   const submitSequenceOrder = useCallback(() => {
-    if (sequenceOrder.length === 0) return;
+    if (sequenceOrder.length === 0 || phase !== "question" || isQuestionInteractionLocked()) return;
     void submitAnswer(`__ORDER__:${JSON.stringify(sequenceOrder.map(item => item.id))}`);
-  }, [sequenceOrder, submitAnswer]);
+  }, [isQuestionInteractionLocked, phase, sequenceOrder, submitAnswer]);
+
+  const sectionSortInteraction = useMemo(
+    () => getSectionSortInteraction(question),
+    [question],
+  );
+
+  const sectionSortLabelsByZone = useMemo(() => {
+    const byZone = new Map<SectionSortKey | "UNASSIGNED", SectionSortLabel[]>();
+    byZone.set("UNASSIGNED", []);
+    if (!sectionSortInteraction) return byZone;
+    for (const zone of sectionSortInteraction.dropZones) byZone.set(zone.id, []);
+
+    for (const label of sectionSortInteraction.dragLabels) {
+      const assignedZone = sectionSortAssignments[label.id] ?? "UNASSIGNED";
+      byZone.get(assignedZone)?.push(label);
+    }
+    return byZone;
+  }, [sectionSortAssignments, sectionSortInteraction]);
+
+  const sectionSortReadyToSubmit = Boolean(
+    sectionSortInteraction
+    && sectionSortInteraction.dragLabels.length > 0
+    && sectionSortInteraction.dragLabels.every(label => sectionSortAssignments[label.id]),
+  );
+
+  const handleSectionSortDragEnd = useCallback((event: DragEndEvent) => {
+    if (phase !== "question" || isQuestionInteractionLocked()) return;
+    const { active, over } = event;
+    if (!over || !sectionSortInteraction) return;
+    const zoneId = String(over.id) as SectionSortKey;
+    if (!sectionSortInteraction.dropZones.some(zone => zone.id === zoneId)) return;
+    if (!sectionSortInteraction.dragLabels.some(label => label.id === String(active.id))) return;
+
+    setSectionSortAssignments(current => ({
+      ...current,
+      [String(active.id)]: zoneId,
+    }));
+  }, [isQuestionInteractionLocked, phase, sectionSortInteraction]);
 
   const submitNtAnswer = useCallback(async (choiceId: string) => {
-    if (!attemptId || !question || isSubmittingAnswerRef.current) return;
+    if (!attemptId || !question || phase !== "question" || isQuestionInteractionLocked()) return;
     const submittedQuestionId = question.out_generated_question_id;
     isSubmittingAnswerRef.current = true;
     setIsSubmittingAnswer(true);
@@ -1341,33 +1173,166 @@ export default function AssessPage() {
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
 
     if (error) {
-      isSubmittingAnswerRef.current = false;
-      setIsSubmittingAnswer(false);
       if (isChangedRetryRejection(error)) {
+        isSubmittingAnswerRef.current = false;
+        setIsSubmittingAnswer(false);
         setRetryNotice("Your first answer to that question was already recorded, so it has been kept.");
-        setSelectedChoice(null);
-        await loadNtQuestion(attemptId, ntScope);
+        setPhase("feedback");
         return;
       }
-      console.error("NT answer submission failed:", error);
-      setErrorMsg("We could not record that answer. This is usually a temporary connection problem.");
-      setPhase("error");
+      await failAnswerSubmission({
+        submittedQuestionId,
+        error,
+        context: {
+          surface: "nt_answer",
+          question_type: question.question_type,
+          prompt: question.prompt,
+          selected_choice_id: choiceId,
+        },
+      });
       return;
     }
 
     const result = data?.[0];
+    if (!result) {
+      await failAnswerSubmission({
+        submittedQuestionId,
+        error: null,
+        context: {
+          surface: "nt_answer",
+          question_type: question.question_type,
+          prompt: question.prompt,
+          selected_choice_id: choiceId,
+          no_result: true,
+        },
+      });
+      return;
+    }
     const correct = Boolean(result?.is_correct);
+    const newAnswered = Number(result?.answered_count ?? answeredCount + 1);
+    const newCorrect = Number(result?.correct_count ?? correctCount + (correct ? 1 : 0));
+    const newTarget = Number(result?.target_question_count ?? ntTargetCount);
     setIsCorrect(correct);
     setCorrectChoiceId(result?.correct_choice_id ?? null);
-    setAnsweredCount(Number(result?.answered_count ?? answeredCount + 1));
-    setCorrectCount(Number(result?.correct_count ?? correctCount + (correct ? 1 : 0)));
-    setNtTargetCount(Number(result?.target_question_count ?? ntTargetCount));
+    setAnsweredCount(newAnswered);
+    setCorrectCount(newCorrect);
+    setNtTargetCount(newTarget);
     if (userId) void loadScoreEvidence(userId, "NT");
+    if (newAnswered < newTarget) prefetchNtQuestion(attemptId, newAnswered);
+    else ntQuestionPrefetchRef.current = null;
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     spawnTraveler();
     setPhase("feedback");
-  }, [answeredCount, attemptId, correctCount, loadNtQuestion, loadScoreEvidence, ntScope, ntTargetCount, question, spawnTraveler, userId]);
+  }, [answeredCount, attemptId, correctCount, failAnswerSubmission, isChangedRetryRejection, isQuestionInteractionLocked, loadScoreEvidence, ntTargetCount, phase, prefetchNtQuestion, question, spawnTraveler, userId]);
+
+  const submitSectionSort = useCallback(async (submissionMode: "answer" | "skip" = "answer") => {
+    if (!attemptId || !question || !sectionSortInteraction || phase !== "question" || isQuestionInteractionLocked()) return;
+    const submittedQuestionId = question.out_generated_question_id;
+    const assignments = sectionSortInteraction.dragLabels.map(label => ({
+      text: label.text,
+      section_key: submissionMode === "skip"
+        ? IDK_CHOICE_ID
+        : sectionSortAssignments[label.id],
+    }));
+
+    isSubmittingAnswerRef.current = true;
+    setIsSubmittingAnswer(true);
+    setSelectedChoice(submissionMode === "skip" ? IDK_CHOICE_ID : "__SECTION_SORT__");
+
+    const { data, error } = await supabase.rpc("obs_submit_section_sort_answers", {
+      p_attempt_id: attemptId,
+      p_screen_question_id: submittedQuestionId,
+      p_assignments: assignments,
+    });
+
+    if (activeQuestionIdRef.current !== submittedQuestionId) return;
+
+    if (error) {
+      await failAnswerSubmission({
+        submittedQuestionId,
+        error,
+        context: {
+          surface: "section_sort",
+          submission_mode: submissionMode,
+          question_type: question.question_type,
+          prompt: question.prompt,
+          assignments,
+        },
+      });
+      return;
+    }
+
+    const result = data?.[0] as SectionSortSubmitResult | undefined;
+    if (!result) {
+      await failAnswerSubmission({
+        submittedQuestionId,
+        error: null,
+        context: {
+          surface: "section_sort",
+          submission_mode: submissionMode,
+          question_type: question.question_type,
+          prompt: question.prompt,
+          assignments,
+          no_result: true,
+        },
+      });
+      return;
+    }
+
+    const isScreenCorrect = Boolean(result.is_correct);
+    const scoredCorrect = Number(result.scored_correct_count ?? 0);
+    const scoredTotal = Number(result.scored_item_count ?? sectionSortInteraction.dragLabels.length);
+    const newAnswered = Number(result.answered_count ?? answeredCount + (result.scored_item_count ?? 1));
+    const newCorrect = Number(result.correct_count ?? correctCount + (result.scored_correct_count ?? 0));
+    const newTarget = Number(result.target_question_count ?? (assessmentMode === "NT" ? ntTargetCount : otTargetCount));
+    const hasTraditionSensitiveMiss = assessmentMode === "OT"
+      && submissionMode !== "skip"
+      && sectionSortInteraction.dragLabels.some(label =>
+        isHebrewBibleTraditionSensitiveMiss(label, sectionSortAssignments[label.id]),
+      );
+    setIsCorrect(isScreenCorrect);
+    setCorrectChoiceId(result.correct_choice_id ?? "A");
+    setSectionSortFeedback({ correct: scoredCorrect, total: scoredTotal });
+    setSectionSortTraditionNote(hasTraditionSensitiveMiss ? HEBREW_BIBLE_DIVISION_NOTE : "");
+    setAnsweredCount(newAnswered);
+    setCorrectCount(newCorrect);
+    if (assessmentMode === "NT") setNtTargetCount(newTarget);
+    else setOtTargetCount(newTarget);
+    sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
+    sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
+    if (userId) void loadScoreEvidence(userId, assessmentMode === "NT" ? "NT" : "OT");
+    if (newAnswered < newTarget) {
+      if (assessmentMode === "NT") prefetchNtQuestion(attemptId, newAnswered);
+      else prefetchOtQuestion(attemptId, newAnswered);
+    } else if (assessmentMode === "NT") {
+      ntQuestionPrefetchRef.current = null;
+    } else {
+      otQuestionPrefetchRef.current = null;
+    }
+    isSubmittingAnswerRef.current = false;
+    setIsSubmittingAnswer(false);
+    spawnTraveler();
+    setPhase("feedback");
+  }, [
+    answeredCount,
+    assessmentMode,
+    attemptId,
+    correctCount,
+    loadScoreEvidence,
+    ntTargetCount,
+    otTargetCount,
+    question,
+    sectionSortAssignments,
+    sectionSortInteraction,
+    failAnswerSubmission,
+    isQuestionInteractionLocked,
+    phase,
+    prefetchNtQuestion,
+    prefetchOtQuestion,
+    spawnTraveler,
+    userId,
+  ]);
 
   const submitQuestionReport = useCallback(async () => {
     if (!question || !userId) return;
@@ -1379,6 +1344,10 @@ export default function AssessPage() {
 
     setIsSubmittingReport(true);
     setReportError("");
+    const reportSelectedChoiceId = selectedChoice
+      && (selectedChoice === IDK_CHOICE_ID || question.choices.some(choice => choice.id === selectedChoice))
+      ? selectedChoice
+      : null;
     const { error } = await supabase
       .from("question_reports")
       .insert({
@@ -1387,7 +1356,7 @@ export default function AssessPage() {
         user_id: userId,
         report_category: reportCategory,
         feedback_text: trimmedFeedback || null,
-        selected_choice_id: selectedChoice,
+        selected_choice_id: reportSelectedChoiceId,
         correct_choice_id: correctChoiceId,
         question_prompt: question.prompt,
       });
@@ -1400,21 +1369,47 @@ export default function AssessPage() {
     setReportStatus("sent");
   }, [attemptId, correctChoiceId, question, reportCategory, reportText, selectedChoice, userId]);
 
-  const nextQuestion = useCallback(() => {
+  const nextQuestion = useCallback(async () => {
+    if (phase !== "feedback" || isSubmittingAnswerRef.current || isLoadingQuestionRef.current) return;
     if (assessmentMode === "NT") {
       if (answeredCount >= ntTargetCount) {
         setPhase("complete");
         return;
       }
-      if (attemptId) void loadNtQuestion(attemptId, ntScope);
+      if (attemptId && beginQuestionLoad()) {
+        const usedPrefetch = await consumePrefetchedNtQuestion(attemptId, ntScope, answeredCount);
+        if (!usedPrefetch) await loadNtQuestion(attemptId, ntScope);
+      }
       return;
     }
-    if (answeredCount >= otTargetCount) {
+    // Only a targeted retest (real, small, fixed endpoint) blocks on
+    // "complete" here — the standard baseline assessment keeps going past
+    // its initial target instead of showing that interstitial.
+    const isTargetedOt = otAssessment?.assessment_kind === "ot_focused" || Boolean(otRequest.scopeKey);
+    if (answeredCount >= otTargetCount && isTargetedOt) {
       setPhase("complete");
       return;
     }
-    if (attemptId) loadQuestion(attemptId);
-  }, [answeredCount, assessmentMode, attemptId, loadNtQuestion, loadQuestion, ntScope, ntTargetCount, otTargetCount]);
+    if (attemptId && beginQuestionLoad()) {
+      const usedPrefetch = await consumePrefetchedOtQuestion(attemptId, answeredCount);
+      if (!usedPrefetch) await loadQuestion(attemptId);
+    }
+  }, [
+    answeredCount,
+    assessmentMode,
+    attemptId,
+    beginQuestionLoad,
+    consumePrefetchedNtQuestion,
+    consumePrefetchedOtQuestion,
+    loadNtQuestion,
+    loadQuestion,
+    ntScope,
+    ntTargetCount,
+    otAssessment,
+    otRequest,
+    otTargetCount,
+    phase,
+  ]);
 
   const choiceLabel = (id: string) => {
     if (!selectedChoice) return "";
@@ -1428,9 +1423,17 @@ export default function AssessPage() {
   const visibleChoices = question
     ? [...question.choices, IDK_CHOICE]
     : [];
+  const isSectionSortQuestion = question !== null
+    && sectionSortInteraction !== null;
   const isSequenceQuestion = assessmentMode === "OT"
-    && question?.question_type === "sequence_order_v1";
+    && question !== null
+    && !isSectionSortQuestion
+    && isOrderResponseQuestion(question);
   const concealsBookAnswer = question ? promptAsksForBookAnswer(question) : false;
+  const concealsSectionAnswer = assessmentMode === "OT" && question ? promptAsksForSectionAnswer(question) : false;
+  const usesSectionLevelLabel = assessmentMode === "OT" && question ? isBroadSectionLevelQuestion(question) : false;
+  const showsLocationLabels = !concealsSectionAnswer && !usesSectionLevelLabel;
+  const showsBookLabel = !concealsBookAnswer && !usesSectionLevelLabel;
   const isSkipped = selectedChoice === IDK_CHOICE_ID;
   const nebulaCount = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
   const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
@@ -1441,6 +1444,7 @@ export default function AssessPage() {
   const isInitialPhase = answeredCount < otTargetCount;
   const isScopeOtAssessment = Boolean(otRequest.scopeKey);
   const isTargetedOtAssessment = otAssessment?.assessment_kind === "ot_focused" || isScopeOtAssessment;
+  const showsTargetedOtLabel = assessmentMode === "OT" && isTargetedOtAssessment && !concealsBookAnswer && !usesSectionLevelLabel;
   const nextMilestone = answeredCount < otTargetCount ? otTargetCount : Math.ceil((answeredCount + 1) / 10) * 10;
   const progressStart = isInitialPhase ? 0 : nextMilestone - 10;
   const progressEnd = isInitialPhase ? otTargetCount : nextMilestone;
@@ -1466,26 +1470,38 @@ export default function AssessPage() {
     : navSubLabel;
   const displayProgressPct = assessmentMode === "NT" ? ntProgressPct : progressPct;
   const displayProgressEnd = assessmentMode === "NT" ? ntProgressEnd : progressEnd;
+  const skyDiscovery = skyDiscoveryMilestone(answeredCount);
+  const showSkyDiscovery = Boolean(
+    skyDiscovery
+    && !dismissedSkyDiscoveries.has(skyDiscovery)
+    && (phase === "question" || phase === "feedback")
+    && assessmentMode !== "select",
+  );
 
   const handleSignOut = useCallback(async () => {
+    // Never leave a pending capability behind for the next person on this
+    // browser — it would move this visitor's guest progress into their account.
+    clearPendingTransfer(localStorage);
     await supabase.auth.signOut();
     window.location.href = "/";
   }, []);
 
   const handleGoogleSignIn = async () => {
     setSaving(true);
-    // Store anon ID in localStorage before redirect
-    // Use a key that persists across the OAuth redirect
-    if (userId) {
-      localStorage.setItem("obs_anon_user_id", userId);
-      // Also store in sessionStorage as backup
-      sessionStorage.setItem("obs_anon_user_id", userId);
-    }
-    const anonId = userId || "";
+    // Mint the transfer capability while still signed in as the guest — holding
+    // that session is what proves ownership of the progress. The record goes to
+    // localStorage and never into the redirect URL; putting a UUID in the URL
+    // let a crafted callback link claim another visitor's progress. Starting a
+    // flow replaces any earlier record, so an abandoned one cannot be completed.
+    // The flow id is a random, non-secret correlator, NOT a credential: it only
+    // proves this callback is the completion of this flow. The capability
+    // itself stays in localStorage and never enters the URL.
+    const flowId = newFlowId();
+    if (userId) await beginPendingTransfer(supabase, localStorage, userId, flowId);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin + "/auth/callback?anon=" + anonId,
+        redirectTo: authCallbackUrl({ flow: flowId }),
       },
     });
     if (error) { console.error("OAuth sign-in failed:", error); setSaving(false); setErrorMsg(error.message); }
@@ -1494,9 +1510,18 @@ export default function AssessPage() {
   const handleMagicLink = async () => {
     if (!email) return;
     setSaving(true);
+    // Same capability, minted before the link is sent. A magic link is often
+    // opened in a different tab or window, which is why the record lives in
+    // localStorage (shared same-origin) rather than sessionStorage.
+    const flowId = newFlowId();
+    if (userId) await beginPendingTransfer(supabase, localStorage, userId, flowId);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + "/" },
+      // Route through the callback so guest progress is actually claimed. This
+      // previously landed on "/", which performs no transfer at all, so
+      // magic-link users silently lost their guest progress. The flow id rides
+      // along so the callback can prove it completes THIS request.
+      options: { emailRedirectTo: authCallbackUrl({ flow: flowId }) },
     });
     setSaving(false);
     if (error) { console.error("Magic link request failed:", error); setErrorMsg(error.message); return; }
@@ -1580,7 +1605,8 @@ export default function AssessPage() {
         /* Nav */
         .nav {
           position: sticky; top: 0; z-index: 20;
-          display: flex; align-items: center; justify-content: space-between;
+          display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 760px) minmax(0, 1fr);
+          align-items: center; column-gap: 16px;
           padding: 13px 28px; background: rgba(11,15,30,.85);
           backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.07);
         }
@@ -1596,7 +1622,7 @@ export default function AssessPage() {
           font-family: var(--font-crimson), Georgia, serif; font-weight: 600; font-size: 17px;
           color: #fff; text-decoration: none; opacity: .85;
         }
-        .brand-wrap { display: inline-flex; align-items: center; gap: 8px; }
+        .brand-wrap { display: inline-flex; align-items: center; gap: 8px; justify-self: start; }
         .beta-badge {
           position: relative;
           display: inline-flex; align-items: center;
@@ -1627,7 +1653,8 @@ export default function AssessPage() {
         .beta-badge:hover .beta-tooltip,
         .beta-badge:focus .beta-tooltip { opacity: 1; visibility: visible; transform: translateY(0); }
 
-        .nav-center { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: min(420px, 48vw); }
+        .nav-center { display: flex; flex-direction: column; align-items: center; justify-self: center; gap: 5px; width: 100%; min-width: 0; }
+        .nav > .nav-actions { justify-self: end; }
         .nav-phase {
           font-size: 12px; font-weight: 850; letter-spacing: .12em;
           text-transform: uppercase; color: var(--accent);
@@ -1645,11 +1672,21 @@ export default function AssessPage() {
         }
         .nav-count-right { font-size: 12.5px; color: rgba(255,255,255,.58); min-width: 44px; font-weight: 650; }
         .nav-exit {
-          font-size: 12.5px; color: rgba(255,255,255,.4); text-decoration: none;
-          padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.08);
-          transition: color .14s, background .14s;
+          font-size: 12.5px; font-weight: 650; color: rgba(255,255,255,.72); text-decoration: none;
+          padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.18);
+          background: rgba(255,255,255,.045);
+          transition: color .14s, background .14s, border-color .14s;
         }
-        .nav-exit:hover { color: #fff; background: rgba(255,255,255,.07); }
+        .nav-exit:hover, .nav-exit:focus-visible {
+          color: #fff; background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.28);
+          outline: none;
+        }
+        .nav-actions {
+          display: flex; align-items: center; gap: 8px;
+        }
+        .nav-action-button {
+          cursor: pointer; font-family: inherit;
+        }
 
         /* Scene */
         .scene {
@@ -1793,6 +1830,57 @@ export default function AssessPage() {
           color: var(--muted);
         }
         .sequence-submit:disabled, .sequence-skip:disabled { opacity: .55; cursor: default; }
+        .section-sort-question { display: flex; flex-direction: column; gap: 16px; }
+        .section-sort-bank {
+          min-height: 62px; display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
+          padding: 12px; border-radius: 8px;
+          border: 1.5px dashed rgba(27,36,66,.16);
+          background: rgba(27,36,66,.035);
+        }
+        .section-sort-chip {
+          position: relative; z-index: 2;
+          min-height: 34px; padding: 0 12px; border-radius: 999px;
+          border: 1px solid rgba(27,36,66,.12);
+          background: #fff; color: var(--navy);
+          font: 760 13px/1 var(--font-inter), system-ui, sans-serif;
+          box-shadow: 0 4px 11px rgba(27,36,66,.075);
+          cursor: grab; touch-action: none;
+        }
+        .section-sort-chip:active { cursor: grabbing; }
+        .section-sort-chip:disabled { cursor: default; opacity: .68; }
+        .section-sort-chip.is-dragging {
+          z-index: 8; opacity: .92;
+          box-shadow: 0 16px 34px rgba(27,36,66,.18);
+        }
+        .section-sort-zones {
+          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+        }
+        .section-sort-zone {
+          min-height: 154px; padding: 13px; border-radius: 50%;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+          border: 1.5px solid rgba(27,36,66,.12);
+          background: rgba(255,255,255,.62);
+          box-shadow: inset 0 0 0 8px rgba(10,163,163,.035);
+          transition: border-color .14s, background .14s, transform .12s;
+        }
+        .section-sort-zone.is-over {
+          border-color: var(--accent);
+          background: rgba(10,163,163,.10);
+          transform: scale(1.015);
+        }
+        .section-sort-zone-title {
+          max-width: 112px; text-align: center;
+          color: var(--navy); font-size: 12px; font-weight: 850; line-height: 1.15;
+        }
+        .section-sort-zone-labels {
+          display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 38px;
+        }
+        .section-sort-zone .section-sort-chip {
+          min-height: 30px; padding: 0 10px; font-size: 12px;
+        }
+        .section-sort-empty {
+          color: rgba(86,96,112,.52); font-size: 12px; font-weight: 650;
+        }
 
         /* Feedback */
         .retry-notice {
@@ -1823,6 +1911,15 @@ export default function AssessPage() {
         .feedback-bar.wrong   .feedback-text { color: var(--wrong); }
         .feedback-bar.skipped .feedback-text { color: var(--muted); }
         .feedback-bar.recorded .feedback-text { color: #0a6969; }
+        .canon-note {
+          margin-top: 12px; padding: 13px 15px; border-radius: 10px;
+          background: rgba(212,160,23,.11); border: 1px solid rgba(212,160,23,.28);
+          color: #5f4308; font-size: 13px; line-height: 1.55;
+          display: grid; gap: 3px;
+        }
+        .canon-note strong {
+          color: #3b2a05; font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+        }
         .next-btn {
           display: flex; align-items: center; gap: 6px;
           padding: 9px 18px; border-radius: 999px;
@@ -1841,23 +1938,55 @@ export default function AssessPage() {
         .score-item { font-size: 12.5px; color: var(--muted); }
         .score-item strong { color: var(--navy); font-size: 15px; display: block; }
 
-        /* Milestone banner */
+        /* Milestone banner — this fires once, at the moment a full baseline
+           or targeted test actually finishes, so it earns a bit more
+           presence than the routine teal UI around it: gold marks
+           achievement elsewhere in the app (first-assessment-card, Torah
+           bar), so this borrows that language instead of the standard
+           interactive teal. */
         .milestone-banner {
-          margin-top: 16px; padding: 14px 16px; border-radius: 12px;
-          background: var(--accent-dim); border: 1px solid var(--accent-line);
-          font-size: 13px; color: #0a5a5a; font-weight: 500;
-          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+          position: relative; overflow: hidden;
+          margin-top: 16px; padding: 16px 18px; border-radius: 14px;
+          background:
+            linear-gradient(135deg, rgba(245,200,66,.20), rgba(212,160,23,.07)),
+            rgba(255,255,255,.7);
+          border: 1px solid rgba(212,160,23,.38);
+          box-shadow: 0 10px 28px rgba(212,160,23,.12);
+          font-size: 13px; color: #4a3a08; font-weight: 500;
+          display: flex; align-items: center; gap: 14px;
+          animation: milestoneIn .5s cubic-bezier(.22,.72,.18,1) both;
         }
-        .milestone-banner svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--accent); }
-        .milestone-copy { display: flex; align-items: center; gap: 8px; line-height: 1.4; }
+        @keyframes milestoneIn {
+          from { opacity: 0; transform: translateY(6px) scale(.98); }
+          to { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .milestone-banner { animation: none; }
+        }
+        .milestone-icon {
+          flex-shrink: 0; width: 34px; height: 34px; border-radius: 999px;
+          display: grid; place-items: center;
+          background: radial-gradient(circle at 34% 30%, #fff4bd, #e6ad12 60%, #91680e);
+          box-shadow: 0 0 0 4px rgba(230,173,18,.14), 0 4px 14px rgba(212,160,23,.35);
+        }
+        .milestone-icon svg { width: 17px; height: 17px; color: #4a3208; }
+        .milestone-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; line-height: 1.45; }
+        .milestone-kicker {
+          font-size: 10.5px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase;
+          color: #8a6208;
+        }
         .milestone-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .milestone-results, .milestone-dashboard {
           min-height: 36px; display: inline-flex; align-items: center; justify-content: center;
           border-radius: 999px; padding: 0 14px; font: 750 12px var(--font-inter), sans-serif;
           text-decoration: none; cursor: pointer; white-space: nowrap;
         }
-        .milestone-results { color: #fff; background: var(--navy); border: 1px solid var(--navy); }
-        .milestone-dashboard { color: #0a6969; background: rgba(255,255,255,.6); border: 1px solid var(--accent-line); }
+        .milestone-results {
+          color: #241a02; background: linear-gradient(135deg, #f5c842, #d4a017);
+          border: 1px solid rgba(212,160,23,.5);
+          box-shadow: 0 8px 20px rgba(212,160,23,.32);
+        }
+        .milestone-dashboard { color: #4a3a08; background: rgba(255,255,255,.65); border: 1px solid rgba(212,160,23,.28); }
 
         .cosmic-burst {
           position: fixed; inset: 0; z-index: 12; pointer-events: none; overflow: hidden;
@@ -2073,6 +2202,85 @@ export default function AssessPage() {
           animation: spin .8s linear infinite; margin: 0 auto;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .orbit-loader {
+          position: relative; width: 96px; height: 96px; margin: 0 auto 2px;
+          border-radius: 50%;
+          background:
+            radial-gradient(circle at 50% 50%, rgba(255,246,201,.96) 0 9px, rgba(212,160,23,.96) 10px 21px, transparent 22px),
+            radial-gradient(circle at 50% 50%, rgba(10,163,163,.08), transparent 62%);
+          box-shadow: 0 18px 42px rgba(27,36,66,.16), inset 0 0 34px rgba(10,163,163,.08);
+          isolation: isolate;
+        }
+        .orbit-loader::before,
+        .orbit-loader::after {
+          content: ""; position: absolute; border-radius: 50%;
+          pointer-events: none;
+        }
+        .orbit-loader::before {
+          inset: 18px; border: 1px dashed rgba(10,163,163,.42);
+          transform: rotate(-16deg) scaleX(1.36);
+        }
+        .orbit-loader::after {
+          width: 14px; height: 14px; left: 50%; top: 50%;
+          margin: -7px 0 0 -7px;
+          background: radial-gradient(circle at 35% 30%, #dbfffb, #0aa3a3 68%, #076d6d);
+          box-shadow: 0 0 18px rgba(10,163,163,.58);
+          animation: orbitLoaderTravel 1.45s linear infinite;
+          transform-origin: 7px 7px;
+        }
+        .orbit-loader-star {
+          position: absolute; left: 50%; top: 50%; z-index: 1;
+          width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+          background:
+            radial-gradient(circle at 38% 32%, #fffdf0 0 8px, #f4c73b 9px 25px, #b27608 100%);
+          box-shadow: 0 0 26px rgba(212,160,23,.62), 0 0 52px rgba(212,160,23,.22);
+        }
+        .orbit-loader-spark {
+          position: absolute; border-radius: 50%; background: rgba(255,255,255,.82);
+          box-shadow: 0 0 10px rgba(255,255,255,.72);
+        }
+        .orbit-loader-spark.one { width: 3px; height: 3px; left: 18px; top: 30px; animation: orbitSpark 1.8s ease-in-out infinite; }
+        .orbit-loader-spark.two { width: 2px; height: 2px; right: 20px; bottom: 28px; animation: orbitSpark 2.1s ease-in-out .4s infinite; }
+        .orbit-loader-spark.three { width: 2px; height: 2px; right: 28px; top: 19px; animation: orbitSpark 1.6s ease-in-out .7s infinite; }
+        @keyframes orbitLoaderTravel {
+          from { transform: rotate(0deg) translateX(42px) rotate(0deg); }
+          to { transform: rotate(360deg) translateX(42px) rotate(-360deg); }
+        }
+        @keyframes orbitSpark {
+          0%, 100% { opacity: .25; transform: scale(.72); }
+          50% { opacity: 1; transform: scale(1.18); }
+        }
+        .between-question-loader {
+          align-items: center; text-align: center;
+          /* Transparent dark glass instead of the near-opaque card
+             background — this loader sits over the starfield only for a
+             moment between questions, so let it show through rather than
+             blotting it out with a solid card. .card's own 20px
+             backdrop-filter blur was smearing the stars into an indistinct
+             haze even at low alpha, so this drops the blur way down and
+             lightens the tint further to actually read as glass. */
+          background:
+            radial-gradient(circle at 50% 22%, rgba(212,160,23,.14), transparent 34%),
+            radial-gradient(circle at 82% 70%, rgba(10,163,163,.12), transparent 34%),
+            rgba(11,15,30,.16);
+          border-color: rgba(255,255,255,.16);
+          backdrop-filter: blur(3px);
+          box-shadow: 0 20px 50px rgba(0,0,0,.28);
+        }
+        .between-question-loader .startup-title { color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.5); }
+        .between-question-loader .startup-note { color: rgba(255,255,255,.72); text-shadow: 0 2px 10px rgba(0,0,0,.4); }
+        .startup-status {
+          display: grid; gap: 7px; max-width: 440px;
+        }
+        .startup-title {
+          font-size: 15px; font-weight: 750; color: var(--navy);
+        }
+        .startup-note {
+          font-size: 13px; line-height: 1.55; color: var(--muted);
+        }
+        .startup-actions {
+          display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 4px;
+        }
         .selection-grid {
           display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 16px; width: 100%;
@@ -2136,6 +2344,39 @@ export default function AssessPage() {
           color: var(--navy); font-size: 13px;
         }
         .nt-result-row span { color: var(--muted); font-weight: 650; }
+        .sky-discovery {
+          position: fixed; z-index: 12;
+          top: clamp(112px, 18vh, 180px); right: clamp(22px, 9vw, 150px);
+          width: 32px; height: 32px; border-radius: 999px; border: 0;
+          background:
+            radial-gradient(circle at 34% 30%, rgba(255,255,255,.98) 0 8%, rgba(255,234,166,.96) 18%, rgba(212,160,23,.92) 44%, rgba(111,78,14,.88) 100%);
+          box-shadow: 0 0 12px rgba(255,226,153,.72), 0 0 28px rgba(212,160,23,.28);
+          cursor: pointer; animation: discoveryFloat 4.6s ease-in-out infinite;
+        }
+        .sky-discovery::after {
+          content: ""; position: absolute; inset: -7px; border-radius: 999px;
+          border: 1px solid rgba(255,231,169,.34);
+          transform: rotate(-16deg) scaleX(1.38);
+        }
+        .sky-discovery:hover,
+        .sky-discovery:focus-visible {
+          outline: none; transform: translateY(-2px) scale(1.06);
+          box-shadow: 0 0 16px rgba(255,238,190,.86), 0 0 38px rgba(212,160,23,.38);
+        }
+        @keyframes discoveryFloat {
+          0%, 100% { translate: 0 0; }
+          50% { translate: 0 -8px; }
+        }
+        .fact-card { max-width: 500px; }
+        .fact-kicker {
+          color: #9a6a09; font-size: 11px; font-weight: 850;
+          text-transform: uppercase; letter-spacing: .08em; margin-bottom: 7px;
+        }
+        .fact-title {
+          font-family: var(--font-crimson), Georgia, serif;
+          color: var(--navy); font-size: 27px; font-weight: 700; margin-bottom: 8px;
+        }
+        .fact-copy { color: var(--muted); font-size: 15px; line-height: 1.62; }
 
         @media (prefers-reduced-motion: reduce) {
           /* Keep every transition/animation functional but instant, so the
@@ -2152,7 +2393,7 @@ export default function AssessPage() {
         .testament-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
         @media (max-width: 640px) {
           .card { padding: 30px 22px; max-width: 100%; }
-          .nav { padding: 12px 16px; }
+          .nav { display: flex; justify-content: space-between; padding: 12px 16px; }
           .card-prompt { font-size: 20px; }
           .question-head { align-items: flex-start; }
           .report-options { grid-template-columns: 1fr; }
@@ -2169,10 +2410,14 @@ export default function AssessPage() {
           .sequence-step-controls { grid-column: 2 / -1; justify-content: flex-end; }
           .sequence-actions { align-items: stretch; flex-direction: column-reverse; }
           .sequence-submit, .sequence-skip { width: 100%; }
+          .section-sort-zones { grid-template-columns: 1fr; }
+          .section-sort-zone { min-height: 132px; border-radius: 8px; }
+          .section-sort-zone-title { max-width: none; }
         }
       `}</style>
 
       <canvas ref={canvasRef} className={`stars ${isDashboardTransitioning ? "dashboard-transition" : ""}`} aria-hidden="true" />
+      <BlackHoleEvent answeredCount={answeredCount} userId={userId} />
       {answeredCount > 0 && !isDashboardTransitioning && (
         <div className="confidence-nebula-label" aria-hidden="true">
           <span>Evidence</span>
@@ -2191,11 +2436,24 @@ export default function AssessPage() {
           <span className="firework firework-three"><i className="spark spark-a" /><i className="spark spark-b" /><i className="spark spark-c" /><i className="spark spark-d" /><i className="spark spark-e" /><i className="spark spark-f" /></span>
         </div>
       )}
+      {showSkyDiscovery && skyDiscovery && (
+        <button
+          className="sky-discovery"
+          type="button"
+          aria-label="Open a Bible fact"
+          title="Open a Bible fact"
+          onClick={() => {
+            const factIndex = hashString(`${attemptId ?? "assessment"}:${skyDiscovery}`) % BIBLE_SKY_FACTS.length;
+            setActiveBibleFact(BIBLE_SKY_FACTS[factIndex]);
+            setDismissedSkyDiscoveries(current => new Set(current).add(skyDiscovery));
+          }}
+        />
+      )}
 
       {/* Nav */}
       <nav className={`nav ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
         <span className="brand-wrap">
-          <Link className="nav-brand" href="/">Open Bible Assessment</Link>
+          <BrandLogo className="nav-brand" />
           <span className="beta-badge" tabIndex={0}>
             Beta
             <span className="beta-tooltip" role="tooltip">
@@ -2214,18 +2472,18 @@ export default function AssessPage() {
             <span className="nav-count-right">{displayProgressEnd}</span>
           </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <div className="nav-actions">
           {assessmentMode === "OT" && (isSignedIn ? (
             <button
               onClick={handleSignOut}
-              style={{fontSize:12,color:"rgba(255,255,255,.4)",background:"none",border:"1px solid rgba(255,255,255,.08)",borderRadius:999,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit",transition:"color .14s"}}
+              className="nav-exit nav-action-button"
             >
               Sign out
             </button>
           ) : (
             <button
               onClick={() => setShowResults(true)}
-              style={{fontSize:12,color:"rgba(255,255,255,.4)",background:"none",border:"1px solid rgba(255,255,255,.08)",borderRadius:999,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit",transition:"color .14s"}}
+              className="nav-exit nav-action-button"
             >
               Sign in
             </button>
@@ -2263,21 +2521,91 @@ export default function AssessPage() {
         )}
 
         {assessmentMode === "NT" && phase === "starting" && (
-          <div className="card center-card">
+          <div className={`card center-card ${isLoadingNextQuestion ? "between-question-loader" : ""}`}>
             <span className="pilot-badge">NT BLI</span>
             <div className="card-heading">Preparing {ntScopeFromKey(ntRequestedScopeKey, ntBooks).label}</div>
-            <p className="card-sub">Building an adaptive question sequence for your separate New Testament BLI.</p>
+            {isLoadingNextQuestion && (
+              <div className="orbit-loader" aria-hidden="true">
+                <span className="orbit-loader-star" />
+                <span className="orbit-loader-spark one" />
+                <span className="orbit-loader-spark two" />
+                <span className="orbit-loader-spark three" />
+              </div>
+            )}
+            <div className="startup-status" aria-live="polite">
+              <p className="startup-title">
+                {isLoadingNextQuestion
+                  ? "Charting the next question..."
+                  : startupWaitLevel === 0
+                  ? "Building your question sequence..."
+                  : startupWaitLevel === 1
+                    ? "Still setting up your assessment..."
+                    : "This is taking longer than usual."}
+              </p>
+              <p className="startup-note">
+                {isLoadingNextQuestion
+                  ? "The assessment is checking your latest answer and choosing the next useful signal."
+                  : startupWaitLevel === 0
+                  ? "We are preparing an adaptive New Testament sequence and checking your saved progress."
+                  : startupWaitLevel === 1
+                    ? "First-time startup can take a few seconds while the anonymous session and question bank warm up."
+                    : "You can keep waiting, or restart the setup if the connection stalled."}
+              </p>
+            </div>
             {ntError && <p className="pilot-note">{ntError}</p>}
-            <div className="spinner" />
+            {!isLoadingNextQuestion && <div className="spinner" />}
             <p className="pilot-note">Your NT answers contribute only to the NT BLI, not the OT BLI.</p>
-            <Link className="btn-secondary" href="/assess?choose=1">Back to assessment choices</Link>
+            <div className="startup-actions">
+              {startupWaitLevel === 2 && (
+                <button className="btn-secondary" type="button" onClick={() => window.location.reload()}>
+                  Try again
+                </button>
+              )}
+              <Link className="btn-secondary" href="/assess?choose=1">Back to assessment choices</Link>
+            </div>
           </div>
         )}
 
         {assessmentMode === "OT" && phase === "starting" && (
-          <div className="card center-card">
-            <div className="spinner" />
-            <p className="card-sub">Loading your assessment...</p>
+          <div className={`card center-card ${isLoadingNextQuestion ? "between-question-loader" : ""}`}>
+            {isLoadingNextQuestion ? (
+              <div className="orbit-loader" aria-hidden="true">
+                <span className="orbit-loader-star" />
+                <span className="orbit-loader-spark one" />
+                <span className="orbit-loader-spark two" />
+                <span className="orbit-loader-spark three" />
+              </div>
+            ) : (
+              <div className="spinner" />
+            )}
+            <div className="startup-status" aria-live="polite">
+              <p className="startup-title">
+                {isLoadingNextQuestion
+                  ? "Plotting the next question..."
+                  : startupWaitLevel === 0
+                  ? "Loading your assessment..."
+                  : startupWaitLevel === 1
+                    ? "Setting up your first question..."
+                    : "This is taking longer than usual."}
+              </p>
+              <p className="startup-note">
+                {isLoadingNextQuestion
+                  ? "OBA is moving through the question map and finding the next useful signal."
+                  : startupWaitLevel === 0
+                  ? "We are checking your session and preparing the next adaptive question."
+                  : startupWaitLevel === 1
+                    ? "First-time startup can take a few seconds while the anonymous session and question bank warm up."
+                    : "You can keep waiting, or start a fresh setup if the connection stalled."}
+              </p>
+              {startupWaitLevel === 2 && (
+                <div className="startup-actions">
+                  <Link className="btn-secondary" href="/assess?fresh=1">Start fresh</Link>
+                  <button className="btn-secondary" type="button" onClick={() => window.location.reload()}>
+                    Try again
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -2285,20 +2613,43 @@ export default function AssessPage() {
           <div className="card center-card">
             <div className="card-heading">Something went wrong</div>
             <p className="card-sub">{errorMsg}</p>
-            {assessmentMode === "NT" ? (
-              <Link className="btn-primary" href="/">Choose another NT scope from your BLI profile</Link>
-            ) : (
-              <button
-                className="btn-primary"
-                type="button"
-                onClick={() => {
-                  clearAssessmentBrowserStorage();
-                  window.location.href = "/assess";
-                }}
-              >
-                Start fresh assessment
-              </button>
+            {debugErrorMsg && (
+              <p className="pilot-note" style={{wordBreak: "break-word"}}>
+                Debug: {debugErrorMsg}
+              </p>
             )}
+            <div className="startup-actions">
+              {attemptId && (
+                <button
+                  className="btn-primary"
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg("");
+                    setDebugErrorMsg("");
+                    setRetryNotice("Continuing the same assessment.");
+                    if (assessmentMode === "NT") void loadNtQuestion(attemptId, ntScope);
+                    else void loadQuestion(attemptId);
+                  }}
+                >
+                  Continue this assessment
+                </button>
+              )}
+              {assessmentMode === "NT" ? (
+                <Link className="btn-secondary" href="/">Choose another NT scope</Link>
+              ) : (
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    clearAssessmentBrowserStorage();
+                    window.location.href = "/assess?fresh=1";
+                  }}
+                >
+                  Start fresh assessment
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -2315,54 +2666,56 @@ export default function AssessPage() {
             )}
             {/* Location graphic */}
             <div className="question-head">
-              <div className="location-bar">
-                <span
-                  className="loc-pill"
-                  style={{
-                    color: SECTION_COLORS[question.section] || "#0aa3a3",
-                    background: (SECTION_COLORS[question.section] || "#0aa3a3") + "18",
-                    borderColor: (SECTION_COLORS[question.section] || "#0aa3a3") + "30",
-                  }}
-                >
+              {showsLocationLabels && (
+                <div className="location-bar">
                   <span
-                    className="loc-dot"
-                    style={{ background: SECTION_COLORS[question.section] || "#0aa3a3" }}
-                  />
-                  {assessmentMode === "NT" ? "New Testament" : question.section}
-                </span>
-                {!concealsBookAnswer && (
-                  <>
-                    <span className="loc-sep">·</span>
-                    <span className="loc-pill" style={{ color: "#566070", background: "rgba(27,36,66,.05)", borderColor: "rgba(27,36,66,.09)" }}>
-                      {assessmentMode === "NT" ? ((question as NtPilotQuestion).book_name || question.book_code) : BOOK_NAMES[question.book_code] || question.book_code}
-                    </span>
-                  </>
-                )}
-                {assessmentMode === "OT" && isTargetedOtAssessment && !concealsBookAnswer && (
-                  <>
-                    <span className="loc-sep">·</span>
-                    <span className="loc-pill" style={{ color: "#087f7f", background: "rgba(10,163,163,.10)", borderColor: "rgba(10,163,163,.22)" }}>
-                      {otAssessment?.label ?? otRequest.label ?? "Targeted assessment"}
-                    </span>
-                  </>
-                )}
-                {assessmentMode === "NT" && (
-                  <>
-                    <span className="loc-sep">·</span>
-                    <span className="loc-pill" style={{ color: "#92400e", background: "#fef3c7", borderColor: "#fde68a" }}>
-                      NT BLI
-                    </span>
-                  </>
-                )}
-                {question.importance_tier === 1 && (
-                  <>
-                    <span className="loc-sep">·</span>
-                    <span className="loc-pill" style={{ color: "#b45309", background: "#fef3c7", borderColor: "#fde68a" }}>
-                      <span className="tier-star">★</span> Tier 1
-                    </span>
-                  </>
-                )}
-              </div>
+                    className="loc-pill"
+                    style={{
+                      color: SECTION_COLORS[question.section] || "#0aa3a3",
+                      background: (SECTION_COLORS[question.section] || "#0aa3a3") + "18",
+                      borderColor: (SECTION_COLORS[question.section] || "#0aa3a3") + "30",
+                    }}
+                  >
+                    <span
+                      className="loc-dot"
+                      style={{ background: SECTION_COLORS[question.section] || "#0aa3a3" }}
+                    />
+                    {assessmentMode === "NT" ? "New Testament" : question.section}
+                  </span>
+                  {showsBookLabel && (
+                    <>
+                      <span className="loc-sep">·</span>
+                      <span className="loc-pill" style={{ color: "#566070", background: "rgba(27,36,66,.05)", borderColor: "rgba(27,36,66,.09)" }}>
+                        {assessmentMode === "NT" ? ((question as NtPilotQuestion).book_name || question.book_code) : BOOK_NAMES[question.book_code] || question.book_code}
+                      </span>
+                    </>
+                  )}
+                  {showsTargetedOtLabel && (
+                    <>
+                      <span className="loc-sep">·</span>
+                      <span className="loc-pill" style={{ color: "#087f7f", background: "rgba(10,163,163,.10)", borderColor: "rgba(10,163,163,.22)" }}>
+                        {otAssessment?.label ?? otRequest.label ?? "Targeted assessment"}
+                      </span>
+                    </>
+                  )}
+                  {assessmentMode === "NT" && (
+                    <>
+                      <span className="loc-sep">·</span>
+                      <span className="loc-pill" style={{ color: "#92400e", background: "#fef3c7", borderColor: "#fde68a" }}>
+                        NT BLI
+                      </span>
+                    </>
+                  )}
+                  {question.importance_tier === 1 && (
+                    <>
+                      <span className="loc-sep">·</span>
+                      <span className="loc-pill" style={{ color: "#b45309", background: "#fef3c7", borderColor: "#fde68a" }}>
+                        <span className="tier-star">★</span> Tier 1
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
               {assessmentMode === "OT" && (
                 <button
                   className="report-trigger"
@@ -2383,9 +2736,62 @@ export default function AssessPage() {
               )}
             </div>
 
-            <p className="card-prompt">{question.prompt}</p>
+            <p className="card-prompt">{sectionSortInteraction?.prompt ?? question.prompt}</p>
 
-            {isSequenceQuestion ? (
+            {isSectionSortQuestion && sectionSortInteraction ? (
+              <div className="section-sort-question">
+                <DndContext
+                  sensors={sequenceSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSectionSortDragEnd}
+                >
+                  <div className="section-sort-bank" aria-label="Book labels">
+                    {(sectionSortLabelsByZone.get("UNASSIGNED") ?? []).map(label => (
+                      <SectionSortLabelChip
+                        key={label.id}
+                        label={label}
+                        disabled={phase === "feedback" || isSubmittingAnswer || isLoadingNextQuestion}
+                      />
+                    ))}
+                  </div>
+                  <div className="section-sort-zones">
+                    {sectionSortInteraction.dropZones.map(zone => (
+                      <SectionSortDropZone
+                        key={zone.id}
+                        zone={zone}
+                        labels={sectionSortLabelsByZone.get(zone.id) ?? []}
+                        disabled={phase === "feedback" || isSubmittingAnswer || isLoadingNextQuestion}
+                      />
+                    ))}
+                  </div>
+                </DndContext>
+                {phase === "question" && (
+                  <div className="sequence-actions">
+                    <button
+                      className="sequence-skip"
+                      type="button"
+                      disabled={isSubmittingAnswer || isLoadingNextQuestion}
+                      onClick={() => {
+                        void submitSectionSort("skip");
+                      }}
+                    >
+                      I don&apos;t know
+                    </button>
+                    <button
+                      className="sequence-submit"
+                      type="button"
+                      disabled={isSubmittingAnswer || isLoadingNextQuestion || !sectionSortReadyToSubmit}
+                      onClick={(event) => {
+                        pendingSpawnRef.current = { x: event.clientX, y: event.clientY };
+                        void submitSectionSort();
+                      }}
+                    >
+                      Submit groups
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : isSequenceQuestion ? (
               <div className="sequence-question">
                 <p className="sequence-instruction">Drag the events into order, earliest first.</p>
                 <DndContext
@@ -2403,7 +2809,7 @@ export default function AssessPage() {
                           key={item.id}
                           item={item}
                           index={index}
-                          disabled={phase === "feedback" || isSubmittingAnswer}
+                          disabled={phase === "feedback" || isSubmittingAnswer || isLoadingNextQuestion}
                           isFirst={index === 0}
                           isLast={index === sequenceOrder.length - 1}
                           onMove={moveSequenceItem}
@@ -2417,15 +2823,15 @@ export default function AssessPage() {
                     <button
                       className="sequence-skip"
                       type="button"
-                      disabled={isSubmittingAnswer}
+                      disabled={isSubmittingAnswer || isLoadingNextQuestion}
                       onClick={() => submitAnswer(IDK_CHOICE_ID)}
                     >
-                      I don&apos;t know - skip
+                      I don&apos;t know
                     </button>
                     <button
                       className="sequence-submit"
                       type="button"
-                      disabled={isSubmittingAnswer || sequenceOrder.length === 0}
+                      disabled={isSubmittingAnswer || isLoadingNextQuestion || sequenceOrder.length === 0}
                       onClick={(event) => {
                         pendingSpawnRef.current = { x: event.clientX, y: event.clientY };
                         submitSequenceOrder();
@@ -2444,14 +2850,14 @@ export default function AssessPage() {
                     type="button"
                     className={`choice ${phase === "feedback" ? choiceLabel(choice.id) : ""}`}
                     onClick={(e) => {
-                      if (phase !== "question" || isSubmittingAnswer) return;
+                      if (phase !== "question" || isSubmittingAnswer || isLoadingNextQuestion || isQuestionInteractionLocked()) return;
                       pendingSpawnRef.current = { x: e.clientX, y: e.clientY };
                       if (assessmentMode === "NT") submitNtAnswer(choice.id);
                       else submitAnswer(choice.id);
                     }}
-                    disabled={phase === "feedback" || isSubmittingAnswer}
+                    disabled={phase === "feedback" || isSubmittingAnswer || isLoadingNextQuestion}
                   >
-                    <span className="choice-letter">{choice.id === IDK_CHOICE_ID ? "E" : choice.id || String.fromCharCode(65 + index)}</span>
+                    <span className="choice-letter">{String.fromCharCode(65 + index)}</span>
                     {choice.text}
                   </button>
                 ))}
@@ -2462,18 +2868,27 @@ export default function AssessPage() {
               <>
                 <div className={`feedback-bar ${assessmentMode === "OT" ? "recorded" : isSkipped ? "skipped" : isCorrect ? "correct" : "wrong"}`}>
                   <span className="feedback-text">
-                    {assessmentMode === "OT"
-                      ? "Answer recorded."
-                      : isSkipped
+                    {sectionSortFeedback
+                      ? "Response recorded."
+                      : assessmentMode === "OT"
+                        ? "Answer recorded."
+                        : isSkipped
                         ? "Skipped — the correct answer is highlighted."
                         : isCorrect
                           ? "Correct!"
                           : "Not quite — the correct answer is highlighted."}
                   </span>
-                  <button className="next-btn" type="button" onClick={nextQuestion}>
-                    Next →
+                  <button className="next-btn" type="button" onClick={nextQuestion} disabled={isLoadingNextQuestion}>
+                    {isLoadingNextQuestion ? "Plotting..." : "Next →"}
                   </button>
                 </div>
+
+                {sectionSortTraditionNote && (
+                  <div className="canon-note" role="note">
+                    <strong>Why this placement matters</strong>
+                    <span>{sectionSortTraditionNote}</span>
+                  </div>
+                )}
 
                 {assessmentMode === "NT" && (
                   <div className="score-row">
@@ -2485,10 +2900,17 @@ export default function AssessPage() {
 
                 {assessmentMode === "OT" && answeredCount === otTargetCount && (
                   <div className="milestone-banner">
-                    <span className="milestone-copy">
+                    <div className="milestone-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 20v-6"/><path d="M6 20v-3"/><path d="M18 20v-9"/><path d="M3 3h18"/>
+                        <path d="M12 2l2.6 6.15L21 9l-4.9 4.3L17.4 21 12 17.6 6.6 21l1.3-7.7L3 9l6.4-.85z"/>
                       </svg>
+                    </div>
+                    <span className="milestone-copy">
+                      <span className="milestone-kicker">
+                        {isTargetedOtAssessment
+                          ? isScopeOtAssessment ? "Test complete" : "Retest complete"
+                          : "Baseline complete"}
+                      </span>
                       {isTargetedOtAssessment
                         ? isScopeOtAssessment
                           ? `${otAssessment?.label ?? "Targeted"} test complete. Your BLI has been updated.`
@@ -2496,7 +2918,7 @@ export default function AssessPage() {
                         : "Your BLI snapshot is ready."}
                     </span>
                     <span className="milestone-actions">
-                      {attemptId && <Link className="milestone-results" href={`/results/${attemptId}`}>See results</Link>}
+                      {attemptId && <Link className="milestone-results" href={`/results/${attemptId}`}>See results →</Link>}
                       <button className="milestone-dashboard" type="button" onClick={transitionToDashboard}>Dashboard</button>
                     </span>
                   </div>
@@ -2516,7 +2938,7 @@ export default function AssessPage() {
             {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
             <button className="btn-primary" type="button" onClick={() => startNtPilot(ntScope)}>Retry same scope</button>
             <Link className="btn-secondary" href="/">Choose another NT scope from your BLI profile</Link>
-            <Link className="btn-secondary" href="/">Back to dashboard</Link>
+            <button className="btn-secondary" type="button" onClick={transitionToDashboard}>Back to dashboard</button>
           </div>
         )}
 
@@ -2536,7 +2958,7 @@ export default function AssessPage() {
                 : `You answered ${correctCount} of ${answeredCount} questions correctly.`}
             </p>
             {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
-            <Link className="btn-primary" href="/">View your dashboard</Link>
+            <button className="btn-primary" type="button" onClick={transitionToDashboard}>View your dashboard</button>
             {!isTargetedOtAssessment && (
               <Link className="btn-secondary" href="/assess">Keep going</Link>
             )}
@@ -2599,6 +3021,19 @@ export default function AssessPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeBibleFact && (
+        <div className="overlay-backdrop" onClick={e => e.target === e.currentTarget && setActiveBibleFact(null)}>
+          <div className="overlay-card fact-card">
+            <button className="overlay-close" type="button" onClick={() => setActiveBibleFact(null)} aria-label="Close Bible fact">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+            <p className="fact-kicker">Sky Fact</p>
+            <h2 className="fact-title">{activeBibleFact.title}</h2>
+            <p className="fact-copy">{activeBibleFact.fact}</p>
           </div>
         </div>
       )}

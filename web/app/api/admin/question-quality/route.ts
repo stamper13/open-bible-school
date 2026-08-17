@@ -37,6 +37,7 @@ export async function GET(request: Request) {
       { data: repetition, error: repetitionError },
       { data: difficulty, error: difficultyError },
       { data: distractors, error: distractorError },
+      { data: malformed, error: malformedError },
     ] = await Promise.all([
       authorization.adminSupabase
         .from("obs_admin_question_bank_audit_summary")
@@ -74,6 +75,11 @@ export async function GET(request: Request) {
         .in("distractor_status", ["never_selected", "weak"])
         .order("exposure_count", { ascending: false })
         .limit(100),
+      authorization.adminSupabase
+        .from("obs_admin_malformed_question_reports")
+        .select("report_id,created_at,status,generated_question_id,question_type,prompt,error_code,error_message,is_quarantined,recorded_as_non_scoring_skip,quarantine_reason")
+        .order("created_at", { ascending: false })
+        .limit(100),
     ]);
 
     const auditError = auditSummaryError
@@ -82,7 +88,8 @@ export async function GET(request: Request) {
       || auditCoverageError
       || repetitionError
       || difficultyError
-      || distractorError;
+      || distractorError
+      || malformedError;
     if (auditError) {
       return privateJson(
         { error: auditError.message || "Question-bank audit data could not be loaded." },
@@ -100,6 +107,7 @@ export async function GET(request: Request) {
         repetition: repetition ?? [],
         difficulty: difficulty ?? [],
         distractors: distractors ?? [],
+        malformed: malformed ?? [],
       },
     });
   }

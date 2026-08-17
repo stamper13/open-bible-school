@@ -1,10 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import BrandLogo from "@/components/BrandLogo";
+import SiteFooter from "@/components/SiteFooter";
 import { supabase } from "@/lib/supabase/client";
+import { beginPendingTransfer, clearPendingTransfer, newFlowId } from "@/lib/auth/anonymousTransfer";
+import { authCallbackUrl } from "@/lib/auth/redirect";
 import { loadPublicQuestionMetadata, type PublicQuestionMetadataRow } from "@/lib/supabase/questionMetadata";
-import { BLI_LEVELS, levelForScore, toDisplayScore } from "@/lib/bli";
+import { BLI_LEVELS, levelForScore, toDisplayScore, type BliLevel } from "@/lib/bli";
+import {
+  EMPTY_EXPLORE_TREE,
+  EMPTY_FOCUS_PATH,
+  compactReference,
+  loadExploreTree,
+  loadFocusPath,
+  passageReference,
+  readableUnitLabel,
+  rereadHref,
+  type ExploreTree,
+  type FocusPath,
+} from "@/lib/focusPath";
+import { SHOOTING_PALETTES, drawStreak } from "@/lib/skyStreak";
+import { verseOfTheDay } from "@/lib/verseOfTheDay";
+import CoverageGrid, { CoverageLegend, hasFocusRecommendation, type CoverageGridView } from "./knowledge-map/CoverageGrid";
+import ReadingLogWidget from "./ReadingLogWidget";
+import StarfieldRewardsLayer from "@/components/StarfieldRewardsLayer";
 import {
   normalizeBliContractRow,
   poolBliSections,
@@ -12,6 +34,11 @@ import {
   type BliContractScores,
   type BliSectionScore,
 } from "@/lib/bliContract";
+import {
+  SECTION_INTERPRETATION_FLOOR,
+  leastEvidenceSection,
+  sectionEvidence,
+} from "@/lib/bliEvidence";
 import {
   BIBLE_BOOKS,
   BOOK_NAMES,
@@ -22,12 +49,23 @@ import {
   testamentForBook,
   type Testament as BibleTestament,
 } from "@/lib/bibleTaxonomy";
+import {
+  RECOMMENDATION_EVENT_MAX_ATTEMPTS,
+  RECOMMENDATION_EVENT_RETRY_DELAY_MS,
+  RECOMMENDATION_EVENT_SOURCE,
+  buildRecommendationViewMetadata,
+  newInteractionId,
+  shouldRetryStudyEvent,
+  type RecommendationInteractionSurface,
+} from "@/lib/recommendationEvents";
 
 const SKY_SEED_KEY = "obs_sky_seed";
 const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
 const ANON_USER_ID_KEY = "obs_anon_user_id";
 const SESSION_ANSWERED_KEY = "obs_session_answered";
 const SESSION_CORRECT_KEY = "obs_session_correct";
+const OT_ATTEMPT_ID_KEY = "obs_ot_attempt_id";
+const NT_ATTEMPT_ID_KEY = "obs_nt_attempt_id";
 const RECOMMENDATION_RETEST_WAIT_MS = 20 * 60 * 1000;
 
 function isAnonymousSession(session: { user?: { email?: string | null } } | null) {
@@ -35,6 +73,12 @@ function isAnonymousSession(session: { user?: { email?: string | null } } | null
 }
 
 function clearAssessmentBrowserStorage() {
+  // A pending transfer capability is guest-session state and must die with it.
+  // This function is the single cleanup path for sign-out, account deletion and
+  // stale-anonymous-session reaping, so clearing here covers all three; leaving
+  // a record behind would let the next person to sign in on this browser claim
+  // the previous visitor's progress.
+  clearPendingTransfer(localStorage);
   localStorage.removeItem("obs_answered");
   localStorage.removeItem("obs_correct");
   localStorage.removeItem("obs_attempt_id");
@@ -44,6 +88,20 @@ function clearAssessmentBrowserStorage() {
   sessionStorage.removeItem(ANON_USER_ID_KEY);
   sessionStorage.removeItem(SESSION_ANSWERED_KEY);
   sessionStorage.removeItem(SESSION_CORRECT_KEY);
+  sessionStorage.removeItem(OT_ATTEMPT_ID_KEY);
+  sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
+}
+
+function readSessionAssessmentData() {
+  if (typeof window === "undefined") return null;
+  const answered = Number(sessionStorage.getItem(SESSION_ANSWERED_KEY) || 0);
+  const correct = Number(sessionStorage.getItem(SESSION_CORRECT_KEY) || 0);
+  if (!Number.isFinite(answered) || !Number.isFinite(correct) || answered <= 0) return null;
+  return {
+    answered,
+    correct: Math.max(0, Math.min(correct, answered)),
+    bli: Math.round((Math.max(0, Math.min(correct, answered)) / answered) * 100),
+  };
 }
 
 function createSeededRandom(seed: number) {
@@ -206,6 +264,19 @@ type BliEvidence = {
   evidence_level: "Very limited" | "Limited" | "Developing" | "Strong" | "Very strong";
   evidence_description: string;
 };
+type BliSectionFollowup = {
+  scoring_version: "bli_weighted_v2";
+  testament: BibleTestament;
+  section_name: string;
+  scope_key: string;
+  answered: number;
+  minimum_reliable_answers: number;
+  established_answers: number;
+  answers_needed: number;
+  suggested_question_count: number;
+  evidence_status: "provisional" | "developing" | "established";
+  is_provisional: boolean;
+};
 type ProgressPoint = {
   attempt_id: string;
   captured_at: string;
@@ -250,6 +321,715 @@ const DOMAIN_META = [
   { key: "significance", backendKey: "theological_reasoning", label: "Theological Reasoning", match: (type: string) => type.includes("significance") || type.includes("concept") || type.includes("wisdom") || type.includes("theological") },
   { key: "scripture_connections", backendKey: "structure_cross_ref", label: "Cross Ref", match: (type: string) => type.includes("scripture_connection") || type.includes("cross_ref") || type.includes("intertextual") },
 ];
+type KnowledgeGapResource = { label: string; href: string };
+type KnowledgeGapGuidance = {
+  label: string;
+  steps: string[];
+  resources?: KnowledgeGapResource[];
+};
+type KnowledgeGapGuidanceOverride = Partial<KnowledgeGapGuidance>;
+
+const DIMENSION_GUIDANCE: Record<string, KnowledgeGapGuidance> = {
+  characters_lineage: {
+    label: "What to practice",
+    steps: [
+      "Name the main people in the passage and how they relate to each other.",
+      "Track family lines, allies, rivals, and succession.",
+      "Ask which person carries the promise, threat, or covenant story forward.",
+    ],
+    resources: [
+      { label: "Character in biblical narrative", href: "https://bibleproject.com/videos/character-biblical-narrative/" },
+    ],
+  },
+  events_timeline: {
+    label: "What to practice",
+    steps: [
+      "Put the major events in order before worrying about small details.",
+      "Notice what changes after each event: location, leader, covenant status, or conflict.",
+      "Retell the passage as a short sequence from memory.",
+    ],
+    resources: [
+      { label: "Plot in biblical narrative", href: "https://bibleproject.com/videos/plot-biblical-narrative/" },
+    ],
+  },
+  geography_nations: {
+    label: "What to practice",
+    steps: [
+      "Find the places, regions, rivers, roads, and neighboring peoples named in the passage.",
+      "Trace movement on a map and ask why the location matters to the story.",
+      "Connect nations or territories to the conflicts, promises, and alliances in the passage.",
+    ],
+    resources: [
+      { label: "OpenBible maps", href: "https://www.openbible.info/geo/" },
+      { label: "Bible Hub Atlas", href: "https://biblehub.com/atlas/" },
+      { label: "Setting in biblical narrative", href: "https://bibleproject.com/videos/setting-biblical-narrative/" },
+    ],
+  },
+  law_commands: {
+    label: "What to practice",
+    steps: [
+      "Look for commands, prohibitions, covenant signs, blessings, curses, and obligations.",
+      "Ask who receives the command, what obedience requires, and what consequence is attached.",
+      "In narrative books, notice where a command is obeyed, ignored, repeated, or broken.",
+    ],
+    resources: [
+      { label: "Biblical law overview", href: "https://bibleproject.com/videos/law/" },
+      { label: "Covenants guide", href: "https://bibleproject.com/guides/covenants/" },
+    ],
+  },
+  promise_prophecy: {
+    label: "What to practice",
+    steps: [
+      "Identify promises, warnings, blessings, curses, and speeches from God or his messengers.",
+      "Ask who receives the word, what future it announces, and what response it calls for.",
+      "Track whether the passage shows the promise beginning, threatened, delayed, or fulfilled.",
+    ],
+    resources: [
+      { label: "Covenants guide", href: "https://bibleproject.com/guides/covenants/" },
+      { label: "Prophecy podcast", href: "https://bibleproject.com/podcasts/what-prophecy/" },
+    ],
+  },
+  theological_reasoning: {
+    label: "What to practice",
+    steps: [
+      "Ask what the passage reveals about God, sin, covenant, judgment, mercy, or wisdom.",
+      "Explain why the event matters, not only what happened.",
+      "Connect repeated themes to the larger movement of the book.",
+    ],
+    resources: [
+      { label: "BibleProject guides", href: "https://bibleproject.com/guides/" },
+      { label: "Free BibleProject classes", href: "https://bibleproject.com/classroom/" },
+    ],
+  },
+  structure_cross_ref: {
+    label: "What to practice",
+    steps: [
+      "Notice repeated phrases, patterns, echoes, and callbacks to earlier passages.",
+      "Ask how this passage depends on what came before it.",
+      "Compare the passage with one related text before retesting.",
+    ],
+    resources: [
+      { label: "Design patterns", href: "https://bibleproject.com/classroom/introduction-to-the-hebrew-bible/modules/5" },
+      { label: "BibleProject guides", href: "https://bibleproject.com/guides/" },
+    ],
+  },
+};
+const BOOK_DIMENSION_GUIDANCE: Record<string, Record<string, KnowledgeGapGuidanceOverride>> = {
+  GEN: {
+    law_commands: {
+      resources: [
+        { label: "Genesis guide", href: "https://bibleproject.com/guides/book-of-genesis/" },
+        { label: "Covenants in Genesis", href: "https://bibleproject.com/guides/covenants/" },
+      ],
+    },
+    promise_prophecy: {
+      resources: [
+        { label: "Genesis guide", href: "https://bibleproject.com/guides/book-of-genesis/" },
+        { label: "Covenants guide", href: "https://bibleproject.com/guides/covenants/" },
+      ],
+    },
+    characters_lineage: {
+      resources: [
+        { label: "Genesis guide", href: "https://bibleproject.com/guides/book-of-genesis/" },
+      ],
+    },
+  },
+  EXO: {
+    law_commands: {
+      resources: [
+        { label: "Exodus guide", href: "https://bibleproject.com/guides/book-of-exodus/" },
+        { label: "Covenants guide", href: "https://bibleproject.com/guides/covenants/" },
+      ],
+    },
+    geography_nations: {
+      resources: [
+        { label: "Exodus guide", href: "https://bibleproject.com/guides/book-of-exodus/" },
+        { label: "OpenBible maps", href: "https://www.openbible.info/geo/" },
+      ],
+    },
+  },
+  LEV: {
+    law_commands: {
+      resources: [
+        { label: "Leviticus guide", href: "https://bibleproject.com/guides/book-of-leviticus/" },
+      ],
+    },
+  },
+  NUM: {
+    geography_nations: {
+      resources: [
+        { label: "Numbers guide", href: "https://bibleproject.com/guides/book-of-numbers/" },
+        { label: "OpenBible maps", href: "https://www.openbible.info/geo/" },
+      ],
+    },
+  },
+  DEU: {
+    law_commands: {
+      resources: [
+        { label: "Deuteronomy guide", href: "https://bibleproject.com/guides/book-of-deuteronomy/" },
+        { label: "Covenants guide", href: "https://bibleproject.com/guides/covenants/" },
+      ],
+    },
+  },
+  JDG: {
+    geography_nations: {
+      resources: [
+        { label: "Judges guide", href: "https://bibleproject.com/guides/book-of-judges/" },
+        { label: "Bible Hub Atlas", href: "https://biblehub.com/atlas/" },
+      ],
+    },
+    events_timeline: {
+      resources: [
+        { label: "Judges guide", href: "https://bibleproject.com/guides/book-of-judges/" },
+      ],
+    },
+  },
+};
+const UNIT_DIMENSION_GUIDANCE: Record<string, Record<string, KnowledgeGapGuidanceOverride>> = {
+  "gen-1-11": {
+    characters_lineage: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Genesis 3-5 and 9-10 for Adam and Eve, Cain and Abel, Seth, Noah, Noah's sons, and the nations table.",
+        "Track how the family line moves from Adam to Noah and then spreads into peoples after the flood.",
+        "Use Genesis 11:10-32 to bridge from the nations to Abram's family.",
+      ],
+    },
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the big sequence: creation, fall, Cain and Abel, flood, covenant with Noah, nations, Babel.",
+        "Anchor the sequence in Genesis 1-3, 4, 6-9, 10, and 11.",
+        "Ask what each event changes about humanity's relationship with God, land, violence, and blessing.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Eden in Genesis 2-3, Ararat after the flood in Genesis 8, and Babel/Shinar in Genesis 11.",
+        "Use Genesis 10 as the nations frame; do not try to memorize every name at once.",
+        "Ask how movement away from Eden and toward Babel sets up the need for Abram's call.",
+      ],
+    },
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Genesis 3:15, then Genesis 6:18 and 9:8-17.",
+        "Track promise through judgment: seed, rescue, covenant, and the sign of the rainbow.",
+        "Use Genesis 11:10-32 to see why the promise story narrows toward Abram.",
+      ],
+    },
+  },
+  "gen-12-50": {
+    characters_lineage: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Genesis 12-25 for Abraham, Sarah, Hagar, Ishmael, and Isaac.",
+        "Then use Genesis 25-36 for Jacob, Esau, Leah, Rachel, and the sons of Jacob.",
+        "Use Genesis 37-50 for Joseph and Judah; those chapters explain how Israel's family ends up in Egypt.",
+      ],
+    },
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the main sequence through Abraham: call, covenant, circumcision, Sodom, Isaac's birth, binding of Isaac.",
+        "Then practice Jacob's movement: birthright/blessing, Bethel, Laban, return, wrestling, reconciliation.",
+        "Finish with Joseph: sold, Egypt, prison, rise, famine, family reunion, Jacob's blessing.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Genesis 12-13: Haran, Canaan, Shechem, Bethel, the Negev, Egypt, and the Jordan Valley.",
+        "Then focus on Genesis 18-19, 28, 32-33, and 37-50: Mamre, Sodom, Bethel, the Jabbok/Peniel area, Shechem, Canaan, and Egypt.",
+        "The key geography is movement: Mesopotamia/Haran to Canaan, pressure toward Egypt, and the family eventually settling in Egypt.",
+      ],
+    },
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Genesis 12, 15, 17, 18:17-19, and 22; these carry the densest covenant commands, signs, obligations, and tests.",
+        "Then skim Genesis 26, 28, and 35 for covenant renewal, obedience language, vows, and altar-building.",
+        "Do not reread all of Genesis 12-50 for this gap unless you want the wider story; the Law gap is concentrated in the covenant scenes.",
+      ],
+      resources: [
+        { label: "Genesis guide", href: "https://bibleproject.com/guides/book-of-genesis/" },
+        { label: "Covenants guide", href: "https://bibleproject.com/guides/covenants/" },
+        { label: "Biblical law overview", href: "https://bibleproject.com/videos/law/" },
+      ],
+    },
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Genesis 12, 15, 17, and 22 for land, offspring, blessing, covenant, and oath promises.",
+        "Then use Genesis 26, 28, 35, 48-49 to see the promises repeated through Isaac, Jacob, Joseph's sons, and Judah.",
+        "Ask what is promised, who receives it, and whether the chapter advances land, seed, blessing, or kingship.",
+      ],
+    },
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Genesis 15, 18, 22, 39-50 for faith, righteousness, justice, testing, providence, and forgiveness.",
+        "Pay special attention to Genesis 50:20 as a summary of providence in the Joseph story.",
+        "Ask what each scene reveals about God's promise staying alive through flawed people.",
+      ],
+    },
+  },
+  "exo-1-20": {
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice Exodus 1-6 as the oppression and call of Moses, then Exodus 7-12 as the plague sequence.",
+        "Use Exodus 12-15 for Passover, exodus, sea crossing, and song.",
+        "Finish with Exodus 16-20: wilderness provision, Sinai arrival, and the Ten Commandments.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Egypt in Exodus 1-12, then the sea crossing in Exodus 13-15.",
+        "Track the move through the wilderness toward Sinai in Exodus 16-19.",
+        "The core map is Egypt -> sea -> wilderness -> Mount Sinai.",
+      ],
+    },
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "For Law & Commands here, focus mainly on Exodus 12-13 and 19-20.",
+        "Exodus 12-13 gives Passover and consecration instructions; Exodus 19-20 gives covenant setup and the Ten Commandments.",
+        "Do not treat the plague narrative as the main law section; use it as the rescue context before the commands.",
+      ],
+    },
+  },
+  "exo-21-40": {
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Exodus 21-23 for covenant case laws.",
+        "Then use Exodus 25-31 and 35-40 for tabernacle commands and priestly/worship instructions.",
+        "Use Exodus 32-34 to see covenant violation, intercession, renewal, and the restored covenant terms.",
+      ],
+    },
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Exodus 24, 32-34, and 40.",
+        "Ask how covenant presence is threatened by idolatry and restored through mercy and intercession.",
+        "Track the movement from law, to golden calf, to renewed covenant, to God's glory filling the tabernacle.",
+      ],
+    },
+  },
+  "lev-1-16": {
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Leviticus 1-7 for offerings, 8-10 for priesthood, 11-15 for purity, and 16 for the Day of Atonement.",
+        "Ask what each instruction protects: worship, holiness, purity, access to God, or atonement.",
+        "If time is short, start with Leviticus 1, 4, 10-11, and 16.",
+      ],
+    },
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Leviticus 4, 10, 11, and 16.",
+        "Ask what sin, impurity, priesthood, holiness, and atonement mean for life near God's presence.",
+        "Use the Day of Atonement in Leviticus 16 as the theological center of the unit.",
+      ],
+    },
+  },
+  "lev-17-27": {
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Leviticus 17, 19, 23, 25, and 26.",
+        "Leviticus 19 is the densest community-life command chapter; Leviticus 23 covers sacred time; Leviticus 25 covers sabbath year and Jubilee.",
+        "Use Leviticus 26 for blessings, curses, covenant judgment, and restoration hope.",
+      ],
+    },
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "This unit is mostly law collection, not narrative timeline.",
+        "Practice the order of themes instead: blood/sacrifice, holiness/community, priesthood, feasts, land/Jubilee, covenant consequences.",
+        "Anchor that order in Leviticus 17, 19, 21-22, 23, 25, and 26.",
+      ],
+    },
+  },
+  "num-10-25": {
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the sequence from Sinai departure to wilderness rebellion to Balaam.",
+        "Anchor it in Numbers 10-12, 13-14, 16-17, 20-21, and 22-24.",
+        "Ask how each event shows testing, complaint, judgment, intercession, or unexpected blessing.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Track Israel's movement from Sinai into the wilderness and toward Moab.",
+        "Focus on Numbers 10, 13-14, 20-21, and 22-25.",
+        "Pay attention to Kadesh, Edom, Arad, Moab, and the plains of Moab.",
+      ],
+    },
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "For promise/prophecy, focus especially on Numbers 13-14 and 22-24.",
+        "Numbers 13-14 tests trust in the land promise; Numbers 22-24 contains Balaam's oracles.",
+        "Use Numbers 24:15-19 as the high-value prophecy passage.",
+      ],
+    },
+  },
+  "deu-5-30": {
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Deuteronomy 5-6, 10-11, 12, 16-18, 24, 28-30.",
+        "Use Deuteronomy 5-6 for covenant summary, 12-26 for laws, and 28-30 for blessing, curse, repentance, and life/death choice.",
+        "If you need a short pass, read Deuteronomy 5-6, 10:12-22, 24:19-22, and 28-30.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Deuteronomy 1:1-5 as the setting, then Deuteronomy 11 and 27-30 for entering and living in the land.",
+        "Remember the geographic posture: Israel is east of the Jordan on the plains of Moab, looking toward Canaan.",
+        "Use Deuteronomy 34 as the endpoint: Moses views the land from Nebo.",
+      ],
+    },
+  },
+  "jos-1-12": {
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the sequence: commission, spies/Rahab, Jordan crossing, Jericho, Achan/Ai, Gibeon, southern and northern campaigns.",
+        "Anchor that in Joshua 1-2, 3-4, 5-6, 7-8, 9, 10, and 11.",
+        "Ask how covenant obedience or disobedience affects each event.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Joshua 2-4, 6, 8-11, and 12.",
+        "Track Jordan crossing, Jericho, Ai, Gibeon, the southern campaign, and the northern campaign.",
+        "The map movement matters more than memorizing every city: entry from the east, central foothold, then south and north.",
+      ],
+    },
+  },
+  "jdg-2-16": {
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Judges 2:11-19 for the repeating cycle.",
+        "Then group the deliverer stories: Othniel/Ehud in Judges 3, Deborah/Barak in 4-5, Gideon in 6-8, Abimelech in 9, Jephthah in 10-12, Samson in 13-16.",
+        "Practice the pattern: sin, oppression, cry, deliverer, relapse.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "For geography, focus on Judges 1, 3-5, 6-8, 11, and 13-16.",
+        "Track tribal territories and borderlands, especially Moab/Ammon, the Kishon area, Midian, Gilead, Philistia, Zorah, and Gaza.",
+        "Do not reread all of Judges for maps; pair each judge with the oppressor or region involved.",
+      ],
+    },
+    characters_lineage: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on the major judges: Deborah/Barak, Gideon, Abimelech, Jephthah, and Samson.",
+        "Use Judges 4-5, 6-9, 10-12, and 13-16.",
+        "Track whether each character moves Israel toward covenant faithfulness or deeper disorder.",
+      ],
+    },
+  },
+  "1sa-8-31": {
+    characters_lineage: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Samuel, Saul, Jonathan, David, Goliath, Abigail, and Saul's household.",
+        "Use 1 Samuel 8-10, 13-16, 17-20, 24-25, 28, and 31.",
+        "Track the contrast between Saul's decline and David's rise rather than trying to memorize every side character.",
+      ],
+    },
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the sequence: request for king, Saul chosen, Saul's failures, David anointed, Goliath, Saul pursues David, Saul's death.",
+        "Anchor it in 1 Samuel 8-10, 13-15, 16-17, 18-24, 28, and 31.",
+        "Ask how kingship moves from request, to warning, to failure, to replacement.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Gibeah, Bethlehem, the Valley of Elah, Nob, Gath, En-gedi, Ziklag, and Mount Gilboa.",
+        "Use 1 Samuel 10-11, 16-17, 21, 24, 27, and 31.",
+        "The map is mostly Israel and Philistine border conflict, plus David's fugitive movements.",
+      ],
+    },
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on 1 Samuel 8, 12, 13, and 15.",
+        "Those chapters show kingship warnings, covenant accountability, unlawful sacrifice, and Saul's failure to obey the command concerning Amalek.",
+        "For a Law gap, do not reread all of 1 Samuel 8-31; start where command and obedience are explicit.",
+      ],
+    },
+  },
+  "2sa-5-12": {
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the sequence: David established, Jerusalem captured, ark brought up, covenant promise, victories, Bathsheba, Nathan's confrontation.",
+        "Anchor it in 2 Samuel 5, 6, 7, 8-10, 11, and 12.",
+        "Ask how the unit moves from royal establishment to royal failure and consequences.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on 2 Samuel 5-6: Hebron to Jerusalem, Zion, and the ark's movement.",
+        "Then skim 2 Samuel 8 and 10 for surrounding enemies and David's expanding kingdom.",
+        "The key geographic shift is Jerusalem becoming David's capital and worship center.",
+      ],
+    },
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with 2 Samuel 7; it is the center of the promise/prophecy dimension here.",
+        "Then connect 2 Samuel 12 to the consequences announced after David's sin.",
+        "Ask what is promised to David's house and what judgment is spoken over David's household.",
+      ],
+    },
+  },
+  "1ki-1-19": {
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the sequence: Solomon's succession, wisdom, temple, dedication, decline, kingdom division, Elijah.",
+        "Anchor it in 1 Kings 1-3, 5-8, 11-12, 17-19.",
+        "If time is short, focus on 1 Kings 3, 8, 11-12, and 18-19.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Jerusalem and the temple in 1 Kings 1-8.",
+        "Then use 1 Kings 12 and 17-19 for Shechem/Bethel/Dan, Cherith, Zarephath, Mount Carmel, and Horeb.",
+        "The key geography is temple-centered Jerusalem, divided kingdom worship sites, and Elijah's movements.",
+      ],
+    },
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on 1 Kings 8, 11-12, and 18.",
+        "Watch covenant obedience language in Solomon's prayer, Solomon's idolatry, Jeroboam's false worship, and Elijah's call to choose the LORD.",
+        "This Law gap is less about legal codes and more about covenant loyalty and prohibited worship.",
+      ],
+    },
+  },
+  "2ki-17-25": {
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the sequence: fall of Samaria, Hezekiah and Assyria, Josiah's reform, final kings, fall of Jerusalem.",
+        "Anchor it in 2 Kings 17, 18-19, 22-23, 24, and 25.",
+        "Ask how covenant failure explains both Israel's fall and Judah's exile.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Samaria, Jerusalem, Assyria, Babylon, and exile movements.",
+        "Use 2 Kings 17, 18-19, 24, and 25.",
+        "The map is the collapse of Israel to Assyria and Judah to Babylon.",
+      ],
+    },
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with 2 Kings 17 and 22-23.",
+        "2 Kings 17 explains covenant violation; 2 Kings 22-23 shows the law book rediscovered and Josiah's reforms.",
+        "Use 2 Kings 24-25 to see the covenant consequences reach exile.",
+      ],
+    },
+  },
+  "isa-1-12": {
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Isaiah 1, 2, 6, 7, 9, 11, and 12.",
+        "Track judgment, remnant hope, Immanuel, the promised king, and restoration.",
+        "Isaiah 6 gives the prophet's call; Isaiah 7, 9, and 11 carry the densest promise/king material.",
+      ],
+    },
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Start with Isaiah 1, 5-6, 9, and 11.",
+        "Ask how holiness, judgment, pride, remnant, and messianic hope fit together.",
+        "Use Isaiah 6 as the theological center for God's holiness and the prophet's mission.",
+      ],
+    },
+  },
+  "jer-1-31": {
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Jeremiah 1, 7, 18-20, 25, 29, and 31.",
+        "Track Jeremiah's call, temple warning, enacted signs, exile duration, letter to exiles, and new covenant promise.",
+        "Jeremiah 31 is the high-value chapter for restoration and new covenant hope.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Jerusalem/Judah and Babylon as the two major poles.",
+        "Use Jeremiah 1, 7, 25, 29, and 31.",
+        "The key setting is Judah facing Babylonian exile, with hope spoken to exiles and survivors.",
+      ],
+    },
+  },
+  "eze-1-37": {
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Ezekiel 1-3, 8-11, 24, 34, 36, and 37.",
+        "Track call, glory, Jerusalem judgment, shepherd promise, new heart/spirit, and dry bones restoration.",
+        "Use Ezekiel 36-37 as the high-value restoration promise section.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Ezekiel 1, 8-11, and 40's setup if you want the later temple frame.",
+        "For this unit, the main geographic tension is exiles in Babylonia by the Kebar canal and visions concerning Jerusalem.",
+        "Do not treat every oracle as a map exercise; track Babylon/exile and Jerusalem/temple.",
+      ],
+    },
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Ezekiel 1, 8-11, 18, 33-34, 36-37.",
+        "Ask how glory, judgment, responsibility, shepherd leadership, new heart, and resurrection hope fit together.",
+        "Ezekiel 36-37 is the clearest concentrated section for restoration theology.",
+      ],
+    },
+  },
+  "dan-1-7": {
+    characters_lineage: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Daniel and his three friends in Daniel 1-3, then Daniel and the kings in Daniel 4-6.",
+        "Track Nebuchadnezzar, Belshazzar, Darius, and Daniel's faithful witness in exile.",
+        "Do not treat the characters as isolated heroes; ask how each episode shows faithfulness under empire.",
+      ],
+    },
+    events_timeline: {
+      label: "Most relevant chapters",
+      steps: [
+        "Practice the sequence: exile training, dream, fiery furnace, humbled king, writing on the wall, lions' den, four beasts vision.",
+        "Anchor it in Daniel 1, 2, 3, 4, 5, 6, and 7.",
+        "Ask how court stories prepare for the kingdom vision in Daniel 7.",
+      ],
+    },
+    geography_nations: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Babylon as the exile setting in Daniel 1-5.",
+        "Then notice the shift of empires and rulers in Daniel 5-7.",
+        "The geography is less travel and more empire setting: Judah's exiles living under foreign kingdoms.",
+      ],
+    },
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Daniel 2 and 7.",
+        "Daniel 2 gives the kingdoms image; Daniel 7 gives the beasts and the Son of Man vision.",
+        "Use the court stories in Daniel 1-6 as the narrative setting for the kingdom prophecy.",
+      ],
+    },
+  },
+  "psa-1-41": {
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Psalms 1-2, 8, 13, 22-24, and 32.",
+        "Track wisdom, kingship, creation, lament, trust, worship, confession, and forgiveness.",
+        "For this gap, sample representative psalms rather than trying to reread all 41 at once.",
+      ],
+    },
+    promise_prophecy: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Psalms 2, 22, and 24 for royal hope, suffering/righteousness, and the king of glory.",
+        "Use Psalm 16 if you want another key hope/rescue text.",
+        "Ask how royal and lament psalms point beyond the immediate speaker.",
+      ],
+    },
+  },
+  "pro-1-9": {
+    law_commands: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Proverbs 1-4 and 6-7 for commands, warnings, and instruction language.",
+        "Track the repeated calls: listen, receive, keep, do not forsake, do not enter the wrong path.",
+        "This is wisdom instruction rather than Torah law, so look for father/son commands and moral consequences.",
+      ],
+    },
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Proverbs 1, 3, 8, and 9.",
+        "Ask what wisdom is, why fear of the LORD matters, and how folly competes for allegiance.",
+        "Use Proverbs 8-9 as the concentrated wisdom-versus-folly section.",
+      ],
+    },
+  },
+  "job-1-14": {
+    theological_reasoning: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Job 1-2, 3, and 38-42 later if you want the full book's answer.",
+        "Within this unit, Job 1-2 frames the test and Job 3 opens the lament.",
+        "Ask what the speeches assume about righteousness, suffering, justice, and God's governance.",
+      ],
+    },
+    characters_lineage: {
+      label: "Most relevant chapters",
+      steps: [
+        "Focus on Job, the accuser, Job's wife, and the three friends introduced in Job 1-2.",
+        "Then watch how the friends begin responding in Job 4-14.",
+        "The character gap here is about roles in the argument, not genealogy.",
+      ],
+    },
+  },
+};
+
+function mergeKnowledgeGapGuidance(
+  dimensionKey: string | null,
+  bookCode: string,
+  unitKey: string,
+): KnowledgeGapGuidance | null {
+  if (!dimensionKey) return null;
+  const base = DIMENSION_GUIDANCE[dimensionKey];
+  if (!base) return null;
+  const bookOverride = BOOK_DIMENSION_GUIDANCE[bookCode]?.[dimensionKey];
+  const unitOverride = UNIT_DIMENSION_GUIDANCE[unitKey]?.[dimensionKey];
+  const resources = [
+    ...(unitOverride?.resources ?? []),
+    ...(bookOverride?.resources ?? []),
+    ...(base.resources ?? []),
+  ].filter((resource, index, list) => (
+    list.findIndex(item => item.href === resource.href) === index
+  ));
+  return {
+    label: unitOverride?.label ?? bookOverride?.label ?? base.label,
+    steps: unitOverride?.steps ?? bookOverride?.steps ?? base.steps,
+    resources,
+  };
+}
 
 function detailTargetForScore(score: ScopeScore): ScopeDetailTarget {
   if (score.kind === "canon") {
@@ -341,10 +1121,7 @@ function classNameForSection(sectionName: string) {
 }
 
 function confidenceForAnswers(answered: number): ScopeScore["confidence"] {
-  if (answered >= 20) return "high";
-  if (answered >= 8) return "moderate";
-  if (answered >= 3) return "low";
-  return "none";
+  return sectionEvidence(answered).confidence;
 }
 
 function scoreEvidence(rows: { isCorrect: boolean; weight: number }[]) {
@@ -504,15 +1281,17 @@ function applyCanonicalBliToSectionScopes(
 }
 
 function evidenceLabel(score: ScopeScore) {
-  if (score.confidence === "high") return "High evidence";
-  if (score.confidence === "moderate") return "Moderate evidence";
-  if (score.confidence === "low") return "Low evidence";
-  return "Needs more evidence";
+  const evidence = sectionEvidence(score.answered);
+  if (evidence.status === "untested") return "Needs answers";
+  if (evidence.status === "provisional") return "Early read";
+  if (evidence.status === "developing") return "Getting clearer";
+  return "Reliable sample";
 }
 
 function hasBaselineEvidence(score: ScopeScore | undefined) {
   if (!score || score.rawScore === null) return false;
-  return score.answered >= 3 && (score.displayScore ?? 0) >= 513;
+  return score.answered >= SECTION_INTERPRETATION_FLOOR
+    && (score.displayScore ?? 0) >= 513;
 }
 
 function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: boolean, bookScores: ScopeScore[]) {
@@ -520,8 +1299,8 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
     return {
       label: "Take your first assessment",
       books: "Personalized recommendation pending",
-      focus: "Answer a short set of questions first. Then Open Bible Assessment can identify the earliest major gap in your Old Testament knowledge and recommend a natural place to begin.",
-      priority: "Your reading recommendation will become more specific after your first BLI snapshot.",
+      focus: "Answer a short set of questions so OBA can find a natural place to begin.",
+      priority: "Recommendation pending",
       actionHref: "/assess",
       actionLabel: "Start assessment",
     };
@@ -551,10 +1330,10 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
       books: bookTarget.focus.label,
       focus: bookTarget.focus.focus,
       priority: score && score.answered > 0
-        ? `${score.displayScore ?? "--"} BLI across ${score.answered} answered questions here. Reread this range, then retest it.`
-        : "Not enough evidence here yet. Reread this range, then take a focused retest.",
+        ? `${score.displayScore ?? "--"} BLI · ${score.answered} answers`
+        : "Not enough evidence yet",
       actionHref: `/assess?${params.toString()}`,
-      actionLabel: "I reread this - retest me",
+      actionLabel: "Retest this range",
     };
   }
 
@@ -571,36 +1350,84 @@ function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: bool
     books: target.books,
     focus: target.focus,
     priority: score
-      ? `${score.accuracy_pct}% accuracy across ${score.total} answered questions. ${target.priority}`
-      : `Not enough answers here yet. ${target.priority}`,
+      ? `${score.accuracy_pct}% accuracy · ${score.total} answers`
+      : "Not enough answers yet",
     actionHref: "/assess",
     actionLabel: "Continue assessment",
   };
 }
 
+const DASHBOARD_SUBJECTS: Array<{
+  id: "bli" | "church-history" | "biblical-languages";
+  label: string;
+  subtitle: string;
+  color: string;
+  soon: boolean;
+}> = [
+  { id: "bli", label: "Bible Assessment", subtitle: "OT, NT, and combined literacy", color: "#0aa3a3", soon: false },
+  { id: "church-history", label: "Church History", subtitle: "Coming soon", color: "#d4a017", soon: true },
+  { id: "biblical-languages", label: "Biblical Languages", subtitle: "Coming soon", color: "#7c3aed", soon: true },
+];
+
 export default function HomePage() {
+  const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [dashboardUserId, setDashboardUserId] = useState<string | null>(null);
+  // The frontier card is a second projection of the knowledge map's focus
+  // path — same RPC, compact shape. No separate endpoint.
+  const [frontier, setFrontier] = useState<FocusPath>(EMPTY_FOCUS_PATH);
+  // The coverage grid is the same course-style checklist shown on the full
+  // knowledge map, surfaced here now that the dashboard has room for it.
+  const [coverageTrees, setCoverageTrees] = useState<Record<BibleTestament, ExploreTree>>({
+    OT: EMPTY_EXPLORE_TREE,
+    NT: EMPTY_EXPLORE_TREE,
+  });
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Account controls collapse behind the email; a click opens the menu.
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+  const [learnMoreOpen, setLearnMoreOpen] = useState(false);
+  const learnMoreRef = useRef<HTMLDivElement>(null);
+  const [subjectMenuOpen, setSubjectMenuOpen] = useState(false);
+  const subjectMenuRef = useRef<HTMLDivElement>(null);
+  const [firstAssessmentChooserOpen, setFirstAssessmentChooserOpen] = useState(false);
+  const [dashboardHydrated, setDashboardHydrated] = useState(false);
   const [assessmentData, setAssessmentData] = useState<{answered: number, correct: number, bli?: number} | null>(null);
+  const [sessionAssessmentData, setSessionAssessmentData] = useState<{answered: number, correct: number, bli?: number} | null>(null);
   const [sectionScores, setSectionScores] = useState<SectionScoreMap>({});
   const [scopeScores, setScopeScores] = useState<{sections: ScopeScore[]; books: ScopeScore[]; domains: ScopeScore[]}>(() => buildScopeScores([], []));
   const [activeBreakdownTab, setActiveBreakdownTab] = useState<BreakdownTab>("sections");
-  const [profileTestament, setProfileTestament] = useState<BibleTestament>("OT");
-  const [prophetsExpanded, setProphetsExpanded] = useState(false);
+  // The single testament toggle at the top of the dashboard now drives every
+  // testament-scoped box beneath it (score strip, recommendation engine,
+  // coverage map, knowledge profile breakdown) — there is no second,
+  // independent testament switch anywhere further down the page.
+  const [suiteTestament, setSuiteTestament] = useState<BibleTestament>("OT");
+  const profileTestament = suiteTestament;
   const [showBliTooltip, setShowBliTooltip] = useState(false);
   const [showEvidenceTooltip, setShowEvidenceTooltip] = useState(false);
+  const [showLevelTooltip, setShowLevelTooltip] = useState(false);
   const [expandedConeLayer, setExpandedConeLayer] = useState<string | null>(null);
-  const [isAssessmentCharging, setIsAssessmentCharging] = useState(false);
   const [activeDashboardTab, setActiveDashboardTab] = useState<"bli" | "church-history" | "biblical-languages">("bli");
-  const [isAnonymousDashboard, setIsAnonymousDashboard] = useState(false);
+  const [coverageMapMode, setCoverageMapMode] = useState<CoverageGridView>("recommended");
   const [backendRecommendation, setBackendRecommendation] = useState<BackendRecommendation | null>(null);
+  const [sectionFollowup, setSectionFollowup] = useState<BliSectionFollowup | null>(null);
   const [bliEvidence, setBliEvidence] = useState<BliEvidence | null>(null);
-  const [progressTestament, setProgressTestament] = useState<"OT" | "NT">("OT");
+  const [ntBliEvidence, setNtBliEvidence] = useState<BliEvidence | null>(null);
+  const [combinedBliEvidence, setCombinedBliEvidence] = useState<BliEvidence | null>(null);
+  const progressTestament = suiteTestament;
   const [progressHistory, setProgressHistory] = useState<ProgressPoint[]>([]);
   const [activeProgressAttemptId, setActiveProgressAttemptId] = useState<string | null>(null);
   const [progressLoading, setProgressLoading] = useState(false);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [scopeDetailTarget, setScopeDetailTarget] = useState<ScopeDetailTarget | null>(null);
+  // These score details stay behind icon triggers so the BLI card can lead,
+  // then expand inline only when the learner asks for that layer.
+  const [progressPanelOpen, setProgressPanelOpen] = useState(false);
+  const [conePanelOpen, setConePanelOpen] = useState(false);
+  const [knowledgeProfileOpen, setKnowledgeProfileOpen] = useState(false);
   const [scopeSummary, setScopeSummary] = useState<ScopeSummary | null>(null);
   const [scopeSummaryLoading, setScopeSummaryLoading] = useState(false);
   const [scopeSummaryError, setScopeSummaryError] = useState<string | null>(null);
@@ -608,11 +1435,14 @@ export default function HomePage() {
   const [testamentScores, setTestamentScores] = useState<BliContractScores | null>(null);
   const [pendingRetestHref, setPendingRetestHref] = useState<string | null>(null);
   const tooltipCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const assessmentHoldDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const assessmentHoldRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const levelTooltipCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressBackfillAttemptedRef = useRef<string | null>(null);
   const scopeRequestRef = useRef(0);
-  const recordedRecommendationRef = useRef<string | null>(null);
+  // Guards ONE in-flight explicit recommendation interaction so a double-click
+  // or a concurrent handler cannot start a second logical event. It is not a
+  // correctness guard for duplicates: the interaction UUID plus the database
+  // partial unique index is what makes recording exactly-once.
+  const recommendationInteractionRef = useRef<string | null>(null);
   const coneRef = useRef<HTMLDivElement>(null);
   const sloshRef = useRef({
     x1: 0, v1: 0, x2: 0, v2: 0,
@@ -622,16 +1452,33 @@ export default function HomePage() {
     running: false,
     lastFrameT: 0,
   });
-  const currentDisplayScore = assessmentData
+  const visibleAssessmentData = assessmentData ?? sessionAssessmentData;
+  const coverageTree = coverageTrees[suiteTestament];
+  const currentDisplayScore = visibleAssessmentData
     ? testamentScores?.ot_questions_answered
       ? testamentScores.ot_display_bli
-      : toDisplayScore(assessmentData.bli ?? Math.round((assessmentData.correct / assessmentData.answered) * 100))
+      : toDisplayScore(visibleAssessmentData.bli ?? Math.round((visibleAssessmentData.correct / visibleAssessmentData.answered) * 100))
     : 0;
   const currentDisplayLevel = levelForScore(currentDisplayScore);
   const currentDisplayBand = BLI_LEVELS.find((band) => band.name === currentDisplayLevel) ?? BLI_LEVELS[0];
-  const waterFillPercent = assessmentData ? 100 - coneMarkerPercent(currentDisplayScore) : 0;
+  const ntDisplayScore = testamentScores?.nt_questions_answered ? testamentScores.nt_display_bli : 0;
+  const activeDisplayScore = suiteTestament === "NT" ? ntDisplayScore : currentDisplayScore;
+  const activeDisplayLevel = suiteTestament === "NT" && testamentScores?.nt_questions_answered
+    ? testamentScores.nt_bli_level
+    : levelForScore(activeDisplayScore);
+  const activeHasScore = suiteTestament === "NT"
+    ? Boolean(testamentScores?.nt_questions_answered)
+    : Boolean(visibleAssessmentData);
+  const waterFillPercent = activeHasScore ? 100 - coneMarkerPercent(activeDisplayScore) : 0;
+
+  // The level popover describes whichever testament is active; close it on
+  // switch so it doesn't linger open showing the previous testament's copy.
+  useEffect(() => {
+    setShowLevelTooltip(false);
+  }, [suiteTestament]);
 
   useEffect(() => {
+    setSessionAssessmentData(readSessionAssessmentData());
     try {
       const stored = localStorage.getItem("oba_nt_pilot_summary");
       if (!stored) return;
@@ -651,13 +1498,55 @@ export default function HomePage() {
     }
   }, []);
 
-  const recommendedStudy = backendRecommendation ? (() => {
-    const hasDimensionTarget =
-      backendRecommendation.recommendation_kind === "DIMENSION" &&
-      !!backendRecommendation.dimension_key;
+  const localSectionFollowup = useMemo(
+    () => leastEvidenceSection(scopeScores.sections.filter(score => (
+      score.testament === "OT" && score.kind === "section"
+    ))),
+    [scopeScores.sections],
+  );
+  const uncertaintyFollowup = sectionFollowup?.is_provisional
+    ? {
+        label: sectionFollowup.section_name,
+        scopeKey: sectionFollowup.scope_key,
+        answered: sectionFollowup.answered,
+        answersNeeded: sectionFollowup.answers_needed,
+        target: sectionFollowup.suggested_question_count,
+      }
+    : localSectionFollowup
+      ? {
+          label: localSectionFollowup.label,
+          scopeKey: localSectionFollowup.backendScopeKey,
+          answered: localSectionFollowup.answered,
+          answersNeeded: sectionEvidence(localSectionFollowup.answered).answersToInterpretation,
+          target: Math.max(5, sectionEvidence(localSectionFollowup.answered).answersToInterpretation),
+        }
+      : null;
+  const isRecommendationEvidenceBlocked = Boolean(uncertaintyFollowup);
+  const uncertaintyRecommendation = visibleAssessmentData && uncertaintyFollowup ? {
+    label: `Clarify your ${uncertaintyFollowup.label} profile`,
+    books: `${uncertaintyFollowup.label} · Build the sample`,
+    focus: "Add a few more answers here before OBA chooses a lowest confirmed weakness.",
+    priority: `${uncertaintyFollowup.answersNeeded} more ${uncertaintyFollowup.answersNeeded === 1 ? "answer" : "answers"} to unlock recommendations`,
+    actionHref: `/assess?${new URLSearchParams({
+      mode: "scope",
+      label: uncertaintyFollowup.label,
+      scope: uncertaintyFollowup.scopeKey,
+      target: String(uncertaintyFollowup.target),
+    }).toString()}`,
+    actionLabel: "Add section evidence",
+  } : null;
+  const recommendedStudy = uncertaintyRecommendation ?? (!isRecommendationEvidenceBlocked && backendRecommendation ? (() => {
+    const hasDimensionTarget = !!backendRecommendation.dimension_key;
     const dimensionName =
       backendRecommendation.dimension_short_label ??
-      backendRecommendation.dimension_label;
+      backendRecommendation.dimension_label ??
+      (backendRecommendation.dimension_key ? dimensionDisplayName(backendRecommendation.dimension_key) : null);
+    const bookName = BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code;
+    const dimensionGuidance = mergeKnowledgeGapGuidance(
+      backendRecommendation.dimension_key,
+      backendRecommendation.book_code,
+      backendRecommendation.unit_key,
+    );
     const params = new URLSearchParams({
       mode: "focus",
       unit: backendRecommendation.unit_key,
@@ -671,38 +1560,67 @@ export default function HomePage() {
       params.set("dimension", backendRecommendation.dimension_key);
     }
     return {
+      // Just the dimension name (e.g. "Law") — this used to read "Law gap"
+      // right underneath a badge that also said "Law", which was the same
+      // fact stated twice. The eyebrow above ("Dimension gap") already
+      // carries the "gap" framing, so the title only needs the name itself.
       label: hasDimensionTarget && dimensionName
-        ? `${dimensionName} in ${backendRecommendation.label}`
-        : backendRecommendation.label,
-      books: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}${hasDimensionTarget ? " · Focused skill review" : ""}`,
+        ? dimensionName
+        : `${bookName} gap evidence`,
+      books: hasDimensionTarget
+        ? `${bookName} · ${backendRecommendation.label}`
+        : `${backendRecommendation.label} · ${backendRecommendation.section}`,
       focus: hasDimensionTarget
-        ? `${backendRecommendation.dimension_focus_text ?? `Review ${dimensionName} in this passage range.`} Keep the people, places, and events anchored in ${backendRecommendation.label}.`
-        : backendRecommendation.focus_text,
+        ? (backendRecommendation.dimension_focus_text
+          ?? `Test ${dimensionName?.toLowerCase() ?? "this dimension"} questions inside ${backendRecommendation.label}. The passage is the context; the gap is the dimension.`)
+        : `OBA has selected ${backendRecommendation.label} as the next assessment area, but it has not isolated a dimension-level deficit there yet. Answer a focused set here so the next Knowledge Gap can name the weak dimension instead of only the passage.`,
       priority: hasDimensionTarget && backendRecommendation.dimension_display_score
-        ? `${backendRecommendation.dimension_display_score} BLI from ${backendRecommendation.dimension_answered ?? 0} ${dimensionName ?? "dimension"} answers here. This is the clearest supported weakness inside your earliest priority reading.`
+        ? `${backendRecommendation.dimension_display_score} BLI · ${backendRecommendation.dimension_answered ?? 0} ${dimensionName ?? "dimension"} answers`
         : backendRecommendation.display_score
-        ? `${backendRecommendation.display_score} BLI across ${backendRecommendation.answered} answered questions here. ${backendRecommendation.reason}.`
-        : `${backendRecommendation.reason}. Reread this range, then take a focused retest.`,
+        ? `${backendRecommendation.display_score} BLI in this passage · dimension gap pending`
+        : "Needs focused answers before a dimension gap can be named",
       actionHref: `/assess?${params.toString()}`,
-      actionLabel: "I reread this - retest me",
+      actionLabel: hasDimensionTarget && dimensionName ? `Retest ${dimensionName}` : "Find the gap",
+      guidanceLabel: dimensionGuidance?.label,
+      guidanceSteps: dimensionGuidance?.steps ?? [],
+      resources: dimensionGuidance?.resources ?? [],
     };
-  })() : getRecommendedStudy(sectionScores, !!assessmentData, scopeScores.books);
+  })() : getRecommendedStudy(sectionScores, !!visibleAssessmentData, scopeScores.books));
+  const isBackendRecommendationShown = !isRecommendationEvidenceBlocked && Boolean(backendRecommendation);
+  const knowledgeGapEyebrow = isRecommendationEvidenceBlocked
+    ? "Evidence gap"
+    : backendRecommendation?.dimension_key
+      ? "Dimension gap"
+      : backendRecommendation
+        ? "Gap evidence"
+        : "Knowledge gap";
+  const recommendedGuidanceSteps = "guidanceSteps" in recommendedStudy && Array.isArray(recommendedStudy.guidanceSteps)
+    ? recommendedStudy.guidanceSteps.filter((step): step is string => typeof step === "string")
+    : [];
+  const recommendedGuidanceLabel = "guidanceLabel" in recommendedStudy && typeof recommendedStudy.guidanceLabel === "string"
+    ? recommendedStudy.guidanceLabel
+    : "What to practice";
+  const recommendedResources = "resources" in recommendedStudy && Array.isArray(recommendedStudy.resources)
+    ? recommendedStudy.resources.filter((resource): resource is { label: string; href: string } => (
+      resource
+      && typeof resource.label === "string"
+      && typeof resource.href === "string"
+    ))
+    : [];
   const visibleBreakdownScores = useMemo(() => {
     if (activeBreakdownTab === "sections") {
+      const visibleKeys = profileTestament === "OT"
+        ? new Set(["torah", "former", "latter", "writings"])
+        : new Set(["gospels-acts", "pauline", "general", "revelation"]);
       return scopeScores.sections.filter(score => (
-        score.testament === profileTestament
-        && (
-          profileTestament === "NT"
-          || prophetsExpanded
-          || (score.key !== "former" && score.key !== "latter")
-        )
+        score.testament === profileTestament && visibleKeys.has(score.key)
       ));
     }
     if (activeBreakdownTab === "domains") {
       return scopeScores.domains.filter(score => score.testament === profileTestament);
     }
     return scopeScores.books.filter(score => score.testament === profileTestament);
-  }, [activeBreakdownTab, profileTestament, prophetsExpanded, scopeScores]);
+  }, [activeBreakdownTab, profileTestament, scopeScores]);
   const scriptureConnectionsUnlocked = useMemo(() => {
     const torah = scopeScores.sections.find(score => score.label === "Torah");
     const former = scopeScores.sections.find(score => score.label === "Former Prophets");
@@ -787,7 +1705,49 @@ export default function HomePage() {
   const activeProgressPoint = progressHistory.find(point => point.attempt_id === activeProgressAttemptId)
     ?? progressHistory[0]
     ?? null;
+  const hasReadingRecommendation = Boolean(frontier.focusLeaf);
+  const activeCoverageMapMode: CoverageGridView = suiteTestament === "OT"
+    ? (coverageMapMode === "recommended" && !hasReadingRecommendation ? "overview" : coverageMapMode)
+    : "overview";
+  const coverageModeCopy = suiteTestament === "NT"
+    ? "Every New Testament chapter, ready for NT recommendations when that engine comes online."
+    : activeCoverageMapMode === "skill"
+      ? "The recommended dimension gap is pulled forward with concrete practice steps."
+      : activeCoverageMapMode === "overview"
+        ? "Every Old Testament chapter in its full section and book context."
+        : "The next reading range is pulled forward; Overview snaps it back into the full map.";
+  // The dashboard only switches from the "new learner" landing to full
+  // results once a standard assessment is actually complete (20 questions —
+  // see TOTAL_INITIAL / NT_PILOT_TARGET in app/assess/page.tsx). Anything
+  // short of that is a partial attempt: leaving mid-test and coming back to
+  // the dashboard should not surface a half-answered score as if it were a
+  // finished result.
+  const ASSESSMENT_COMPLETE_THRESHOLD = 20;
+  const otAnsweredCount = testamentScores?.ot_questions_answered ?? visibleAssessmentData?.answered ?? 0;
+  const ntAnsweredCount = testamentScores?.nt_questions_answered ?? ntPilotSummary?.answered ?? 0;
+  const hasCompletedAssessment = Boolean(
+    otAnsweredCount >= ASSESSMENT_COMPLETE_THRESHOLD ||
+    ntAnsweredCount >= ASSESSMENT_COMPLETE_THRESHOLD
+  );
+  // Which testament (if either) has an unfinished attempt sitting under the
+  // threshold — used to swap "Take assessment" for "Continue assessment" and
+  // resume the right test instead of re-showing the OT/NT chooser.
+  const inProgressTestament: "OT" | "NT" | null = hasCompletedAssessment
+    ? null
+    : otAnsweredCount > 0
+      ? "OT"
+      : ntAnsweredCount > 0
+        ? "NT"
+        : null;
+  const isNewAssessmentLanding = activeDashboardTab === "bli" && dashboardHydrated && !hasCompletedAssessment;
+  const isDashboardLoading = activeDashboardTab === "bli" && !dashboardHydrated;
 
+  // `obs_recommendation_seen:<actionHref>` is UI STATE ONLY — a per-device
+  // record of when this recommendation was first shown, used solely to decide
+  // whether the retest CTA opens the "have you reread this?" interstitial (see
+  // handleRecommendedAction). It is deliberately NOT an analytics record and is
+  // never consulted when deciding whether to emit an event: browser storage is
+  // per-device, user-clearable, and cannot make event recording correct.
   useEffect(() => {
     if (!recommendedStudy.actionHref.startsWith("/assess?")) return;
     const key = `obs_recommendation_seen:${recommendedStudy.actionHref}`;
@@ -795,25 +1755,67 @@ export default function HomePage() {
   }, [recommendedStudy.actionHref]);
 
   const recordStudyEvent = useCallback(async (
-    eventType: "recommendation_viewed" | "reading_started" | "reading_completed" | "retest_started" | "retest_completed" | "recommendation_dismissed",
+    // The client is the sole producer of `recommendation_viewed` and nothing
+    // else. Lifecycle events (`retest_started`, `retest_completed`) are emitted
+    // by the server-side assessment RPCs, which are the only writers that know
+    // whether an attempt was actually created and can record its attempt_id.
+    // Do not widen this union without re-reading
+    // Documents/OBS/RETEST_STARTED_DUPLICATE_PRODUCERS_2026-08-02.md.
+    eventType: "recommendation_viewed",
     unitKey: string,
-  ) => {
-    if (!dashboardUserId) return;
-    await supabase.rpc("obs_record_study_event", {
+    metadata: Record<string, unknown> = { source: RECOMMENDATION_EVENT_SOURCE },
+  ): Promise<{ error: { code?: string | null } | null }> => {
+    if (!dashboardUserId) return { error: null };
+    const { error } = await supabase.rpc("obs_record_study_event", {
       p_user_id: dashboardUserId,
       p_unit_key: unitKey,
       p_event_type: eventType,
       p_attempt_id: null,
-      p_metadata: { source: "dashboard_recommendation" },
+      p_metadata: metadata,
     });
+    return { error };
   }, [dashboardUserId]);
 
-  useEffect(() => {
-    if (!dashboardUserId || !backendRecommendation?.unit_key) return;
-    const eventKey = `${dashboardUserId}:${backendRecommendation.unit_key}`;
-    if (recordedRecommendationRef.current === eventKey) return;
-    recordedRecommendationRef.current = eventKey;
-    void recordStudyEvent("recommendation_viewed", backendRecommendation.unit_key);
+  // `recommendation_viewed` records an EXPLICIT interaction with the
+  // recommendation and nothing else. There is deliberately no load/render
+  // effect here: mounting, reloading, remounting, reauthenticating, and
+  // refreshing the recommendation must all record zero events. If page
+  // impressions are ever wanted they get their own event name
+  // (`recommendation_rendered`) with its own identity window.
+  //
+  // One interaction produces one UUID. That UUID is reused for retries of the
+  // same interaction, so a retried request can never become a second row, and a
+  // genuinely new interaction always mints a new UUID, so a later legitimate
+  // view is never suppressed.
+  const recordRecommendationView = useCallback(async (
+    surface: RecommendationInteractionSurface,
+  ) => {
+    const unitKey = backendRecommendation?.unit_key;
+    if (!dashboardUserId || !unitKey) return;
+    // Serialize concurrent handlers: a double-click is one logical event.
+    if (recommendationInteractionRef.current) return;
+
+    const interactionId = newInteractionId();
+    recommendationInteractionRef.current = interactionId;
+    try {
+      for (let attempt = 1; attempt <= RECOMMENDATION_EVENT_MAX_ATTEMPTS; attempt += 1) {
+        const { error } = await recordStudyEvent(
+          "recommendation_viewed",
+          unitKey,
+          buildRecommendationViewMetadata(interactionId, surface),
+        );
+        if (!error) return;
+        if (attempt >= RECOMMENDATION_EVENT_MAX_ATTEMPTS || !shouldRetryStudyEvent(error)) {
+          console.warn("Recommendation view event was not recorded:", error);
+          return;
+        }
+        await new Promise(resolve => {
+          setTimeout(resolve, RECOMMENDATION_EVENT_RETRY_DELAY_MS * attempt);
+        });
+      }
+    } finally {
+      recommendationInteractionRef.current = null;
+    }
   }, [backendRecommendation?.unit_key, dashboardUserId, recordStudyEvent]);
 
   const openScopeDetail = async (target: ScopeDetailTarget) => {
@@ -884,7 +1886,21 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeScopeDetail, scopeDetailTarget]);
 
+  useEffect(() => {
+    if (!progressPanelOpen && !conePanelOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setProgressPanelOpen(false);
+      setConePanelOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [progressPanelOpen, conePanelOpen]);
+
   const handleRecommendedAction = (event: MouseEvent<HTMLAnchorElement>) => {
+    // Clicking through the recommendation is an explicit view, in both the
+    // interstitial branch and the direct-navigation branch below.
+    if (isBackendRecommendationShown) void recordRecommendationView("primary_cta");
     if (!recommendedStudy.actionHref.startsWith("/assess?")) return;
     const key = `obs_recommendation_seen:${recommendedStudy.actionHref}`;
     const firstSeen = Number(localStorage.getItem(key) || Date.now());
@@ -894,12 +1910,13 @@ export default function HomePage() {
       setPendingRetestHref(recommendedStudy.actionHref);
       return;
     }
-    if (backendRecommendation?.unit_key) void recordStudyEvent("retest_started", backendRecommendation.unit_key);
+    // No client-side `retest_started`: obs_start_or_resume_ot_assessment(_v2)
+    // records it when the attempt is actually created.
   };
 
   const continuePendingRetest = () => {
     if (!pendingRetestHref) return;
-    if (backendRecommendation?.unit_key) void recordStudyEvent("retest_started", backendRecommendation.unit_key);
+    // No client-side `retest_started` here either; see handleRecommendedAction.
     window.location.href = pendingRetestHref;
   };
 
@@ -912,27 +1929,16 @@ export default function HomePage() {
     tooltipCloseRef.current = setTimeout(() => setShowBliTooltip(false), 220);
   };
 
-  // Press-and-hold to charge into the assessment. Triggered by pointerdown
-  // (never hover), with a short grace period so a normal click doesn't flash
-  // the charging state. Releasing or leaving cancels; a plain click still
-  // navigates instantly via the link.
-  const startAssessmentHold = () => {
-    if (assessmentHoldDelayRef.current) clearTimeout(assessmentHoldDelayRef.current);
-    if (assessmentHoldRef.current) clearTimeout(assessmentHoldRef.current);
-    assessmentHoldDelayRef.current = setTimeout(() => {
-      setIsAssessmentCharging(true);
-      assessmentHoldRef.current = setTimeout(() => {
-        window.location.href = assessmentData ? "/assess" : "/assess?choose=1";
-      }, 2000);
-    }, 150);
+  // The level badge (e.g. "Literate") opens its explanation on click, not
+  // hover — hover only lights the badge up via CSS. These handlers just keep
+  // the popover open while focus/pointer is still inside it (button or the
+  // "Learn more" link) and close it shortly after both are left.
+  const cancelLevelTooltipClose = () => {
+    if (levelTooltipCloseRef.current) clearTimeout(levelTooltipCloseRef.current);
   };
-
-  const cancelAssessmentHold = () => {
-    if (assessmentHoldDelayRef.current) clearTimeout(assessmentHoldDelayRef.current);
-    if (assessmentHoldRef.current) clearTimeout(assessmentHoldRef.current);
-    assessmentHoldDelayRef.current = null;
-    assessmentHoldRef.current = null;
-    setIsAssessmentCharging(false);
+  const closeLevelTooltipSoon = () => {
+    if (levelTooltipCloseRef.current) clearTimeout(levelTooltipCloseRef.current);
+    levelTooltipCloseRef.current = setTimeout(() => setShowLevelTooltip(false), 220);
   };
 
   // Water slosh physics: two damped harmonic oscillators (fundamental sloshing
@@ -1020,15 +2026,60 @@ export default function HomePage() {
 
   const handleSignIn = async () => {
     const { data: { session } } = await supabase.auth.getSession();
+    // Mint the transfer capability while the guest session is still active.
+    // The token proves control of that session; it lives in localStorage and
+    // is never placed in the redirect URL. Passing the guest id as an "anon"
+    // query parameter let a crafted callback link claim another visitor's
+    // progress, and leaked the id through Referer headers and browser history.
     const anonId = isAnonymousSession(session) ? session?.user?.id : null;
+    // Random, non-secret correlator so the callback can prove it completes THIS
+    // flow. The capability never leaves localStorage.
+    const flowId = newFlowId();
     if (anonId) {
-      localStorage.setItem(ANON_USER_ID_KEY, anonId);
-      sessionStorage.setItem(ANON_USER_ID_KEY, anonId);
+      await beginPendingTransfer(supabase, localStorage, anonId, flowId);
+    } else {
+      // Not a guest session: make sure no earlier record survives into a
+      // sign-in that has nothing to transfer.
+      clearPendingTransfer(localStorage);
     }
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + "/auth/callback" + (anonId ? "?anon=" + anonId : "") },
+      options: { redirectTo: authCallbackUrl({ flow: flowId }) },
     });
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        setDeleteError("Your session has expired. Sign in again and retry.");
+        return;
+      }
+
+      const response = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmEmail: deleteConfirm.trim() }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setDeleteError(payload?.error ?? "The account could not be deleted. Please try again.");
+        return;
+      }
+
+      // The account is gone; drop every trace of it from this browser too.
+      await supabase.auth.signOut();
+      clearAssessmentBrowserStorage();
+      window.location.href = "/";
+    } catch {
+      setDeleteError("The account could not be deleted. Please check your connection and try again.");
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -1039,6 +2090,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     supabase.auth.getSession().then(async ({ data }) => {
       let session = data.session;
       if (isAnonymousSession(session) && !sessionStorage.getItem(ANON_SESSION_ACTIVE_KEY)) {
@@ -1046,15 +2098,19 @@ export default function HomePage() {
         clearAssessmentBrowserStorage();
         session = null;
       }
+      if (cancelled) return;
       setDashboardUserId(session?.user?.id ?? null);
-      setIsAnonymousDashboard(isAnonymousSession(session));
       if (session?.user?.email) {
         setUserEmail(session.user.email);
-        setIsAnonymousDashboard(false);
         sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);
         sessionStorage.removeItem(ANON_USER_ID_KEY);
         sessionStorage.removeItem(SESSION_ANSWERED_KEY);
         sessionStorage.removeItem(SESSION_CORRECT_KEY);
+      }
+      const localAssessment = readSessionAssessmentData();
+      if (localAssessment) {
+        setSessionAssessmentData(localAssessment);
+        setDashboardHydrated(true);
       }
       if (session?.user?.id) {
         const [
@@ -1062,7 +2118,10 @@ export default function HomePage() {
           bankData,
           { data: answerData },
           { data: recommendationData },
-          { data: evidenceData },
+          { data: otEvidenceData },
+          { data: ntEvidenceData },
+          { data: bibleEvidenceData },
+          { data: sectionFollowupData },
         ] = await Promise.all([
           supabase.rpc("obs_get_bli_scores_v2", { p_user_id: session.user.id }),
           loadDimensionAwareQuestionBank(),
@@ -1073,23 +2132,32 @@ export default function HomePage() {
             )
             .eq("user_id", session.user.id),
           supabase.rpc("obs_get_user_recommendation_v2", { p_user_id: session.user.id }),
-          supabase.rpc("obs_get_bli_uncertainty", {
+          supabase.rpc("obs_get_bli_uncertainty", { p_user_id: session.user.id, p_scope: "OT" }),
+          supabase.rpc("obs_get_bli_uncertainty", { p_user_id: session.user.id, p_scope: "NT" }),
+          // "BIBLE" is the whole-canon pooled scope — it's the Combined
+          // tab's evidence only. It used to also stand in for either
+          // testament alone before that testament had evidence of its own,
+          // but that silently showed the same pooled numbers under OT, NT,
+          // and Combined alike — indistinguishable from each other, and
+          // wrong for NT specifically, whose own scope has real data for
+          // only a couple of users. Each testament now shows only its own
+          // evidence, falling through to the genuine "no evidence yet"
+          // empty state instead.
+          supabase.rpc("obs_get_bli_uncertainty", { p_user_id: session.user.id, p_scope: "BIBLE" }),
+          supabase.rpc("obs_get_bli_section_followup_v1", {
             p_user_id: session.user.id,
-            p_scope: "OT",
+            p_testament: "OT",
           }),
         ]);
+        if (cancelled) return;
         setBackendRecommendation(((recommendationData ?? [])[0] as BackendRecommendation | undefined) ?? null);
-        let resolvedEvidence = ((evidenceData ?? [])[0] as BliEvidence | undefined) ?? null;
-        if (!resolvedEvidence) {
-          const { data: bibleEvidenceData, error: bibleEvidenceError } = await supabase.rpc("obs_get_bli_uncertainty", {
-            p_user_id: session.user.id,
-            p_scope: "BIBLE",
-          });
-          if (!bibleEvidenceError) {
-            resolvedEvidence = ((bibleEvidenceData ?? [])[0] as BliEvidence | undefined) ?? null;
-          }
-        }
-        setBliEvidence(resolvedEvidence);
+        setSectionFollowup(((sectionFollowupData ?? [])[0] as BliSectionFollowup | undefined) ?? null);
+        const otEvidence = ((otEvidenceData ?? [])[0] as BliEvidence | undefined) ?? null;
+        const ntEvidence = ((ntEvidenceData ?? [])[0] as BliEvidence | undefined) ?? null;
+        const bibleEvidenceRow = ((bibleEvidenceData ?? [])[0] as BliEvidence | undefined) ?? null;
+        setBliEvidence(otEvidence);
+        setNtBliEvidence(ntEvidence);
+        setCombinedBliEvidence(bibleEvidenceRow);
 
         if (testamentScoreError) {
           console.error("Canonical BLI score load failed:", testamentScoreError);
@@ -1123,20 +2191,87 @@ export default function HomePage() {
               bli: canonicalScores.ot_raw_bli_pct,
             });
           } else {
-            setAssessmentData(null);
+        setAssessmentData(null);
+        setSessionAssessmentData(null);
           }
         } else {
           setAssessmentData(null);
         }
       }
+    }).catch(error => {
+      console.error("Dashboard bootstrap failed:", error);
+    }).finally(() => {
+      if (!cancelled) setDashboardHydrated(true);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email || null);
       setDashboardUserId(session?.user?.id ?? null);
-      setIsAnonymousDashboard(isAnonymousSession(session));
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  // Close open nav menus on an outside click or Escape.
+  useEffect(() => {
+    if (!accountMenuOpen && !learnMoreOpen && !subjectMenuOpen) return;
+    const onPointer = (event: globalThis.MouseEvent) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+      if (learnMoreRef.current && !learnMoreRef.current.contains(event.target as Node)) {
+        setLearnMoreOpen(false);
+      }
+      if (subjectMenuRef.current && !subjectMenuRef.current.contains(event.target as Node)) {
+        setSubjectMenuOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAccountMenuOpen(false);
+        setLearnMoreOpen(false);
+        setSubjectMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [accountMenuOpen, learnMoreOpen, subjectMenuOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Zero rows is a real state (unauthorized or not enough evidence yet), so
+    // an empty path simply hides the card rather than surfacing an error.
+    loadFocusPath(dashboardUserId)
+      .then(path => { if (!cancelled) setFrontier(path); })
+      .catch(error => {
+        console.error("Frontier load failed:", error);
+        if (!cancelled) setFrontier(EMPTY_FOCUS_PATH);
+      });
+    return () => { cancelled = true; };
+  }, [dashboardUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      loadExploreTree(dashboardUserId, "OT", true),
+      loadExploreTree(dashboardUserId, "NT", true),
+    ])
+      .then(([otTree, ntTree]) => {
+        if (!cancelled) setCoverageTrees({ OT: otTree, NT: ntTree });
+      })
+      .catch(error => {
+        console.error("Coverage tree load failed:", error);
+        if (!cancelled) {
+          setCoverageTrees({ OT: EMPTY_EXPLORE_TREE, NT: EMPTY_EXPLORE_TREE });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [dashboardUserId]);
 
   useEffect(() => {
     if (!dashboardUserId) {
@@ -1206,7 +2341,7 @@ export default function HomePage() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef(0);
-  // Domain constellation: when the Domains tab is active, a few sky stars fly
+  // Skill constellation: when the Skills tab is active, a few sky stars fly
   // into a polygon whose vertex radii correspond exactly to domain scores.
   const constellationRef = useRef<{ active: boolean; t: number; points: { angle: number; pct: number }[]; lastTargets?: { x: number; y: number }[] }>({ active: false, t: 0, points: [] });
   const radarSvgRef = useRef<SVGSVGElement>(null);
@@ -1298,31 +2433,27 @@ export default function HomePage() {
       twinkleOffset: random() * Math.PI * 2,
     }));
 
-    const shootingPalettes = [
-      { core: "255,255,255", glow: "173,232,255" },
-      { core: "240,253,255", glow: "10,163,163" },
-      { core: "255,248,214", glow: "212,160,23" },
-      { core: "245,240,255", glow: "124,58,237" },
-    ];
+    const shootingPalettes = SHOOTING_PALETTES;
+    const nextShootingStarGap = () => 420 + Math.floor(random() * 300);
     const createShootingStar = (startFrame: number) => {
       const fromLeft = random() > 0.28;
       const palette = shootingPalettes[Math.floor(random() * shootingPalettes.length)];
       return {
         x: fromLeft ? -0.22 : 1.08,
         y: 0.02 + random() * 0.48,
-        dx: (fromLeft ? 1 : -1) * (0.26 + random() * 0.20),
-        dy: 0.08 + random() * 0.24,
+        dx: (fromLeft ? 1 : -1) * (0.18 + random() * 0.12),
+        dy: 0.055 + random() * 0.16,
         startFrame,
-        duration: 104 + Math.floor(random() * 64),
-        length: (105 + random() * 95) * DPR,
+        duration: 220 + Math.floor(random() * 110),
+        length: (90 + random() * 80) * DPR,
         width: (1.25 + random() * 0.8) * DPR,
         palette,
       };
     };
-    const shootingStars = Array.from({ length: 3 }, () => createShootingStar(120 + Math.floor(random() * 900)));
+    const shootingStars = [createShootingStar(240 + Math.floor(random() * 360))];
 
     function resetShootingStar(star: (typeof shootingStars)[number]) {
-      Object.assign(star, createShootingStar(frame + 420 + Math.floor(random() * 1100)));
+      Object.assign(star, createShootingStar(star.startFrame + nextShootingStarGap()));
     }
 
     let frame = initialFrame;
@@ -1450,23 +2581,16 @@ export default function HomePage() {
         const angle = Math.atan2(h * star.dy, w * star.dx);
         const tailX = headX - Math.cos(angle) * star.length;
         const tailY = headY - Math.sin(angle) * star.length;
-        const streak = ctx.createLinearGradient(tailX, tailY, headX, headY);
-        streak.addColorStop(0, "rgba(255,255,255,0)");
-        streak.addColorStop(0.52, `rgba(${star.palette.glow},${opacity * 0.46})`);
-        streak.addColorStop(0.86, `rgba(${star.palette.glow},${opacity * 0.72})`);
-        streak.addColorStop(1, `rgba(${star.palette.core},${opacity})`);
-
-        ctx.save();
-        ctx.lineCap = "round";
-        ctx.shadowColor = `rgba(${star.palette.glow},${opacity * 0.45})`;
-        ctx.shadowBlur = 10 * DPR;
-        ctx.lineWidth = star.width;
-        ctx.strokeStyle = streak;
-        ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(headX, headY);
-        ctx.stroke();
-        ctx.restore();
+        drawStreak(ctx, {
+          tailX,
+          tailY,
+          headX,
+          headY,
+          opacity,
+          width: star.width,
+          blur: 10 * DPR,
+          palette: star.palette,
+        });
       });
 
       // Teal nebula glow
@@ -1496,7 +2620,7 @@ export default function HomePage() {
           --ink: #0e1116; --muted: #566070; --navy: #1b2442;
           --accent: #0aa3a3; --accent-dim: rgba(10,163,163,.10);
           --accent-line: rgba(10,163,163,.22);
-          --card: rgba(255,255,255,.92); --border: rgba(27,36,66,.09);
+          --card: rgba(255,255,255,.96); --border: rgba(27,36,66,.09);
           --shadow: 0 22px 58px rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.2);
           --shadow-sm: 0 6px 20px rgba(0,0,0,.25);
           --torah-bar: linear-gradient(90deg,#d4a017,#f5c842);
@@ -1569,13 +2693,116 @@ export default function HomePage() {
           transition: transform .14s ease, background .15s ease, color .15s ease;
         }
         .nav-btn:hover { background: rgba(255,255,255,.1); color: #fff; transform: translateY(-1px); }
+        .learn-more { position: relative; }
+        .learn-more-trigger svg { transition: transform .14s ease; }
+        .learn-more-trigger[aria-expanded="true"] {
+          background: rgba(255,255,255,.12);
+          color: #fff;
+        }
+        .learn-more-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .learn-more-menu {
+          position: absolute; top: calc(100% + 14px); right: 0; z-index: 60;
+          width: min(268px, calc(100vw - 32px));
+          padding: 10px; border-radius: 16px;
+          background: rgba(11,15,30,.97);
+          backdrop-filter: blur(14px);
+          border: 1px solid rgba(255,255,255,.14);
+          box-shadow: 0 24px 60px rgba(0,0,0,.5);
+          transform-origin: top right;
+          animation: learnMoreMenuIn .22s cubic-bezier(.22,.9,.32,1) both;
+        }
+        /* A faint dashed ring drifting slowly behind the panel — the same
+           orbit motif as the brand mark and the knowledge map, just quiet
+           enough not to compete with the menu items. */
+        .learn-more-menu::before {
+          content: ""; position: absolute; top: -52px; right: -34px; z-index: -1;
+          width: 190px; height: 190px; border-radius: 50%;
+          border: 1px dashed rgba(111,224,224,.22);
+          pointer-events: none;
+          animation: learnMoreOrbitSpin 48s linear infinite;
+        }
+        @keyframes learnMoreMenuIn {
+          0% { opacity: 0; transform: scale(.92) translateY(-6px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes learnMoreOrbitSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .learn-more-item {
+          display: flex; align-items: flex-start; gap: 10px;
+          padding: 10px 11px; border-radius: 10px;
+          color: #fff; text-decoration: none;
+          transition: background .14s ease;
+          opacity: 0;
+        }
+        /* Three slightly different arrival curves so the items read as
+           separate bodies swinging into place rather than one block sliding
+           in — the closest a transform-only animation gets to an orbit path. */
+        .learn-more-item:nth-child(1) { animation: learnMoreItemIn1 .5s cubic-bezier(.22,.9,.32,1) .02s both; }
+        .learn-more-item:nth-child(2) { animation: learnMoreItemIn2 .5s cubic-bezier(.22,.9,.32,1) .10s both; }
+        .learn-more-item:nth-child(3) { animation: learnMoreItemIn3 .5s cubic-bezier(.22,.9,.32,1) .18s both; }
+        @keyframes learnMoreItemIn1 {
+          0% { opacity: 0; transform: translate(26px,-20px) scale(.5); }
+          60% { opacity: 1; transform: translate(-4px,4px) scale(1.06); }
+          100% { opacity: 1; transform: translate(0,0) scale(1); }
+        }
+        @keyframes learnMoreItemIn2 {
+          0% { opacity: 0; transform: translate(10px,-26px) scale(.5); }
+          60% { opacity: 1; transform: translate(-2px,5px) scale(1.05); }
+          100% { opacity: 1; transform: translate(0,0) scale(1); }
+        }
+        @keyframes learnMoreItemIn3 {
+          0% { opacity: 0; transform: translate(-6px,-22px) scale(.5); }
+          60% { opacity: 1; transform: translate(3px,4px) scale(1.05); }
+          100% { opacity: 1; transform: translate(0,0) scale(1); }
+        }
+        .learn-more-planet {
+          flex-shrink: 0; margin-top: 4px;
+          width: 8px; height: 8px; border-radius: 50%;
+          background: var(--planet-color);
+          box-shadow: 0 0 9px var(--planet-color);
+        }
+        .learn-more-item-copy { display: flex; flex-direction: column; gap: 2px; }
+        .learn-more-item-title { font-size: 13px; font-weight: 700; line-height: 1.25; }
+        .learn-more-item span:not(.learn-more-item-title) {
+          display: block;
+          color: rgba(255,255,255,.56); font-size: 11px; font-weight: 600;
+        }
+        .learn-more-item:hover,
+        .learn-more-item:focus-visible {
+          background: rgba(255,255,255,.08);
+          outline: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .learn-more-menu::before { display: none; }
+        }
         .page {
-          max-width: 900px; margin: 0 auto; padding: 44px 24px 88px; position: relative; z-index: 1;
-          animation: dashboardPageReveal 2.1s cubic-bezier(.22,.72,.18,1) .22s both;
+          max-width: 1180px; margin: 0 auto; padding: 44px 24px 88px; position: relative; z-index: 1;
+          /* backwards (not both): holds the "from" state during the .08s
+             delay so there's no flash-before-fade-in, but — critically —
+             does NOT hold the "to" state once the animation finishes.
+             "both" was leaving a resolved (non-"none") transform matrix on
+             this element indefinitely via getComputedStyle, which creates a
+             new containing block and silently breaks every
+             position:fixed descendant (e.g. the scope-drawer modal) into
+             positioning relative to .page instead of the viewport. */
+          animation: dashboardPageReveal .7s cubic-bezier(.22,.72,.18,1) .08s backwards;
+        }
+        .page.is-new-assessment-landing {
+          max-width: 1240px;
+          padding-top: 54px;
+        }
+        .page.is-dashboard-loading {
+          min-height: calc(100vh - 80px);
+          display: grid;
+          place-items: center;
+          padding-top: 0;
+          padding-bottom: 0;
         }
         @keyframes dashboardPageReveal {
-          0%, 26% { opacity: 0; transform: translateY(10px); filter: blur(1.5px); }
-          100% { opacity: 1; transform: none; filter: blur(0); }
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: none; }
         }
         .page-header {
           display: flex; align-items: flex-start; justify-content: space-between;
@@ -1585,6 +2812,33 @@ export default function HomePage() {
           font-family: var(--font-crimson), Georgia, serif;
           font-size: 30px; font-weight: 600; line-height: 1.1;
           color: #fff; letter-spacing: .005em;
+        }
+        .page-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        /* Subject switcher — replaces the old three-tile dashboard-tabs grid
+           for returning users, reclaiming that whole row. Reuses the nav's
+           learn-more-menu visual language (dark panel, planet-dot rows) for
+           the dropdown itself so it doesn't feel like a third pattern. */
+        .subject-switcher { position: relative; }
+        .subject-trigger {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 6px 12px 6px 10px; border-radius: 999px; margin-top: 2px;
+          background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16);
+          color: rgba(255,255,255,.85); font: inherit; font-size: 12.5px; font-weight: 750;
+          cursor: pointer; transition: background .15s ease, border-color .15s ease;
+        }
+        .subject-trigger:hover, .subject-trigger:focus-visible { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.26); outline: none; }
+        .subject-trigger svg { color: rgba(255,255,255,.5); }
+        .subject-trigger-dot {
+          width: 7px; height: 7px; border-radius: 50%;
+          box-shadow: 0 0 8px currentColor;
+        }
+        .subject-menu { top: calc(100% + 10px); left: 0; right: auto; transform-origin: top left; }
+        .subject-menu::before { left: -34px; right: auto; }
+        .subject-menu-item { width: 100%; border: 0; background: transparent; cursor: pointer; }
+        .subject-menu-item.is-active { background: rgba(255,255,255,.07); }
+        .subject-menu-item.is-active .learn-more-item-title::after {
+          content: "· current"; margin-left: 6px; font-weight: 600;
+          color: rgba(255,255,255,.4); text-transform: none; letter-spacing: 0;
         }
         .page-meta {
           font-size: 13px; color: rgba(255,255,255,.45); margin-top: 5px;
@@ -1597,11 +2851,15 @@ export default function HomePage() {
         }
         .dashboard-tabs {
           display: inline-grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 6px; width: 100%; max-width: 720px;
+          gap: 6px; width: 100%; max-width: 760px;
           padding: 6px; margin: -14px 0 28px;
-          border: 1px solid rgba(255,255,255,.12); border-radius: 16px;
+          border: 1px solid rgba(212,160,23,.28); border-radius: 16px;
           background: rgba(255,255,255,.07); backdrop-filter: blur(14px);
-          box-shadow: 0 16px 40px rgba(0,0,0,.22);
+          box-shadow: 0 16px 40px rgba(0,0,0,.22), 0 0 30px rgba(212,160,23,.055), inset 0 0 0 1px rgba(245,200,66,.06);
+        }
+        .page.is-new-assessment-landing .dashboard-tabs {
+          max-width: 820px;
+          margin: 0 0 28px;
         }
         .dashboard-tab {
           border: 0; border-radius: 11px; padding: 12px 14px;
@@ -1622,62 +2880,345 @@ export default function HomePage() {
           box-shadow: 0 10px 24px rgba(0,0,0,.2);
         }
         .dashboard-tab.is-active span { color: var(--muted); }
+        .dashboard-loading-card {
+          position: relative;
+          min-height: min(460px, 62vh); width: 100%; padding: 32px;
+          display: grid; place-items: center;
+          color: #fff; text-align: center;
+        }
+        .dashboard-loading-orbit {
+          position: relative; width: 58px; height: 58px; border-radius: 999px;
+          border: 1px solid rgba(255,255,255,.18);
+          box-shadow: 0 0 28px rgba(10,163,163,.16), inset 0 0 22px rgba(255,255,255,.04);
+          animation: dashboardLoadingSpin 2.8s linear infinite;
+        }
+        .dashboard-loading-orbit::before,
+        .dashboard-loading-orbit::after {
+          content: ""; position: absolute; border-radius: 999px;
+        }
+        .dashboard-loading-orbit::before {
+          width: 16px; height: 16px; left: 50%; top: 50%;
+          transform: translate(-50%, -50%);
+          background: radial-gradient(circle at 35% 30%, #fff6c9, #d4a017 58%, #8c640a);
+          box-shadow: 0 0 18px rgba(212,160,23,.48);
+        }
+        .dashboard-loading-orbit::after {
+          width: 10px; height: 10px; right: 2px; top: 24px;
+          background: radial-gradient(circle at 35% 30%, #dbfffb, #0aa3a3);
+          box-shadow: 0 0 14px rgba(10,163,163,.58);
+        }
+        .dashboard-loading-sr {
+          position: absolute; width: 1px; height: 1px; overflow: hidden;
+          clip: rect(0 0 0 0); white-space: nowrap;
+        }
+        @keyframes dashboardLoadingSpin { to { transform: rotate(1turn); } }
         .save-results-card {
           position: relative; overflow: hidden;
-          background:
-            radial-gradient(circle at 16% 18%, rgba(10,163,163,.22), transparent 34%),
-            radial-gradient(circle at 88% 76%, rgba(212,160,23,.18), transparent 36%),
-            linear-gradient(135deg, rgba(255,255,255,.96), rgba(236,253,245,.90));
-          border: 1px solid var(--accent-line); border-radius: 20px;
-          box-shadow: var(--shadow), inset 0 0 48px rgba(10,163,163,.10);
-          backdrop-filter: blur(16px);
-          padding: 26px 30px; margin-bottom: 28px;
+          background: rgba(255,255,255,.92);
+          border: 1px solid rgba(226,232,240,.92); border-radius: 12px;
+          box-shadow: 0 12px 28px rgba(0,0,0,.14);
+          backdrop-filter: blur(14px);
+          padding: 15px 18px; margin-bottom: 22px;
           display: grid; grid-template-columns: minmax(0, 1fr) auto;
-          gap: 22px; align-items: center;
+          gap: 18px; align-items: center;
         }
         .save-results-card::before {
-          content: ""; position: absolute; inset: -46%;
-          background: conic-gradient(from 120deg, transparent, rgba(10,163,163,.16), transparent 30%, rgba(212,160,23,.14), transparent 62%);
-          animation: saveResultsGlow 15s linear infinite;
+          content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+          background: linear-gradient(180deg, #0aa3a3, #d4a017);
           pointer-events: none;
         }
+        .save-results-graphic,
         .save-results-content,
         .save-results-actions { position: relative; z-index: 1; }
+        .save-results-graphic {
+          display: none;
+          width: 72px; aspect-ratio: 1; border-radius: 50%;
+          border: 1px solid rgba(10,163,163,.22);
+          background:
+            radial-gradient(circle at 50% 50%, rgba(255,246,201,.92) 0 8px, rgba(212,160,23,.95) 9px 15px, transparent 16px),
+            radial-gradient(circle at 74% 28%, rgba(219,255,251,.95) 0 5px, rgba(10,163,163,.90) 6px 10px, transparent 11px),
+            radial-gradient(circle at 28% 75%, rgba(255,255,255,.92) 0 4px, rgba(124,58,237,.82) 5px 8px, transparent 9px),
+            rgba(255,255,255,.46);
+          box-shadow: inset 0 0 30px rgba(10,163,163,.10), 0 14px 30px rgba(27,36,66,.14);
+        }
+        .save-results-graphic::before,
+        .save-results-graphic::after {
+          content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+        }
+        .save-results-graphic::before {
+          inset: 13px; border: 1px dashed rgba(10,163,163,.42);
+          transform: rotate(-18deg) scaleX(1.18);
+        }
+        .save-results-graphic::after {
+          right: -3px; bottom: 7px; width: 22px; height: 22px;
+          background: #fff; border: 1px solid rgba(10,163,163,.22);
+          box-shadow: 0 8px 18px rgba(27,36,66,.13);
+        }
+        .save-results-check {
+          position: absolute; right: 3px; bottom: 14px; z-index: 2;
+          width: 11px; height: 7px;
+          border-left: 2px solid #0a6e6e; border-bottom: 2px solid #0a6e6e;
+          transform: rotate(-45deg);
+        }
         .save-results-kicker {
           display: inline-flex; align-items: center; gap: 7px;
-          padding: 5px 11px; border-radius: 999px;
-          background: var(--accent-dim); border: 1px solid var(--accent-line);
-          color: #0a6e6e; font-size: 11px; font-weight: 850;
+          color: #0a6e6e; font-size: 10px; font-weight: 900;
           letter-spacing: .11em; text-transform: uppercase;
-          margin-bottom: 10px;
+          margin-bottom: 4px;
         }
         .save-results-title {
           font-family: var(--font-crimson), Georgia, serif;
-          font-size: 30px; font-weight: 650; line-height: 1.05;
-          color: var(--navy); margin-bottom: 7px;
+          font-size: 22px; font-weight: 650; line-height: 1.08;
+          color: var(--navy); margin-bottom: 4px;
         }
         .save-results-copy {
-          color: var(--muted); font-size: 14px; line-height: 1.55;
-          max-width: 560px;
+          color: var(--muted); font-size: 12.5px; line-height: 1.45;
+          max-width: 720px;
         }
         .save-results-actions {
           display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
         }
         .save-results-btn {
           display: inline-flex; align-items: center; justify-content: center; gap: 9px;
-          border: none; border-radius: 999px; padding: 15px 24px;
-          background: linear-gradient(135deg, var(--navy), #253566 58%, #0a6e6e);
-          color: #fff; font-family: inherit; font-size: 15px; font-weight: 850;
-          cursor: pointer; box-shadow: 0 16px 34px rgba(27,36,66,.34), 0 0 28px rgba(10,163,163,.20);
+          border: none; border-radius: 999px; padding: 10px 16px;
+          background: var(--navy);
+          color: #fff; font-family: inherit; font-size: 12.5px; font-weight: 850;
+          cursor: pointer; box-shadow: 0 10px 22px rgba(27,36,66,.24);
           transition: transform .13s ease, box-shadow .15s ease;
           white-space: nowrap;
         }
-        .save-results-btn:hover { transform: translateY(-2px); box-shadow: 0 20px 42px rgba(27,36,66,.38), 0 0 34px rgba(10,163,163,.26); }
+        .save-results-btn:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(27,36,66,.30); }
         .save-results-note {
-          font-size: 12px; color: rgba(86,96,112,.82); font-weight: 650;
+          font-size: 11px; color: rgba(86,96,112,.76); font-weight: 650;
           text-align: right;
         }
         @keyframes saveResultsGlow { to { transform: rotate(1turn); } }
+        .first-assessment-card {
+          position: relative; overflow: hidden;
+          display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+          gap: 34px; align-items: center;
+          min-height: 430px; padding: 38px;
+          color: #fff;
+          background:
+            radial-gradient(circle at 21% 38%, rgba(255,214,92,.36), transparent 36%),
+            radial-gradient(circle at 76% 18%, rgba(229,173,35,.28), transparent 34%),
+            radial-gradient(circle at 88% 74%, rgba(10,163,163,.16), transparent 35%),
+            linear-gradient(145deg, rgba(79,58,17,.74), rgba(37,31,27,.70) 44%, rgba(10,22,38,.78));
+          border: 1px solid rgba(245,200,66,.48); border-radius: 22px;
+          box-shadow: 0 30px 90px rgba(0,0,0,.28), 0 0 58px rgba(212,160,23,.18), inset 0 0 82px rgba(255,220,126,.10), inset 0 0 0 1px rgba(255,237,171,.12);
+          backdrop-filter: blur(18px);
+        }
+        .first-assessment-card::before {
+          content: ""; position: absolute; inset: 0; pointer-events: none;
+          background-image:
+            radial-gradient(circle, rgba(255,255,255,.78) 0 1px, transparent 1.4px),
+            radial-gradient(circle, rgba(255,255,255,.38) 0 1px, transparent 1.5px);
+          background-size: 92px 92px, 137px 137px;
+          background-position: 10px 18px, 42px 56px;
+          opacity: .55;
+        }
+        .first-assessment-orbit,
+        .first-assessment-content { position: relative; z-index: 1; }
+        .first-assessment-orbit {
+          width: min(100%, 380px); aspect-ratio: 1; border-radius: 999px;
+          border: 1px dashed rgba(255,255,255,.24);
+          margin: 0 auto;
+          background: radial-gradient(circle at 50% 50%, rgba(212,160,23,.10), transparent 38%);
+        }
+        .first-assessment-orbit::before,
+        .first-assessment-orbit::after {
+          content: ""; position: absolute; border-radius: 999px; pointer-events: none;
+        }
+        .first-assessment-orbit::before {
+          inset: 56px; border: 1px dashed rgba(10,163,163,.34);
+          transform: rotate(-22deg) scaleX(1.18);
+        }
+        .first-assessment-orbit::after {
+          inset: 110px; border: 1px solid rgba(255,255,255,.14);
+          transform: rotate(18deg) scaleX(1.42);
+        }
+        .first-assessment-sun,
+        .first-assessment-planet,
+        .first-assessment-moon {
+          position: absolute; display: block; border-radius: 999px;
+          box-shadow: 0 0 34px currentColor;
+        }
+        .first-assessment-sun {
+          width: 102px; height: 102px; left: 50%; top: 50%;
+          color: rgba(212,160,23,.72);
+          background: radial-gradient(circle at 38% 38%, #fff2b8, #d4a017 45%, #91680e);
+          transform: translate(-50%, -50%);
+        }
+        .first-assessment-planet {
+          width: 56px; height: 56px; left: 73%; top: 35%;
+          color: rgba(10,163,163,.58);
+          background: radial-gradient(circle at 36% 34%, #d6fffa, #0aa3a3 48%, #075e61);
+        }
+        .first-assessment-moon {
+          width: 24px; height: 24px; left: 82%; top: 52%;
+          color: rgba(255,255,255,.38);
+          background: radial-gradient(circle at 38% 38%, #fff, #cfd6df 55%, #7f8b99);
+        }
+        .first-assessment-kicker {
+          margin-bottom: 11px; color: #5eead4;
+          font-size: 12px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase;
+        }
+        .first-assessment-content h2 {
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: clamp(36px, 5vw, 58px); line-height: .98; font-weight: 700;
+          max-width: 520px; margin-bottom: 16px;
+        }
+        .first-assessment-content p {
+          max-width: 560px; color: rgba(255,255,255,.76);
+          font-size: 16px; line-height: 1.65; margin-bottom: 24px;
+        }
+        .first-assessment-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .first-assessment-primary,
+        .first-assessment-secondary {
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          min-height: 44px; padding: 12px 18px; border-radius: 999px;
+          font-size: 14px; font-weight: 850; text-decoration: none;
+          font-family: inherit; cursor: pointer;
+        }
+        .first-assessment-primary {
+          border: 0;
+          background: #e6ad12; color: #141827;
+          box-shadow: 0 14px 34px rgba(230,173,18,.28);
+        }
+        .first-assessment-secondary {
+          border: 1px solid rgba(255,255,255,.24); color: rgba(255,255,255,.88);
+          background: rgba(255,255,255,.06);
+        }
+        .first-assessment-choice-panel {
+          margin-top: 18px; width: min(100%, 540px);
+          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+          animation: firstAssessmentChoiceIn .2s ease both;
+        }
+        .first-assessment-choice {
+          display: grid; gap: 5px; min-height: 92px;
+          padding: 16px; border-radius: 14px;
+          text-decoration: none; color: #fff;
+          border: 1px solid rgba(255,255,255,.18);
+          background: rgba(255,255,255,.075);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.035);
+          transition: transform .14s ease, border-color .14s ease, background .14s ease;
+        }
+        .first-assessment-choice:hover,
+        .first-assessment-choice:focus-visible {
+          transform: translateY(-2px);
+          border-color: rgba(230,173,18,.48);
+          background: rgba(255,255,255,.11);
+          outline: none;
+        }
+        .first-assessment-choice strong {
+          font-size: 14px; font-weight: 900;
+        }
+        .first-assessment-choice span {
+          color: rgba(255,255,255,.62);
+          font-size: 12px; line-height: 1.35; font-weight: 650;
+        }
+        @keyframes firstAssessmentChoiceIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .first-assessment-steps {
+          display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+          margin-top: 28px; color: rgba(255,255,255,.68);
+          font-size: 12px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em;
+        }
+        .first-assessment-steps span {
+          padding: 7px 10px; border-radius: 999px;
+          background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.13);
+        }
+        .oba-feature-grid {
+          display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px; margin-top: 34px;
+        }
+        .oba-feature-card {
+          position: relative; overflow: hidden;
+          min-height: 238px; padding: 20px;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,.16);
+          background:
+            linear-gradient(145deg, rgba(255,255,255,.94), rgba(240,247,251,.88));
+          box-shadow: 0 18px 52px rgba(0,0,0,.22), inset 0 0 34px rgba(255,255,255,.42);
+          backdrop-filter: blur(16px);
+          color: var(--navy);
+        }
+        .oba-feature-card::before {
+          content: ""; position: absolute; inset: -35% -20% auto auto;
+          width: 180px; height: 180px; border-radius: 999px;
+          background: color-mix(in srgb, var(--feature-hue) 22%, transparent);
+          filter: blur(4px); pointer-events: none;
+        }
+        .oba-feature-graphic {
+          position: relative; height: 88px; margin-bottom: 15px;
+          border-radius: 14px;
+          background:
+            radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--feature-hue) 18%, transparent), transparent 58%),
+            rgba(27,36,66,.045);
+          border: 1px solid rgba(27,36,66,.08);
+        }
+        .oba-feature-graphic span {
+          position: absolute; display: block;
+        }
+        .oba-feature-graphic.is-signal .signal-node {
+          width: 16px; height: 16px; border-radius: 999px;
+          background: var(--feature-hue);
+          box-shadow: 0 0 0 7px color-mix(in srgb, var(--feature-hue) 16%, transparent), 0 0 24px color-mix(in srgb, var(--feature-hue) 40%, transparent);
+        }
+        .oba-feature-graphic.is-signal .signal-node:nth-child(1) { left: 18%; top: 54%; }
+        .oba-feature-graphic.is-signal .signal-node:nth-child(2) { left: 46%; top: 26%; }
+        .oba-feature-graphic.is-signal .signal-node:nth-child(3) { left: 72%; top: 50%; }
+        .oba-feature-graphic.is-signal .signal-line {
+          height: 2px; width: 34%; left: 28%; top: 46%;
+          background: linear-gradient(90deg, transparent, var(--feature-hue), transparent);
+          transform: rotate(-22deg);
+        }
+        .oba-feature-graphic.is-signal .signal-line:nth-child(5) {
+          left: 53%; top: 43%; width: 26%; transform: rotate(18deg);
+        }
+        .oba-feature-graphic.is-map .map-orbit {
+          inset: 16px 31%; border-radius: 999px;
+          border: 1.5px dashed color-mix(in srgb, var(--feature-hue) 46%, transparent);
+          transform: rotate(-13deg) scaleX(1.55);
+        }
+        .oba-feature-graphic.is-map .map-star {
+          width: 34px; height: 34px; left: 42%; top: 28%;
+          border-radius: 999px;
+          background: radial-gradient(circle at 35% 30%, #fff7c9, var(--feature-hue) 58%, #8c640a);
+          box-shadow: 0 0 24px color-mix(in srgb, var(--feature-hue) 48%, transparent);
+        }
+        .oba-feature-graphic.is-map .map-planet {
+          width: 18px; height: 18px; left: 67%; top: 48%;
+          border-radius: 999px; background: #0aa3a3;
+          box-shadow: 0 0 16px rgba(10,163,163,.45);
+        }
+        .oba-feature-graphic.is-path .path-step {
+          width: 22px; height: 22px; border-radius: 7px;
+          border: 2px solid var(--feature-hue);
+          background: color-mix(in srgb, var(--feature-hue) 15%, #ffffff);
+        }
+        .oba-feature-graphic.is-path .path-step:nth-child(1) { left: 16%; top: 48%; opacity: .58; }
+        .oba-feature-graphic.is-path .path-step:nth-child(2) { left: 42%; top: 34%; opacity: .8; }
+        .oba-feature-graphic.is-path .path-step:nth-child(3) { left: 68%; top: 22%; background: var(--feature-hue); }
+        .oba-feature-graphic.is-path .path-line {
+          height: 2px; width: 58%; left: 23%; top: 45%;
+          background: linear-gradient(90deg, color-mix(in srgb, var(--feature-hue) 32%, transparent), var(--feature-hue));
+          transform: rotate(-15deg);
+        }
+        .oba-feature-kicker {
+          margin: 0 0 7px; color: color-mix(in srgb, var(--feature-hue) 72%, #17213d);
+          font-size: 10px; font-weight: 950; letter-spacing: .12em; text-transform: uppercase;
+        }
+        .oba-feature-title {
+          margin: 0; font-family: var(--font-crimson), Georgia, serif;
+          font-size: 22px; line-height: 1.05; color: var(--navy);
+        }
+        .oba-feature-copy {
+          margin: 8px 0 0; color: rgba(57,67,87,.78);
+          font-size: 13px; line-height: 1.5; font-weight: 650;
+        }
         .placeholder-dashboard {
           background: var(--card); border: 1px solid var(--border); border-radius: 20px;
           box-shadow: var(--shadow); backdrop-filter: blur(16px);
@@ -1713,71 +3254,53 @@ export default function HomePage() {
         .placeholder-orbit::after {
           inset: 54px; border-color: rgba(212,160,23,.32); transform: rotate(28deg) scaleX(1.42);
         }
+        /* No card here on purpose — the score sits straight on the
+           starfield, like the header-assess controls above it. */
         .score-strip {
           display: grid; grid-template-columns: auto 1fr auto;
-          background: var(--card); border: 1px solid var(--border);
-          border-radius: 20px; box-shadow: var(--shadow);
-          backdrop-filter: blur(16px); overflow: visible;
+          background: transparent; border: 1px solid rgba(212,160,23,.4); border-radius: 14px;
+          box-shadow: none;
+          overflow: visible;
           margin-bottom: 28px; position: relative; z-index: 40;
         }
-        .testament-score-overview {
-          display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-          margin-bottom: 18px; overflow: hidden;
-          background: rgba(255,255,255,.92); border: 1px solid var(--border);
-          border-radius: 16px; box-shadow: var(--shadow-sm);
-          backdrop-filter: blur(16px);
+        .score-block, .level-block, .conf-block { animation: scoreTabIn .35s ease both; }
+        @keyframes scoreTabIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: none; }
         }
-        .testament-score-item {
-          min-width: 0; padding: 18px 22px;
-          display: grid; grid-template-columns: 1fr auto; align-items: center;
-          gap: 8px 18px; position: relative;
+        /* Combined BLI used to be a third tab alongside OT/NT in its own
+           row; now that the header's OT/NT toggle drives this panel
+           directly, Combined isn't something you "switch to" (there's no
+           combined assessment) — it's a standing fact shown alongside
+           whichever testament is active. */
+        .combined-note {
+          display: flex; align-items: center; gap: 8px;
+          margin-bottom: 14px; color: rgba(255,255,255,.6);
+          font-size: 12.5px; font-weight: 650;
         }
-        .testament-score-item + .testament-score-item {
-          border-left: 1px solid var(--border);
+        .combined-note strong { color: #fff; font-weight: 800; }
+        .combined-note-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #0aa3a3; box-shadow: 0 0 8px rgba(10,163,163,.7);
+          flex-shrink: 0;
         }
-        .testament-score-item::before {
-          content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
-          background: var(--score-accent, var(--accent));
-        }
-        .testament-score-item.is-ot { --score-accent: #d4a017; }
-        .testament-score-item.is-nt { --score-accent: #7c3aed; }
-        .testament-score-item.is-combined { --score-accent: #0aa3a3; }
-        .testament-score-name {
-          color: var(--navy); font-size: 12px; font-weight: 850;
-          letter-spacing: .075em; text-transform: uppercase;
-        }
-        .testament-score-range {
-          grid-column: 1; color: var(--muted); font-size: 11px; font-weight: 650;
-        }
-        .testament-score-value {
-          grid-column: 2; grid-row: 1 / span 2;
-          font: 750 34px/1 var(--font-crimson), Georgia, serif;
-          color: var(--navy);
-        }
-        .testament-score-value.is-empty { color: rgba(27,36,66,.28); }
-        .score-strip::after {
-          content: ""; position: absolute; inset: 0;
-          background: repeating-linear-gradient(90deg,transparent,transparent 60px,rgba(255,255,255,.18) 60px,rgba(255,255,255,.18) 120px);
-          pointer-events: none; border-radius: 20px;
-          animation: shimmer 3s ease-in-out infinite;
-        }
-        @keyframes shimmer { 0%,100%{opacity:0} 50%{opacity:1} }
         .progress-card {
           position: relative; z-index: 3; overflow: hidden;
           margin: 0 0 18px; padding: 24px 26px 20px;
-          color: #f8fafc; background: rgba(8,17,34,.82);
-          border: 1px solid rgba(148,163,184,.24); border-radius: 18px;
-          box-shadow: 0 18px 44px rgba(0,0,0,.22);
-          backdrop-filter: blur(14px);
+          color: var(--navy); background: var(--card);
+          border: 1px solid var(--border); border-radius: 20px;
+          box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
+        }
+        .progress-panel {
+          margin: -10px 0 30px;
+          animation: knowledgeProfileIn .22s cubic-bezier(.22,.72,.18,1) both;
         }
         .progress-card::before {
           content: ""; position: absolute; inset: 0; pointer-events: none;
           background:
-            radial-gradient(circle at 14% 26%, rgba(255,255,255,.72) 0 1px, transparent 1.6px),
-            radial-gradient(circle at 76% 18%, rgba(112,218,221,.62) 0 1px, transparent 1.7px),
-            radial-gradient(circle at 88% 72%, rgba(245,200,66,.54) 0 1px, transparent 1.8px),
-            radial-gradient(circle at 38% 82%, rgba(255,255,255,.48) 0 1px, transparent 1.5px);
-          opacity: .72;
+            radial-gradient(circle at 14% 26%, rgba(10,163,163,.12), transparent 28%),
+            radial-gradient(circle at 86% 18%, rgba(212,160,23,.10), transparent 30%);
+          opacity: .9;
         }
         .progress-head {
           position: relative; z-index: 1;
@@ -1785,40 +3308,40 @@ export default function HomePage() {
           gap: 22px; margin-bottom: 18px;
         }
         .progress-eyebrow {
-          margin-bottom: 5px; color: #6fdadd;
+          margin-bottom: 5px; color: #0a6e6e;
           font-size: 10px; font-weight: 850; letter-spacing: .13em;
           text-transform: uppercase;
         }
         .progress-title {
-          color: #fff; font-family: var(--font-crimson), Georgia, serif;
+          color: var(--navy); font-family: var(--font-crimson), Georgia, serif;
           font-size: 25px; font-weight: 650; line-height: 1.1;
         }
         .progress-sub {
           max-width: 500px; margin-top: 5px;
-          color: rgba(226,232,240,.70); font-size: 12.5px; line-height: 1.45;
+          color: var(--muted); font-size: 12.5px; line-height: 1.45;
         }
         .progress-controls { display: flex; align-items: center; gap: 13px; }
         .progress-tabs {
           display: inline-grid; grid-template-columns: repeat(2, 1fr); padding: 3px;
-          border: 1px solid rgba(148,163,184,.25); border-radius: 999px;
-          background: rgba(255,255,255,.06);
+          border: 1px solid rgba(27,36,66,.10); border-radius: 999px;
+          background: rgba(27,36,66,.055);
         }
         .progress-tab {
           min-width: 48px; border: 0; border-radius: 999px; padding: 7px 11px;
-          color: rgba(226,232,240,.68); background: transparent;
+          color: var(--muted); background: transparent;
           font: inherit; font-size: 11px; font-weight: 800; cursor: pointer;
         }
-        .progress-tab:hover, .progress-tab:focus-visible { color: #fff; outline: none; }
+        .progress-tab:hover, .progress-tab:focus-visible { color: var(--navy); outline: none; }
         .progress-tab.is-active {
-          color: var(--navy); background: #f8fafc; box-shadow: 0 3px 10px rgba(0,0,0,.18);
+          color: #fff; background: var(--accent); box-shadow: 0 3px 10px rgba(10,163,163,.20);
         }
         .progress-latest {
           min-width: 66px; text-align: right;
-          color: #fff; font-family: var(--font-crimson), Georgia, serif;
+          color: var(--navy); font-family: var(--font-crimson), Georgia, serif;
           font-size: 27px; font-weight: 700; line-height: 1;
         }
         .progress-latest span {
-          display: block; margin-top: 3px; color: rgba(226,232,240,.58);
+          display: block; margin-top: 3px; color: var(--muted);
           font-family: var(--font-inter), system-ui, sans-serif; font-size: 9px;
           font-weight: 750; letter-spacing: .10em; text-transform: uppercase;
         }
@@ -1829,14 +3352,18 @@ export default function HomePage() {
         .progress-axis {
           height: 174px; display: flex; flex-direction: column;
           justify-content: space-between; padding: 3px 0 2px;
-          color: #8fe6e9; font-size: 11.5px; font-weight: 800;
+          color: rgba(27,36,66,.60); font-size: 11.5px; font-weight: 800;
           text-align: right; letter-spacing: .02em;
-          text-shadow: 0 1px 6px rgba(0,0,0,.6);
         }
         .progress-chart-scroll {
           min-width: 0; overflow-x: auto; overflow-y: hidden;
-          scrollbar-width: thin; scrollbar-color: rgba(111,218,221,.35) transparent;
+          /* The native scrollbar here fades in/out on hover/scroll (most
+             visibly on macOS), which right under the x-axis reads as the
+             chart itself flickering. Scrolling (drag/swipe/trackpad) still
+             works; it just never paints a visible track. */
+          scrollbar-width: none;
         }
+        .progress-chart-scroll::-webkit-scrollbar { display: none; }
         .progress-chart {
           position: relative; min-width: 620px; height: 174px;
           margin-bottom: 24px;
@@ -1847,7 +3374,7 @@ export default function HomePage() {
         }
         .progress-xaxis span {
           position: absolute; top: 7px; transform: translateX(-50%);
-          color: rgba(226,232,240,.66); font-size: 10.5px; font-weight: 750;
+          color: rgba(86,96,112,.78); font-size: 10.5px; font-weight: 750;
           letter-spacing: .04em; white-space: nowrap;
         }
         .progress-xaxis span:first-child { transform: translateX(-20%); }
@@ -1856,7 +3383,7 @@ export default function HomePage() {
           position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible;
         }
         .progress-guide {
-          stroke: rgba(148,163,184,.24); stroke-width: 1; vector-effect: non-scaling-stroke;
+          stroke: rgba(27,36,66,.14); stroke-width: 1; vector-effect: non-scaling-stroke;
           stroke-dasharray: 3 5;
         }
         .progress-line-glow {
@@ -1869,7 +3396,7 @@ export default function HomePage() {
           stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke;
         }
         .progress-line-flow {
-          fill: none; stroke: rgba(240,253,255,.85); stroke-width: 1.6;
+          fill: none; stroke: rgba(255,255,255,.85); stroke-width: 1.6;
           stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke;
           stroke-dasharray: 2.5 13.5;
           animation: progressFlow 3.2s linear infinite;
@@ -1882,7 +3409,7 @@ export default function HomePage() {
         .progress-point {
           position: absolute; width: 8px; height: 8px; padding: 0;
           transform: translate(-50%,-50%); border-radius: 50%;
-          border: 1px solid rgba(223,250,251,.85); background: #0f2537;
+          border: 1px solid rgba(10,163,163,.38); background: #fff;
           box-shadow: inset 0 0 4px rgba(111,218,221,.9), 0 0 8px rgba(111,218,221,.4);
           cursor: pointer; transition: transform .16s cubic-bezier(.34,1.56,.64,1), background .16s ease, box-shadow .16s ease;
         }
@@ -1910,58 +3437,67 @@ export default function HomePage() {
           position: relative; z-index: 1;
           display: grid; grid-template-columns: minmax(150px,1.2fr) repeat(3,minmax(80px,.65fr)) auto;
           gap: 14px; align-items: center; margin-top: 14px; padding-top: 15px;
-          border-top: 1px solid rgba(148,163,184,.17);
+          border-top: 1px solid rgba(27,36,66,.10);
         }
         .progress-detail-primary strong {
-          display: block; color: #fff; font-family: var(--font-crimson), Georgia, serif;
+          display: block; color: var(--navy); font-family: var(--font-crimson), Georgia, serif;
           font-size: 20px; line-height: 1.1;
         }
         .progress-detail-primary span,
         .progress-stat span {
-          display: block; margin-top: 4px; color: rgba(226,232,240,.58);
+          display: block; margin-top: 4px; color: var(--muted);
           font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
         }
-        .progress-stat strong { color: #fff; font-size: 13px; font-weight: 750; }
+        .progress-stat strong { color: var(--navy); font-size: 13px; font-weight: 750; }
         .progress-review-link {
           display: inline-flex; align-items: center; justify-content: center;
           min-height: 34px; padding: 0 13px; border-radius: 999px;
-          border: 1px solid rgba(111,218,221,.28);
-          background: rgba(111,218,221,.08); color: rgba(238,254,255,.92);
+          border: 1px solid var(--accent-line);
+          background: var(--accent-dim); color: #0a6e6e;
           font-size: 11px; font-weight: 800; text-decoration: none; white-space: nowrap;
           transition: background .15s ease, border-color .15s ease;
         }
         .progress-review-link:hover, .progress-review-link:focus-visible {
-          background: rgba(111,218,221,.16); border-color: rgba(111,218,221,.52);
+          background: var(--navy); border-color: var(--navy); color: #fff;
           outline: none;
         }
         .progress-note {
           position: relative; z-index: 1; margin-top: 13px;
-          color: rgba(226,232,240,.52); font-size: 10.5px; line-height: 1.4;
+          color: rgba(86,96,112,.74); font-size: 10.5px; line-height: 1.4;
         }
         .progress-empty {
           position: relative; z-index: 1; min-height: 132px;
           display: flex; flex-direction: column; align-items: center; justify-content: center;
-          text-align: center; color: rgba(226,232,240,.68);
+          text-align: center; color: var(--muted);
         }
         .progress-empty strong {
-          color: #fff; font-family: var(--font-crimson), Georgia, serif;
+          color: var(--navy); font-family: var(--font-crimson), Georgia, serif;
           font-size: 20px; font-weight: 650;
         }
         .progress-empty span { max-width: 420px; margin-top: 6px; font-size: 12px; line-height: 1.5; }
-        .progress-error { color: #fcd5d5; }
+        .progress-error { color: #b4402f; }
         .score-block {
           display: flex; flex-direction: column; align-items: center; justify-content: center;
-          padding: 30px 36px; gap: 4px; border-right: 1px solid var(--border);
+          padding: 30px 40px; gap: 6px; border-right: 1px solid rgba(255,255,255,.12);
           position: relative; z-index: 2;
         }
+        /* Bold, solid numerals straight on the starfield — no card, no
+           outline. The per-testament accent (gold/purple/teal) shows up as
+           a quiet glow and carries over to the level pill beside it, so
+           color-coding survives without the number itself needing to be
+           anything but plain, confident text. */
         .score-number {
           font-family: var(--font-crimson), Georgia, serif;
-          font-size: 56px; font-weight: 700; line-height: 1;
-          color: rgba(27,36,66,.22); letter-spacing: -.02em; user-select: none;
+          font-size: 64px; font-weight: 700; line-height: 1;
+          letter-spacing: -.02em; user-select: none;
+          color: rgba(255,255,255,.22);
+          transition: color .4s ease, text-shadow .4s ease;
         }
-        .score-label {
-          font-size: 11px; font-weight: 700; letter-spacing: .10em;
-          text-transform: uppercase; color: var(--muted);
+        .score-block.has-score .score-number {
+          color: #fff;
+          text-shadow:
+            0 2px 18px rgba(0,0,0,.5),
+            0 0 26px color-mix(in srgb, var(--score-accent, var(--accent)) 45%, transparent);
         }
         .score-label-row {
           position: relative;
@@ -1970,42 +3506,42 @@ export default function HomePage() {
         }
         .bli-info-btn {
           width: 18px; height: 18px; border-radius: 50%;
-          border: 1px solid rgba(27,36,66,.16);
-          background: rgba(255,255,255,.72); color: var(--navy);
+          border: 1px solid rgba(255,255,255,.22);
+          background: rgba(255,255,255,.06); color: rgba(255,255,255,.7);
           display: inline-flex; align-items: center; justify-content: center;
           font-size: 12px; font-weight: 800; line-height: 1;
           cursor: pointer; font-family: inherit;
-          box-shadow: 0 2px 8px rgba(27,36,66,.10);
         }
         .bli-info-btn:hover, .bli-info-btn:focus-visible {
-          border-color: var(--accent-line); color: #0a6e6e; outline: none;
-          background: #fff;
+          border-color: rgba(255,255,255,.4); color: #fff; outline: none;
+          background: rgba(255,255,255,.12);
         }
         .bli-tooltip {
           position: absolute; top: 28px; left: 50%; transform: translateX(-50%);
           width: min(320px, calc(100vw - 48px));
-          background: #fff; color: var(--navy);
-          border: 1px solid var(--border); border-radius: 12px;
-          box-shadow: var(--shadow-sm); padding: 14px 15px;
+          background: rgba(14,18,38,.98); color: rgba(255,255,255,.86);
+          border: 1px solid rgba(255,255,255,.14); border-radius: 12px;
+          box-shadow: 0 12px 34px rgba(0,0,0,.5); padding: 14px 15px;
           text-align: left; z-index: 80;
           font-size: 12.5px; line-height: 1.55; font-weight: 500;
           letter-spacing: 0; text-transform: none; text-decoration: none;
-          opacity: 0; visibility: hidden; pointer-events: none;
+          display: none; opacity: 0; visibility: hidden; pointer-events: none;
           transition: opacity .12s ease, visibility .12s ease;
         }
         .score-label-row:hover .bli-tooltip,
         .score-label-row:focus-within .bli-tooltip,
         .bli-tooltip.is-open {
-          opacity: 1; visibility: visible; pointer-events: auto;
+          display: block; opacity: 1; visibility: visible; pointer-events: auto;
         }
         .bli-tooltip::before {
           content: ""; position: absolute; top: -6px; left: 50%;
           width: 12px; height: 12px; transform: translateX(-50%) rotate(45deg);
-          background: #fff; border-left: 1px solid var(--border); border-top: 1px solid var(--border);
+          background: rgba(14,18,38,.98); border-left: 1px solid rgba(255,255,255,.14); border-top: 1px solid rgba(255,255,255,.14);
         }
         .bli-tooltip span {
           display: inline-flex; margin-top: 8px;
-          color: #0a6e6e; font-weight: 700; text-decoration: none;
+          color: color-mix(in srgb, var(--score-accent, var(--accent)) 70%, #fff);
+          font-weight: 700; text-decoration: none;
         }
         .bli-tooltip:hover span { text-decoration: underline; }
         .level-block {
@@ -2014,25 +3550,131 @@ export default function HomePage() {
         }
         .level-badge-empty {
           display: inline-flex; align-items: center; gap: 7px;
-          background: rgba(27,36,66,.05); border: 1px solid var(--border);
+          background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18);
           border-radius: 999px; padding: 5px 13px;
-          font-size: 12px; font-weight: 700; color: var(--muted);
+          font-size: 12px; font-weight: 700; color: rgba(255,255,255,.6);
           letter-spacing: .05em; text-transform: uppercase; width: fit-content;
         }
         .level-badge-empty::before {
           content: ""; width: 7px; height: 7px;
-          border-radius: 50%; background: rgba(27,36,66,.2);
+          border-radius: 50%; background: rgba(255,255,255,.3);
         }
         .level-desc-empty {
-          font-size: 14.5px; line-height: 1.6; color: var(--muted); max-width: 420px;
+          font-size: 14.5px; line-height: 1.6; color: rgba(255,255,255,.55); max-width: 420px;
         }
-        .level-desc-empty strong { color: var(--navy); }
+        .level-desc-empty strong { color: #fff; }
+        /* Verse of the day fills the same middle column once a score
+           exists — see lib/verseOfTheDay.ts for the (deterministic,
+           public-domain KJV) rotation. */
+        .verse-of-day {
+          margin: 0; max-width: 380px; align-self: center; text-align: center;
+        }
+        .verse-of-day-kicker {
+          margin: 0 0 11px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          font-size: 10.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+          color: var(--score-accent, var(--accent));
+        }
+        .verse-of-day-kicker::before,
+        .verse-of-day-kicker::after {
+          content: ""; width: 15px; height: 1px;
+          background: color-mix(in srgb, var(--score-accent, var(--accent)) 70%, transparent);
+        }
+        .verse-of-day-text {
+          margin: 0; padding: 0; border: 0;
+          font-family: var(--font-crimson), Georgia, serif;
+          font-style: italic; font-weight: 500;
+          font-size: 16.5px; line-height: 1.56;
+          color: rgba(255,255,255,.90);
+        }
+        .verse-of-day-ref {
+          margin: 12px 0 0; padding: 0;
+          font-family: var(--font-inter), system-ui, sans-serif;
+          font-style: normal; font-size: 11.5px; font-weight: 750;
+          letter-spacing: .03em; color: rgba(255,255,255,.5);
+        }
+        .verse-of-day-ref::before { content: "— "; }
+        /* Same slot as the verse of the day, swapped in for a brand-new
+           signed-out result — deliberately just the two lines, no card,
+           no graphic. See .save-results-card below for the fuller version
+           of this same prompt shown elsewhere on the page. */
+        .save-progress-mini {
+          display: flex; flex-direction: column; align-items: center; gap: 12px;
+          align-self: center; text-align: center;
+        }
+        .save-progress-mini-text {
+          margin: 0; color: rgba(255,255,255,.75);
+          font-size: 13px; font-weight: 750; letter-spacing: .02em;
+        }
+        .save-progress-mini-btn {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 10px 20px; border-radius: 999px; border: 0; cursor: pointer;
+          background: var(--score-accent, var(--accent)); color: #16110a;
+          font: inherit; font-size: 12.5px; font-weight: 850;
+          transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .save-progress-mini-btn:hover, .save-progress-mini-btn:focus-visible {
+          transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.32); outline: none;
+        }
+        .level-label-row {
+          position: relative; display: inline-flex; align-items: center; gap: 8px;
+          width: fit-content; min-height: 28px;
+        }
+        /* The level pill is the one place the per-testament accent still
+           shows up as color (gold/purple/teal) now that the numeral itself
+           is plain white — a tinted chip on dark reads cleanly without the
+           "outlined balloon" look the numeral used to have. */
+        .level-badge-btn {
+          cursor: pointer; font-family: inherit;
+          background: color-mix(in srgb, var(--score-accent, var(--accent)) 16%, transparent);
+          border-color: color-mix(in srgb, var(--score-accent, var(--accent)) 45%, transparent);
+          color: var(--score-accent, var(--accent));
+          transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+        }
+        .level-badge-btn::before {
+          background: var(--score-accent, var(--accent));
+        }
+        .level-badge-btn:hover, .level-badge-btn:focus-visible {
+          background: color-mix(in srgb, var(--score-accent, var(--accent)) 26%, transparent);
+          border-color: color-mix(in srgb, var(--score-accent, var(--accent)) 65%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--score-accent, var(--accent)) 16%, transparent);
+          outline: none;
+        }
+        .level-tooltip {
+          position: absolute; top: calc(100% + 10px); left: 0;
+          width: min(320px, calc(100vw - 48px));
+          background: rgba(14,18,38,.98); color: rgba(255,255,255,.86);
+          border: 1px solid rgba(255,255,255,.14); border-radius: 12px;
+          box-shadow: 0 12px 34px rgba(0,0,0,.5); padding: 14px 15px;
+          text-align: left; z-index: 80;
+          font-size: 13.5px; line-height: 1.6; font-weight: 500;
+          letter-spacing: 0; text-transform: none; text-decoration: none;
+          display: none; opacity: 0; visibility: hidden; pointer-events: none;
+          transition: opacity .12s ease, visibility .12s ease;
+        }
+        .level-tooltip.is-open {
+          display: block; opacity: 1; visibility: visible; pointer-events: auto;
+        }
+        .level-tooltip::before {
+          content: ""; position: absolute; top: -6px; left: 20px;
+          width: 12px; height: 12px; transform: rotate(45deg);
+          background: rgba(14,18,38,.98); border-left: 1px solid rgba(255,255,255,.14); border-top: 1px solid rgba(255,255,255,.14);
+        }
+        .level-tooltip span {
+          display: inline-flex; margin-top: 8px;
+          color: color-mix(in srgb, var(--score-accent, var(--accent)) 70%, #fff);
+          font-weight: 700; text-decoration: none;
+        }
+        .level-tooltip:hover span { text-decoration: underline; }
         .knowledge-cone-card {
           position: relative; z-index: 1;
           background: rgba(255,255,255,.94); border: 1px solid var(--border);
           border-radius: 20px; box-shadow: var(--shadow);
           backdrop-filter: blur(16px); padding: 28px 32px 30px;
           margin-bottom: 18px; overflow: visible;
+        }
+        .knowledge-cone-panel {
+          margin: -10px 0 30px;
+          animation: knowledgeProfileIn .22s cubic-bezier(.22,.72,.18,1) both;
         }
         .knowledge-cone-head {
           display: flex; align-items: flex-end; justify-content: space-between;
@@ -2219,8 +3861,17 @@ export default function HomePage() {
         .cone-layer-popover strong { display: block; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 7px; color: var(--navy); }
         .cone-layer-popover span { display: block; font-size: 14px; line-height: 1.48; font-weight: 650; }
         @keyframes coneDescriptionIn { from { opacity: 0; transform: translateY(-50%) translateX(-8px) scale(.96); } to { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); } }
+        .knowledge-cone-panel .cone-layer-popover {
+          left: 50%; top: calc(var(--popover-y) * 1% + 42px); width: min(340px, calc(100% - 28px));
+          padding: 15px 17px; transform: translateX(-50%);
+          animation: coneDescriptionInDrawer .18s ease-out both;
+        }
+        .knowledge-cone-panel .cone-layer-popover::before {
+          left: 50%; top: -9px; transform: translateX(-50%) rotate(135deg);
+        }
+        @keyframes coneDescriptionInDrawer { from { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(.96); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
         .cone-marker {
-          position: absolute; right: -118px;
+          position: absolute; right: -96px;
           top: calc(var(--marker-y) * 1%);
           transform: translateY(-50%);
           display: flex; align-items: center; gap: 10px;
@@ -2243,214 +3894,215 @@ export default function HomePage() {
         .conf-block {
           display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
           padding: 30px 32px; gap: 9px;
-          border-left: 1px solid var(--border); min-width: 210px; position: relative;
+          border-left: 1px solid rgba(255,255,255,.12); min-width: 210px; position: relative;
         }
         .conf-empty-label {
           display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
           font-size: 13px; font-weight: 850; letter-spacing: .075em;
-          text-transform: uppercase; color: rgba(27,36,66,.56); text-align: left;
+          text-transform: uppercase; color: rgba(255,255,255,.55); text-align: left;
         }
         .conf-percent {
           font-family: var(--font-crimson), Georgia, serif; font-size: 27px; line-height: 1;
-          font-weight: 750; color: var(--navy); letter-spacing: 0; text-transform: none;
+          font-weight: 750; color: #fff; letter-spacing: 0; text-transform: none;
         }
-        .conf-note { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--muted); text-align: left; line-height: 1.35; }
+        .conf-note { display: flex; align-items: center; gap: 9px; font-size: 13px; color: rgba(255,255,255,.55); text-align: left; line-height: 1.35; }
         .conf-level {
           display: inline-flex; align-items: center; justify-content: center;
           padding: 5px 10px; border-radius: 999px;
-          background: var(--accent-dim); border: 1px solid var(--accent-line);
-          color: #0a6e6e; font-size: 12px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase;
+          background: color-mix(in srgb, var(--score-accent, var(--accent)) 16%, transparent);
+          border: 1px solid color-mix(in srgb, var(--score-accent, var(--accent)) 45%, transparent);
+          color: var(--score-accent, var(--accent)); font-size: 12px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase;
         }
         .evidence-info-btn {
           width: 21px; height: 21px; display: inline-flex; align-items: center; justify-content: center;
-          border-radius: 50%; border: 1px solid rgba(27,36,66,.14); background: rgba(255,255,255,.58);
-          color: var(--muted); font: 800 11px var(--font-inter), sans-serif; cursor: pointer;
+          border-radius: 50%; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06);
+          color: rgba(255,255,255,.6); font: 800 11px var(--font-inter), sans-serif; cursor: pointer;
         }
         .evidence-tooltip {
           position: absolute; right: 22px; top: calc(100% - 10px); z-index: 80;
           width: min(300px, calc(100vw - 42px)); padding: 13px 15px; border-radius: 8px;
-          background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow-sm);
-          color: var(--navy); font-size: 12px; font-weight: 600; line-height: 1.5;
+          background: rgba(14,18,38,.98); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 34px rgba(0,0,0,.5);
+          color: rgba(255,255,255,.86); font-size: 12px; font-weight: 600; line-height: 1.5;
           opacity: 0; visibility: hidden; transform: translateY(-5px);
           transition: opacity .14s, transform .14s, visibility .14s; pointer-events: none;
         }
         .evidence-tooltip.is-open { opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto; }
-        .assessment-suite {
-          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 16px; margin-bottom: 28px;
+        /* Standard-assessment controls — used to live in their own card;
+           now they're just the page header's primary action (see
+           .header-assess below), so these are themed for sitting directly
+           on the dark starfield instead of on a light card. */
+        .header-assess {
+          display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+          animation: stdAssessIn .4s ease both;
         }
-        .assessment-suite-card {
+        @keyframes stdAssessIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: none; }
+        }
+        .std-assess-toggle {
+          position: relative; display: inline-flex; padding: 4px; border-radius: 999px;
+          background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16);
+        }
+        .std-assess-toggle-thumb {
+          position: absolute; top: 4px; left: 4px;
+          width: calc(50% - 4px); height: calc(100% - 8px); border-radius: 999px;
+          background: var(--suite-hue); box-shadow: 0 4px 12px rgba(0,0,0,.3);
+          transition: transform .32s cubic-bezier(.34,1.56,.64,1), background .3s ease;
+        }
+        .std-assess-toggle-btn {
+          position: relative; z-index: 1; border: 0; background: transparent;
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 8px 15px; border-radius: 999px; cursor: pointer;
+          font: inherit; font-size: 12.5px; font-weight: 800; color: rgba(255,255,255,.55);
+          transition: color .2s ease; white-space: nowrap;
+        }
+        .std-assess-toggle-btn svg { opacity: .6; transition: opacity .2s ease; }
+        .std-assess-toggle-btn.is-active { color: #fff; }
+        .std-assess-toggle-btn.is-active svg { opacity: .95; }
+        .std-assess-actions { display: flex; align-items: center; gap: 12px; }
+        .std-assess-cta {
           position: relative; overflow: hidden;
-          background: var(--card); border: 1px solid var(--border);
-          border-radius: 18px; padding: 22px 22px 20px;
-          box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
-          display: flex; flex-direction: column; gap: 12px;
-          transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 10px 18px; border-radius: 999px;
+          background: var(--suite-hue); color: #fff; text-decoration: none;
+          font-size: 13.5px; font-weight: 800; white-space: nowrap;
+          transition: filter .15s ease, transform .15s ease, background .3s ease;
         }
-        .assessment-suite-card::before {
-          content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+        .std-assess-cta:hover { filter: brightness(1.08); transform: translateY(-1px); }
+        /* A slow, occasional sheen sweep — reads as "this is the thing to
+           click" without being an constant distraction. */
+        .std-assess-cta::after {
+          content: ""; position: absolute; top: 0; left: -60%;
+          width: 40%; height: 100%;
+          background: linear-gradient(115deg, transparent, rgba(255,255,255,.6), transparent);
+          transform: skewX(-20deg);
+          animation: ctaSheen 3.6s ease-in-out infinite;
         }
-        .assessment-suite-card::after {
-          content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+        @keyframes ctaSheen {
+          0% { left: -60%; }
+          35%, 100% { left: 130%; }
         }
-        .assessment-suite-card > * { position: relative; z-index: 1; }
-        .assessment-suite-card:hover {
-          transform: translateY(-2px); box-shadow: 0 20px 40px rgba(0,0,0,.14);
+        @media (prefers-reduced-motion: reduce) {
+          .std-assess-cta::after { animation: none; opacity: 0; }
         }
-        .assessment-suite-card.is-ot::before {
-          background: linear-gradient(90deg, #d4a017, #f5c842, #d4a017);
-        }
-        .assessment-suite-card.is-ot::after {
-          background: radial-gradient(120% 80% at 100% 0%, rgba(245,200,66,.12), transparent 60%);
-        }
-        .assessment-suite-card.is-ot:hover { border-color: rgba(212,160,23,.42); }
-        .assessment-suite-card.is-nt::before {
-          background: linear-gradient(90deg, #7c3aed, #a855f7, #7c3aed);
-        }
-        .assessment-suite-card.is-nt::after {
-          background: radial-gradient(120% 80% at 100% 0%, rgba(124,58,237,.12), transparent 60%);
-        }
-        .assessment-suite-card.is-nt:hover { border-color: rgba(124,58,237,.42); }
-        .assessment-suite-top {
-          display: flex; align-items: center; justify-content: space-between; gap: 10px;
-        }
-        .assessment-suite-title {
-          font-family: var(--font-crimson), Georgia, serif;
-          font-size: 24px; font-weight: 700; color: var(--navy); line-height: 1;
-        }
-        .assessment-suite-badge {
-          display: inline-flex; align-items: center; border-radius: 999px;
-          padding: 5px 9px; font-size: 10.5px; font-weight: 850;
-          letter-spacing: .08em; text-transform: uppercase;
-          background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe;
-        }
-        .assessment-suite-badge.is-verified {
-          background: #d1fae5; color: #065f46; border-color: #a7f3d0;
-        }
-        .assessment-suite-copy { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
-        .assessment-suite-stats {
-          display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted);
-        }
-        .assessment-suite-stats span {
-          display: inline-flex; border-radius: 999px; padding: 5px 9px;
-          background: rgba(27,36,66,.055); border: 1px solid rgba(27,36,66,.08);
-          font-weight: 700;
-        }
-        .assessment-suite-link {
-          display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
-          margin-top: auto; color: var(--navy); text-decoration: none;
-          font-size: 13.5px; font-weight: 800;
-          transition: gap .16s ease, color .16s ease;
-        }
-        .assessment-suite-link:hover { color: #0a6e6e; gap: 11px; }
-        .assessment-suite-actions {
-          display: flex; align-items: center; justify-content: space-between;
-          gap: 12px; margin-top: auto;
-        }
-        .assessment-suite-actions .assessment-suite-link { margin-top: 0; }
         .scope-text-btn {
-          border: 0; padding: 5px 0; background: transparent; color: var(--muted);
-          font: inherit; font-size: 11.5px; font-weight: 750; cursor: pointer;
+          border: 0; padding: 5px 0; background: transparent; color: rgba(255,255,255,.5);
+          font: inherit; font-size: 11.5px; font-weight: 750; cursor: pointer; white-space: nowrap;
         }
-        .scope-text-btn:hover, .scope-text-btn:focus-visible { color: #0a6e6e; outline: none; }
-        .is-nt .assessment-suite-link:hover { color: #7c3aed; }
-        .start-hero {
-          background: var(--card); border: 1px solid var(--border);
-          border-radius: 20px; padding: 48px 40px;
-          box-shadow: var(--shadow); backdrop-filter: blur(16px);
+        .scope-text-btn:hover, .scope-text-btn:focus-visible { color: #fff; outline: none; }
+        @media (max-width: 640px) {
+          .header-assess { width: 100%; }
+          .std-assess-toggle { flex: 1; }
+          .std-assess-toggle-btn { flex: 1; }
+          .std-assess-actions { width: 100%; justify-content: space-between; }
+        }
+        .recommendation-engine {
           margin-bottom: 28px;
-          display: flex; flex-direction: column; align-items: center;
-          text-align: center; gap: 20px;
         }
-        .start-hero.compact {
-          position: relative; overflow: hidden;
-          min-height: 154px; padding: 30px 24px; margin-bottom: 28px;
-          display: flex; align-items: center; justify-content: center;
-          background:
-            linear-gradient(115deg, rgba(255,255,255,.95), rgba(255,255,255,.86)),
-            radial-gradient(circle at 28% 35%, rgba(10,163,163,.20), transparent 34%),
-            radial-gradient(circle at 72% 70%, rgba(212,160,23,.18), transparent 36%);
+        .recommendation-engine-head {
+          display: flex; align-items: flex-end; justify-content: space-between;
+          gap: 18px; margin-bottom: 14px;
         }
-        .start-hero.compact::before {
-          content: ""; position: absolute; inset: -42%;
-          background: conic-gradient(from 120deg, transparent, rgba(10,163,163,.18), transparent 30%, rgba(212,160,23,.16), transparent 62%);
-          animation: assessmentAura 13s linear infinite;
-          pointer-events: none;
+        .recommendation-engine-eyebrow {
+          margin: 0 0 5px; color: rgba(255,255,255,.58);
+          font-size: 11px; font-weight: 850; letter-spacing: .12em;
+          text-transform: uppercase;
         }
-        .start-hero.compact::after {
-          content: ""; position: absolute; inset: 18px; border-radius: 16px;
-          border: 1px solid rgba(10,163,163,.16);
-          box-shadow: inset 0 0 36px rgba(10,163,163,.10);
-          pointer-events: none;
+        .recommendation-engine-title {
+          margin: 0; color: #fff;
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: 28px; font-weight: 650; line-height: 1.05;
+          text-shadow: 0 2px 14px rgba(0,0,0,.28);
         }
-        .assessment-cta-wrap {
-          position: absolute; inset: 0; z-index: 1;
-          display: grid; place-items: center; padding: 30px 24px;
-          transition: padding 2s cubic-bezier(.16,.84,.18,1);
+        .recommendation-engine-copy {
+          max-width: 540px; margin: 6px 0 0;
+          color: rgba(255,255,255,.68); font-size: 13px; line-height: 1.5;
         }
-        .assessment-cta-wrap::before,
-        .assessment-cta-wrap::after {
-          content: ""; position: absolute; inset: -16px; border-radius: 999px;
-          border: 1px solid rgba(10,163,163,.24);
-          animation: assessmentPulse 2.8s ease-out infinite;
-          pointer-events: none;
+        .recommendation-toggle {
+          display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px;
+          background: rgba(255,255,255,.88); border: 1px solid var(--border);
+          box-shadow: var(--shadow-sm); backdrop-filter: blur(14px);
+          flex-shrink: 0;
         }
-        .assessment-cta-wrap::after { inset: -28px; animation-delay: .9s; opacity: .58; }
-        .start-hero.compact.is-charging .assessment-cta-wrap::before,
-        .start-hero.compact.is-charging .assessment-cta-wrap::after { opacity: 0; animation-play-state: paused; }
-        .start-hero.compact.is-charging .assessment-cta-wrap { padding: 0; }
-        .start-hero.compact .start-btn {
-          position: relative; z-index: 1; width: 238px; min-width: 238px; height: 58px;
-          justify-content: center; padding: 18px 34px; font-size: 16px;
-          font-family: var(--font-inter), system-ui, sans-serif; font-weight: 760; letter-spacing: .01em;
-          white-space: nowrap;
-          background: linear-gradient(135deg, #1b2442 0%, #253566 58%, #0a6e6e 100%);
-          box-shadow: 0 18px 38px rgba(27,36,66,.38), 0 0 28px rgba(10,163,163,.22);
-          transition: width 2s cubic-bezier(.16,.84,.18,1), height 2s cubic-bezier(.16,.84,.18,1), border-radius 2s cubic-bezier(.16,.84,.18,1), transform .13s ease, box-shadow .15s ease;
+        .recommendation-toggle-btn {
+          border: 0; border-radius: 999px; padding: 8px 13px;
+          background: transparent; color: var(--muted);
+          font: inherit; font-size: 12px; font-weight: 850; cursor: pointer;
+          transition: background .16s ease, color .16s ease, box-shadow .16s ease;
         }
-        .start-hero.compact.is-charging .start-btn {
-          width: 100%; height: 100%; border-radius: 20px;
-          transform: none; box-shadow: 0 24px 54px rgba(27,36,66,.42), 0 0 42px rgba(10,163,163,.30);
+        .recommendation-toggle-btn:hover,
+        .recommendation-toggle-btn:focus-visible {
+          color: var(--navy); outline: none;
         }
-        .start-hero.compact .start-btn::before {
-          content: ""; position: absolute; inset: 1px; border-radius: inherit;
-          background: linear-gradient(110deg, transparent 0 28%, rgba(255,255,255,.24) 45%, transparent 62% 100%);
-          transform: translateX(-120%); animation: assessmentShine 3.8s ease-in-out infinite;
-          pointer-events: none;
-        }
-        .start-hero.compact .start-btn:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 22px 44px rgba(27,36,66,.44), 0 0 34px rgba(10,163,163,.28); }
-        .start-hero.compact.is-charging .start-btn:hover { transform: none; }
-        @keyframes assessmentAura { to { transform: rotate(1turn); } }
-        @keyframes assessmentPulse { 0% { transform: scale(.92); opacity: .72; } 100% { transform: scale(1.16); opacity: 0; } }
-        @keyframes assessmentShine { 0%, 44% { transform: translateX(-120%); } 72%, 100% { transform: translateX(120%); } }
-        .start-btn {
-          position: relative; overflow: hidden;
-          display: flex; align-items: center; gap: 10px;
-          padding: 16px 36px; border-radius: 999px;
+        .recommendation-toggle-btn.is-active {
           background: var(--navy); color: #fff;
-          font-size: 16px; font-weight: 600;
-          border: none; cursor: pointer; text-decoration: none;
-          box-shadow: 0 12px 32px rgba(27,36,66,.4);
-          transition: background .15s ease, transform .13s ease, box-shadow .15s ease;
+          box-shadow: 0 6px 15px rgba(27,36,66,.20);
         }
-        .start-btn:hover { background: #253566; transform: translateY(-2px); }
-        .start-btn svg { width: 20px; height: 20px; flex: 0 0 auto; }
-        .start-btn-label { display: inline-block; white-space: nowrap; line-height: 1; }
+        .recommendation-toggle-btn:disabled {
+          opacity: .48; cursor: not-allowed;
+        }
+        .recommendation-engine-body {
+          animation: recommendationPanelIn .22s ease both;
+        }
+        @keyframes recommendationPanelIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: none; }
+        }
+        .recommendation-engine-body .recommended-card,
+        .recommendation-engine-body .dmm-card {
+          margin-bottom: 0;
+        }
         .recommended-card {
           background: var(--card); border: 1px solid var(--border);
           border-radius: 20px; padding: 24px 26px; margin-bottom: 28px;
           box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
-          display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: center;
+          display: grid; grid-template-columns: minmax(0,1fr) minmax(210px, auto); gap: 22px; align-items: center;
           position: relative; overflow: hidden;
         }
         .recommended-card::before {
           content: ""; position: absolute; inset: 0 auto 0 0; width: 5px;
           background: linear-gradient(180deg, var(--accent), #d4a017);
         }
-        .recommended-eyebrow { font-size: 11px; font-weight: 850; letter-spacing: .11em; text-transform: uppercase; color: #0a6e6e; margin-bottom: 7px; }
-        .recommended-title { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 650; color: var(--navy); line-height: 1.05; }
+        .recommended-eyebrow { font-size: 11px; font-weight: 850; letter-spacing: .11em; text-transform: uppercase; color: #0a6e6e; margin-bottom: 4px; }
+        .recommended-subhead { margin: 0 0 10px; font-size: 11.5px; font-weight: 600; color: var(--muted); max-width: 420px; }
+        .recommended-title { font-family: var(--font-crimson), Georgia, serif; font-size: 25px; font-weight: 650; color: var(--navy); line-height: 1.05; }
         .recommended-books { margin-top: 5px; font-size: 13px; color: var(--muted); font-weight: 650; }
-        .recommended-focus { margin-top: 13px; font-size: 14px; line-height: 1.55; color: rgba(27,36,66,.76); max-width: 660px; }
+        .recommended-focus {
+          margin-top: 12px; font-size: 13.5px; line-height: 1.5; color: rgba(27,36,66,.84); max-width: 620px;
+        }
+        .recommended-guidance {
+          margin-top: 14px; padding: 13px 14px;
+          border-radius: 12px; border: 1px solid rgba(10,163,163,.16);
+          background: rgba(10,163,163,.055); max-width: 660px;
+        }
+        .recommended-guidance-title {
+          margin-bottom: 8px; color: #0a6e6e;
+          font-size: 11px; font-weight: 850; letter-spacing: .10em; text-transform: uppercase;
+        }
+        .recommended-guidance-list {
+          display: grid; gap: 6px; margin: 0; padding: 0; list-style: none;
+        }
+        .recommended-guidance-list li {
+          position: relative; padding-left: 16px;
+          color: rgba(27,36,66,.82); font-size: 12.5px; line-height: 1.45; font-weight: 650;
+        }
+        .recommended-guidance-list li::before {
+          content: ""; position: absolute; left: 0; top: .62em;
+          width: 6px; height: 6px; border-radius: 50%; background: #0aa3a3;
+        }
+        .recommended-resources {
+          display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px;
+        }
+        .recommended-resource {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 7px 10px; border-radius: 999px;
+          color: #0a6e6e; background: rgba(255,255,255,.68);
+          border: 1px solid rgba(10,163,163,.18);
+          font-size: 12px; font-weight: 800; text-decoration: none;
+        }
+        .recommended-resource:hover, .recommended-resource:focus-visible {
+          color: var(--navy); border-color: rgba(10,163,163,.34); outline: none;
+        }
         .recommended-side { display: flex; flex-direction: column; align-items: flex-end; }
         .recommended-priority { font-size: 12.5px; line-height: 1.45; color: var(--muted); max-width: 260px; }
         .recommended-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; margin-top: 12px; }
@@ -2460,14 +4112,62 @@ export default function HomePage() {
           display: inline-flex; align-items: center; gap: 7px;
           color: #0a6e6e; font-size: 12px; font-weight: 800; text-decoration: none;
         }
-        .recommended-map {
+        .recommended-review:hover, .recommended-review:focus-visible {
+          color: var(--navy); outline: none; text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+        .frontier-card {
+          background: var(--card); border: 1px solid var(--border);
+          border-radius: 20px; padding: 20px 22px; margin-bottom: 28px;
+          box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
+          display: grid; grid-template-columns: minmax(0,1fr) minmax(0,.72fr);
+          gap: 22px; align-items: start;
+          position: relative; overflow: hidden;
+        }
+        .frontier-card::before {
+          content: ""; position: absolute; inset: 0 auto 0 0; width: 4px;
+          background: var(--frontier-hue, var(--accent));
+        }
+        .frontier-eyebrow {
+          font-size: 11px; font-weight: 850; letter-spacing: .11em;
+          text-transform: uppercase; color: #0a6e6e; margin-bottom: 7px;
+        }
+        .frontier-title {
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: 23px; font-weight: 650; color: var(--navy); line-height: 1.08;
+        }
+        .frontier-ref { margin-top: 4px; font-size: 12.5px; color: var(--muted); font-weight: 700; }
+        .frontier-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
+        .frontier-cta {
+          display: inline-flex; align-items: center; gap: 8px;
+          min-height: 40px; padding: 10px 15px; border-radius: 10px;
+          background: var(--navy); color: #fff; text-decoration: none;
+          font-size: 13px; font-weight: 800;
+        }
+        .frontier-cta:hover { background: #253566; }
+        .frontier-map {
           display: inline-flex; align-items: center; gap: 7px;
           color: var(--navy); font-size: 12px; font-weight: 800; text-decoration: none;
         }
-        .recommended-review:hover, .recommended-review:focus-visible,
-        .recommended-map:hover, .recommended-map:focus-visible {
-          color: var(--navy); outline: none; text-decoration: underline;
-          text-underline-offset: 3px;
+        .frontier-map:hover, .frontier-map:focus-visible {
+          outline: none; text-decoration: underline; text-underline-offset: 3px;
+        }
+        .frontier-context { border-left: 1px solid var(--border); padding-left: 20px; }
+        .frontier-context-label {
+          font-size: 10px; font-weight: 850; letter-spacing: .09em;
+          text-transform: uppercase; color: var(--muted); margin-bottom: 9px;
+        }
+        .frontier-item {
+          display: grid; grid-template-columns: minmax(0,1fr) auto;
+          gap: 10px; align-items: baseline; padding: 7px 0;
+          border-bottom: 1px solid var(--border);
+        }
+        .frontier-item:last-child { border-bottom: 0; }
+        .frontier-item-name { font-size: 12.5px; font-weight: 750; color: var(--navy); line-height: 1.3; }
+        .frontier-item-ref { font-size: 10.5px; color: var(--muted); font-weight: 650; margin-top: 2px; }
+        .frontier-item-score {
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: 15px; font-weight: 700; color: var(--muted);
         }
         .retest-modal-backdrop {
           position: fixed; inset: 0; z-index: 90;
@@ -2525,70 +4225,266 @@ export default function HomePage() {
           gap: 14px; margin-top: 32px; margin-bottom: 14px;
         }
         .breakdown-head .section-eyebrow { margin: 0; }
+        .coverage-map-section { margin-top: 32px; position: relative; }
+        .coverage-map-head {
+          display: flex; justify-content: space-between; align-items: flex-start;
+          gap: 14px; margin-bottom: 14px;
+        }
+        .coverage-map-section .section-eyebrow { margin-bottom: 6px; }
+        .coverage-map-title {
+          margin: 0; color: #fff;
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: clamp(22px, 3vw, 30px); line-height: 1;
+        }
+        .coverage-map-copy {
+          margin: 8px 0 0; max-width: 620px;
+          color: rgba(255,255,255,.66); font-size: 12.5px; line-height: 1.45;
+        }
+        .coverage-mode-controls {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 5px; border-radius: 999px;
+          background: rgba(255,255,255,.08); border: 1px solid rgba(212,160,23,.42);
+        }
+        .coverage-mode-btn {
+          min-height: 34px; border: 0; border-radius: 999px; padding: 7px 11px;
+          display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+          background: transparent; color: rgba(255,255,255,.64);
+          font: inherit; font-size: 11.5px; font-weight: 850; cursor: pointer;
+          transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+        }
+        .coverage-mode-btn svg {
+          width: 15px; height: 15px; fill: none; stroke: currentColor;
+          stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .coverage-mode-btn:hover,
+        .coverage-mode-btn:focus-visible {
+          color: #fff; background: rgba(255,255,255,.10); outline: none;
+        }
+        .coverage-mode-btn.is-active {
+          background: rgba(255,255,255,.95); color: var(--navy);
+          box-shadow: 0 8px 20px rgba(0,0,0,.18);
+        }
+        .coverage-mode-btn:disabled {
+          opacity: .42; cursor: not-allowed;
+        }
+        .coverage-map-link {
+          display: inline-flex; align-items: center; gap: 7px;
+          width: 34px; height: 34px; justify-content: center;
+          padding: 0; border-radius: 999px; white-space: nowrap;
+          background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+          color: rgba(255,255,255,.85); text-decoration: none;
+          font-size: 12px; font-weight: 800;
+          transition: background .15s ease, border-color .15s ease;
+        }
+        .coverage-map-link:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.30); }
+        /* A tiny star-and-orbiting-planet in place of a generic map glyph —
+           the same slow-drift orbit motif as the brand mark and the
+           Learn More menu (see learnMoreOrbitSpin above), just built from
+           plain rotating elements rather than SVG so it stays cheap and
+           avoids SVG transform-origin quirks. Always drifting quietly;
+           speeds up on hover as the one bit of direct feedback that this
+           icon leads to the knowledge map. */
+        .cml-icon { position: relative; width: 20px; height: 20px; flex: 0 0 auto; }
+        .cml-star {
+          position: absolute; top: 50%; left: 50%; width: 5px; height: 5px;
+          margin: -2.5px 0 0 -2.5px; border-radius: 50%;
+          background: #f0c674; box-shadow: 0 0 6px rgba(240,198,116,.85);
+          animation: cmlTwinkle 2.6s ease-in-out infinite;
+        }
+        .cml-orbit {
+          position: absolute; inset: 0;
+          border: 1px dashed rgba(255,255,255,.32); border-radius: 50%;
+          animation: cmlSpin 7s linear infinite;
+        }
+        .cml-planet {
+          position: absolute; top: -1.5px; left: 50%; width: 4px; height: 4px;
+          margin-left: -2px; border-radius: 50%;
+          background: #7de5e5; box-shadow: 0 0 5px rgba(125,229,229,.85);
+        }
+        @keyframes cmlSpin { to { transform: rotate(360deg); } }
+        @keyframes cmlTwinkle {
+          0%, 100% { opacity: .68; transform: scale(.82); }
+          50% { opacity: 1; transform: scale(1.18); }
+        }
+        .coverage-map-link:hover .cml-orbit { animation-duration: 1.3s; }
+        .coverage-map-link:hover .cml-star { animation-duration: .9s; }
+        @media (prefers-reduced-motion: reduce) {
+          .cml-orbit, .cml-star { animation: none; }
+        }
+        /* One continuous card for the recommendation callout and the
+           chapter board — previously separate boxes. They're divided by a
+           fine gold line (.coverage-focus-card's border-bottom) instead of
+           each carrying its own background/border/shadow. The legend lives
+           outside this card entirely — see .coverage-legend-rail below. */
+        .coverage-map-card {
+          border-radius: 10px; border: 1px solid rgba(226,232,240,.95);
+          background: rgba(255,255,255,.97);
+          box-shadow: 0 20px 48px rgba(0,0,0,.20);
+          overflow: hidden;
+        }
+        /* The legend has no box of its own — it sits directly on the dark
+           starfield backdrop. On wide viewports it breaks out of the .page
+           column entirely, floating in the left margin beside the card
+           (position: relative on .coverage-map-section is what makes
+           right: 100% land at that column's left edge) — there's room there
+           for the section-by-completion-level matrix. Below this width
+           there's no margin to float a ~220px panel into, so it drops back
+           into normal flow above the card instead. */
+        .coverage-legend-rail {
+          margin-bottom: 14px;
+        }
+        @media (min-width: 1680px) {
+          .coverage-legend-rail {
+            position: absolute; top: 58px; right: 100%;
+            width: 224px; margin: 0 28px 0 0;
+          }
+        }
+        .coverage-focus-card {
+          position: relative;
+          display: grid; grid-template-columns: minmax(0,1fr) minmax(190px, auto);
+          gap: 18px; align-items: center;
+          padding: 20px 22px;
+          color: var(--navy);
+          border-bottom: 1px solid rgba(212,160,23,.4);
+        }
+        .coverage-focus-card.is-skill {
+          align-items: start;
+          background:
+            linear-gradient(135deg, rgba(255,255,255,.98), rgba(255,248,225,.96) 58%, rgba(236,253,245,.92));
+        }
+        .coverage-focus-card.is-skill::before {
+          content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+          background: linear-gradient(180deg, #d4a017, #0aa3a3);
+        }
+        .coverage-diagnostic-head {
+          display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+          margin-bottom: 6px;
+        }
+        .coverage-focus-eyebrow {
+          margin: 0 0 5px; color: #0a6e6e;
+          font-size: 10.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+        }
+        .coverage-focus-card.is-skill .coverage-focus-eyebrow {
+          margin: 0; color: #8a5d00;
+        }
+        .coverage-focus-title {
+          margin: 0; color: var(--navy);
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: 24px; font-weight: 650; line-height: 1.08;
+        }
+        /* The dimension name (e.g. "Law") doubling as the title, when
+           there's a dimension gap to click into. Underline only shows on
+           hover/focus so it doesn't look like a broken link at rest. */
+        .coverage-focus-title-link {
+          appearance: none; border: 0; padding: 0; margin: 0; background: transparent;
+          font: inherit; color: inherit; cursor: pointer; text-align: left;
+          text-decoration-line: underline; text-decoration-color: transparent; text-underline-offset: 4px;
+          transition: text-decoration-color .15s ease, color .15s ease;
+        }
+        .coverage-focus-title-link:hover, .coverage-focus-title-link:focus-visible {
+          text-decoration-color: currentColor; color: #0a6e6e; outline: none;
+        }
+        .coverage-focus-meta {
+          margin: 5px 0 0; color: var(--muted);
+          font-size: 12.5px; font-weight: 700; line-height: 1.4;
+        }
+        .coverage-focus-copy {
+          margin: 10px 0 0; color: #435168;
+          font-size: 13px; line-height: 1.52; max-width: 760px;
+        }
+        .coverage-focus-actions {
+          display: flex; flex-direction: column; align-items: flex-end; gap: 9px;
+        }
+        .coverage-focus-primary {
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          border: 0; border-radius: 8px; padding: 10px 14px;
+          background: var(--navy); color: #fff; text-decoration: none;
+          font-size: 12.5px; font-weight: 850; white-space: nowrap;
+          box-shadow: 0 10px 22px rgba(27,36,66,.22);
+        }
+        .coverage-focus-primary svg { width: 14px; height: 14px; }
+        .coverage-focus-priority {
+          margin: 0; color: var(--muted);
+          font-size: 12px; line-height: 1.45; text-align: right; max-width: 260px;
+        }
+        .coverage-focus-card.is-skill .recommended-guidance {
+          margin-top: 14px; padding: 13px 14px;
+          border-radius: 10px; border: 1px solid rgba(212,160,23,.20);
+          background: rgba(255,255,255,.64);
+        }
+        .coverage-focus-card.is-skill .scope-text-btn {
+          background: rgba(255,255,255,.68);
+        }
+        .coverage-map-empty {
+          min-height: 132px; padding: 24px;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          text-align: center; gap: 6px;
+          border: 1px solid var(--border); border-radius: 10px;
+          background: rgba(255,255,255,.97); color: var(--muted);
+        }
+        .coverage-map-empty strong {
+          color: var(--navy); font-family: var(--font-crimson), Georgia, serif;
+          font-size: 20px; font-weight: 650;
+        }
+        .coverage-map-empty span { max-width: 480px; font-size: 12px; line-height: 1.5; }
+        @media (max-width: 560px) {
+          .coverage-map-head { flex-direction: column; align-items: start; }
+          .coverage-mode-controls { width: 100%; overflow-x: auto; border-radius: 12px; }
+          .coverage-mode-btn { flex: 1 0 auto; }
+          .coverage-focus-card { grid-template-columns: 1fr; padding: 18px; }
+          .coverage-focus-actions { align-items: flex-start; }
+          .coverage-focus-priority { text-align: left; max-width: none; }
+          .coverage-focus-primary { white-space: normal; }
+        }
         .breakdown-controls {
           display: flex; align-items: center; justify-content: flex-end;
           gap: 10px; flex-wrap: wrap;
         }
-        .profile-testament-tabs {
-          display: inline-flex; gap: 3px; padding: 4px; border-radius: 999px;
-          background: rgba(10,163,163,.11); border: 1px solid rgba(10,163,163,.22);
-          backdrop-filter: blur(10px);
-        }
-        .profile-testament-tab {
-          min-width: 44px; border: 0; border-radius: 999px; padding: 7px 11px;
-          background: transparent; color: rgba(255,255,255,.68);
-          font: inherit; font-size: 12px; font-weight: 850; cursor: pointer;
-        }
-        .profile-testament-tab.is-active {
-          background: #0aa3a3; color: #fff;
-          box-shadow: 0 6px 15px rgba(10,163,163,.24);
-        }
         .breakdown-tabs {
           display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px;
-          background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.12);
-          backdrop-filter: blur(10px);
+          background: rgba(255,255,255,.88); border: 1px solid var(--border);
+          box-shadow: var(--shadow-sm); backdrop-filter: blur(14px);
         }
         .breakdown-tab {
           border: none; border-radius: 999px; padding: 7px 12px;
-          background: transparent; color: rgba(255,255,255,.62);
+          background: transparent; color: var(--muted);
           font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
         }
-        .breakdown-tab.is-active { background: rgba(255,255,255,.92); color: var(--navy); }
+        .breakdown-tab:hover, .breakdown-tab:focus-visible {
+          color: var(--navy); outline: none;
+        }
+        .breakdown-tab.is-active { background: var(--navy); color: #fff; }
         .breakdown-note {
-          margin: -4px 0 14px; color: rgba(255,255,255,.52);
+          margin: -4px 0 14px; color: rgba(255,255,255,.68);
           font-size: 12.5px; line-height: 1.45;
         }
         .sections-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .sections-grid.books { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .sections-grid.domains { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .sections-grid.sections.is-prophets-expanded > .section-card.prophets-parent,
-        .sections-grid.sections.is-prophets-expanded > .section-card.writings {
-          grid-column: 1 / -1;
-        }
         .domain-radar-card {
           position: relative; overflow: hidden;
           background:
-            radial-gradient(circle at 18% 20%, rgba(10,163,163,.14), transparent 32%),
-            radial-gradient(circle at 82% 78%, rgba(212,160,23,.10), transparent 34%),
-            rgba(7,12,28,.38);
-          border: 1px solid rgba(255,255,255,.14);
-          border-radius: 18px; padding: 26px 28px;
-          box-shadow: 0 24px 60px rgba(0,0,0,.34), inset 0 0 0 1px rgba(255,255,255,.06);
-          backdrop-filter: blur(8px);
+            radial-gradient(circle at 18% 20%, rgba(10,163,163,.10), transparent 32%),
+            radial-gradient(circle at 82% 78%, rgba(212,160,23,.08), transparent 34%),
+            var(--card);
+          border: 1px solid var(--border);
+          border-radius: 20px; padding: 26px 28px;
+          box-shadow: var(--shadow-sm);
+          backdrop-filter: blur(16px);
           display: grid; grid-template-columns: minmax(300px, 1fr) minmax(250px, .85fr);
           gap: 28px; align-items: center;
         }
         .domain-radar-card::before {
           content: ""; position: absolute; inset: 0; pointer-events: none;
           background:
-            radial-gradient(circle at 50% 48%, rgba(10,163,163,.18), transparent 32%),
-            radial-gradient(circle at 50% 48%, rgba(255,255,255,.08), transparent 54%);
-          opacity: .55;
+            radial-gradient(circle at 50% 48%, rgba(10,163,163,.10), transparent 32%),
+            radial-gradient(circle at 50% 48%, rgba(255,255,255,.55), transparent 54%);
+          opacity: .75;
         }
         .domain-radar-card::after {
           content: ""; position: absolute; inset: 0; pointer-events: none;
-          background: linear-gradient(115deg, transparent 0 42%, rgba(255,255,255,.09) 50%, transparent 58% 100%);
-          opacity: .34;
+          background: linear-gradient(115deg, transparent 0 42%, rgba(10,163,163,.07) 50%, transparent 58% 100%);
+          opacity: .44;
         }
         .domain-radar-wrap {
           position: relative; z-index: 1; min-height: 390px;
@@ -2599,26 +4495,26 @@ export default function HomePage() {
           overflow: visible;
         }
         .radar-ring {
-          fill: none; stroke: rgba(255,255,255,.08); stroke-width: .9;
+          fill: none; stroke: rgba(27,36,66,.10); stroke-width: .9;
         }
         .radar-axis {
-          stroke: rgba(255,255,255,.09); stroke-width: .8;
+          stroke: rgba(27,36,66,.09); stroke-width: .8;
         }
         .radar-shape {
-          fill: rgba(10,163,163,.08);
-          stroke: rgba(173,232,255,.82); stroke-width: 1.8;
-          filter: drop-shadow(0 0 12px rgba(103,232,249,.42));
+          fill: rgba(10,163,163,.10);
+          stroke: rgba(10,163,163,.78); stroke-width: 1.8;
+          filter: drop-shadow(0 0 10px rgba(10,163,163,.24));
           animation: constellationPulse 4.8s ease-in-out infinite;
         }
         .radar-point {
-          fill: #fff; stroke: rgba(173,232,255,.96); stroke-width: 2.5;
+          fill: #fff; stroke: rgba(10,163,163,.90); stroke-width: 2.5;
           stroke-linejoin: round;
-          filter: drop-shadow(0 0 8px rgba(255,255,255,.85)) drop-shadow(0 0 16px rgba(103,232,249,.75));
+          filter: drop-shadow(0 0 8px rgba(10,163,163,.35));
           animation: constellationStar 3.8s ease-in-out infinite;
         }
         .radar-point-glow {
-          fill: rgba(103,232,249,.18);
-          stroke: rgba(173,232,255,.20);
+          fill: rgba(10,163,163,.12);
+          stroke: rgba(10,163,163,.16);
           stroke-width: 1;
           animation: constellationStar 3.8s ease-in-out infinite;
         }
@@ -2631,11 +4527,11 @@ export default function HomePage() {
           50% { opacity: 1; }
         }
         .radar-label {
-          fill: rgba(255,255,255,.90); font-size: 10.5px; font-weight: 850;
+          fill: rgba(27,36,66,.82); font-size: 10.5px; font-weight: 850;
           letter-spacing: .06em; text-transform: uppercase;
         }
         .radar-score-label {
-          fill: rgba(255,255,255,.82); font-size: 14px; font-weight: 800;
+          fill: var(--navy); font-size: 14px; font-weight: 800;
         }
         .domain-radar-side {
           position: relative; z-index: 1;
@@ -2643,11 +4539,11 @@ export default function HomePage() {
         }
         .domain-radar-title {
           font-family: var(--font-crimson), Georgia, serif;
-          font-size: 26px; line-height: 1.08; color: #fff;
+          font-size: 26px; line-height: 1.08; color: var(--navy);
           font-weight: 650; margin-bottom: 2px;
         }
         .domain-radar-copy {
-          color: rgba(255,255,255,.70); font-size: 13.5px; line-height: 1.55;
+          color: var(--muted); font-size: 13.5px; line-height: 1.55;
           margin-bottom: 8px;
         }
         .domain-radar-list {
@@ -2656,40 +4552,40 @@ export default function HomePage() {
         .domain-radar-row {
           display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px;
           align-items: center; padding: 9px 11px; border-radius: 12px;
-          background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.13);
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+          background: rgba(27,36,66,.045); border: 1px solid rgba(27,36,66,.08);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.34);
           width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer;
           transition: background .15s ease, border-color .15s ease, transform .15s ease;
         }
         .domain-radar-row:hover, .domain-radar-row:focus-visible {
-          background: rgba(255,255,255,.15); border-color: rgba(111,218,221,.45);
+          background: rgba(10,163,163,.08); border-color: var(--accent-line);
           transform: translateX(2px); outline: none;
         }
         .domain-radar-row.is-locked {
-          background: rgba(255,255,255,.06);
+          background: rgba(27,36,66,.035);
           border-style: dashed;
           opacity: .72; cursor: default;
         }
         .domain-radar-name {
-          color: rgba(255,255,255,.92); font-size: 13px; font-weight: 760;
+          color: var(--navy); font-size: 13px; font-weight: 760;
         }
         .domain-radar-meta {
-          color: rgba(255,255,255,.55); font-size: 11.5px; font-weight: 650;
+          color: var(--muted); font-size: 11.5px; font-weight: 650;
         }
         .domain-radar-score {
-          color: #fff; font-family: var(--font-crimson), Georgia, serif;
+          color: var(--navy); font-family: var(--font-crimson), Georgia, serif;
           font-size: 20px; font-weight: 700;
         }
         .domain-radar-score.is-locked {
           font-family: var(--font-inter), system-ui, sans-serif;
           font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
-          color: rgba(255,255,255,.56);
+          color: var(--muted);
         }
         .section-card {
           background: var(--card); border: 1px solid var(--border);
           border-radius: 16px; padding: 20px 22px;
           box-shadow: var(--shadow-sm); backdrop-filter: blur(16px);
-          position: relative; overflow: hidden; opacity: .75;
+          position: relative; overflow: hidden; opacity: .9;
           width: 100%; color: inherit; font: inherit; text-align: left;
           transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
         }
@@ -2697,19 +4593,8 @@ export default function HomePage() {
           transform: translateY(-2px); border-color: rgba(10,163,163,.32);
           box-shadow: 0 13px 30px rgba(0,0,0,.22); outline: none;
         }
-        .section-card.prophet-child {
-          animation: prophetChildIn .24s cubic-bezier(.22,.72,.18,1) both;
-        }
-        .section-card.prophets-parent.is-expanded {
-          border-color: rgba(10,163,163,.34);
-          box-shadow: 0 12px 30px rgba(0,0,0,.20), inset 0 -24px 40px rgba(10,163,163,.04);
-        }
-        @keyframes prophetChildIn {
-          from { opacity: 0; transform: translateY(-8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
         .section-card.has-score { opacity: 1; }
-        .section-card.low-evidence { opacity: .82; }
+        .section-card.low-evidence { opacity: .92; }
         .section-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
         .section-card.ot::before { background: linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed); }
         .section-card.nt::before { background: linear-gradient(90deg,#14b8a6,#2563eb,#7c3aed); }
@@ -2737,18 +4622,10 @@ export default function HomePage() {
         }
         .section-card-main:focus-visible { outline: 2px solid rgba(10,163,163,.58); outline-offset: 6px; border-radius: 8px; }
         .sc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-        .sc-parent-label {
-          display: inline-flex; align-items: center; gap: 6px; margin-bottom: 5px;
-          color: #087979; font-size: 9px; font-weight: 850;
-          letter-spacing: .1em; text-transform: uppercase;
-        }
-        .sc-parent-label::before {
-          content: ""; width: 13px; height: 2px; border-radius: 999px;
-          background: linear-gradient(90deg,#0e8c6a,#2563c4);
-        }
         .sc-name { font-size: 15px; font-weight: 650; color: var(--navy); }
         .sc-books { font-size: 12px; color: var(--muted); margin-top: 2px; }
-        .sc-pct-empty { font-family: var(--font-crimson),Georgia,serif; font-size: 24px; font-weight: 700; color: rgba(27,36,66,.18); line-height: 1; }
+        .sc-pct-empty { font-family: var(--font-crimson),Georgia,serif; font-size: 24px; font-weight: 700; color: rgba(27,36,66,.18); line-height: 1; text-align: right; }
+        .sc-provisional-label { display: block; margin-top: 4px; font-family: var(--font-inter),system-ui,sans-serif; font-size: 8.5px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; color: #92400e; }
         .sc-bar-track { height: 6px; border-radius: 999px; background: rgba(27,36,66,.07); margin-bottom: 12px; }
         .sc-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .sc-chip-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
@@ -2769,48 +4646,29 @@ export default function HomePage() {
           transform: translateX(1px); outline: none;
         }
         .sc-test-link svg { width: 13px; height: 13px; }
-        .sc-expand-icon { transition: transform .18s ease; }
-        .sc-test-link[aria-expanded="true"] .sc-expand-icon { transform: rotate(180deg); }
-        @media (min-width: 641px) {
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophets-parent,
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child {
-            overflow: visible;
-          }
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophets-parent::after {
-            content: ""; position: absolute; z-index: 2; top: 100%; left: 50%;
-            width: 2px; height: 14px; transform: translateX(-1px);
-            background: linear-gradient(180deg,rgba(10,163,163,.72),rgba(37,99,196,.56));
-            pointer-events: none;
-          }
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child {
-            margin-top: 24px;
-          }
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child::after {
-            content: ""; position: absolute; z-index: 2; top: -25px; height: 25px;
-            border-top: 2px solid rgba(10,163,163,.52);
-            pointer-events: none;
-          }
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child.former::after {
-            left: 50%; right: -7px;
-            border-left: 2px solid rgba(14,140,106,.58);
-            border-top-left-radius: 10px;
-          }
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child.latter::after {
-            left: -7px; right: 50%;
-            border-right: 2px solid rgba(37,99,196,.58);
-            border-top-right-radius: 10px;
-          }
-        }
         .scope-drawer-backdrop {
           position: fixed; inset: 0; z-index: 120; display: flex; justify-content: flex-end;
           background: rgba(3,8,20,.58); backdrop-filter: blur(5px);
           animation: scopeBackdropIn .18s ease-out both;
         }
+        /* This drawer is a data readout over the dashboard's starfield, not
+           a settings panel — deliberately translucent dark glass (blurred)
+           rather than the opaque light card every other data surface here
+           uses, so the sky and its stars stay visible behind the numbers
+           they explain. --navy/--muted are redefined locally so every
+           var(--navy)/var(--muted) text color below still resolves
+           correctly against the dark background without editing each rule
+           individually; a handful of spots that hardcode a *background*
+           (not just text) tied to the light-mode meaning of --navy are
+           overridden explicitly further down instead. */
         .scope-drawer {
+          --navy: #fff;
+          --muted: rgba(255,255,255,.62);
           width: min(480px, 100%); height: 100%; overflow-y: auto;
-          background: #f7f9fb; color: var(--navy);
-          border-left: 1px solid rgba(255,255,255,.42);
-          box-shadow: -24px 0 60px rgba(0,0,0,.32);
+          background: rgba(9,14,28,.72); color: #fff;
+          backdrop-filter: blur(20px);
+          border-left: 1px solid rgba(255,255,255,.14);
+          box-shadow: -24px 0 60px rgba(0,0,0,.45);
           animation: scopeDrawerIn .24s cubic-bezier(.22,.72,.18,1) both;
         }
         @keyframes scopeBackdropIn { from { opacity: 0; } to { opacity: 1; } }
@@ -2818,11 +4676,11 @@ export default function HomePage() {
         .scope-drawer-head {
           position: sticky; top: 0; z-index: 2; display: flex;
           justify-content: space-between; align-items: flex-start; gap: 18px;
-          padding: 28px 28px 20px; background: rgba(247,249,251,.94);
-          border-bottom: 1px solid rgba(27,36,66,.10); backdrop-filter: blur(12px);
+          padding: 28px 28px 20px; background: rgba(9,14,28,.55);
+          border-bottom: 1px solid rgba(255,255,255,.12); backdrop-filter: blur(14px);
         }
         .scope-drawer-kicker {
-          margin-bottom: 6px; color: #0a7b7b; font-size: 10px;
+          margin-bottom: 6px; color: #7de5e5; font-size: 10px;
           font-weight: 850; letter-spacing: .12em; text-transform: uppercase;
         }
         .scope-drawer-title {
@@ -2832,13 +4690,48 @@ export default function HomePage() {
         .scope-drawer-sub { margin-top: 5px; color: var(--muted); font-size: 12.5px; }
         .scope-drawer-close {
           flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%;
-          border: 1px solid rgba(27,36,66,.13); background: #fff; color: var(--navy);
+          border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: #fff;
           font: 500 24px/1 system-ui, sans-serif; cursor: pointer;
         }
         .scope-drawer-close:hover, .scope-drawer-close:focus-visible {
-          border-color: var(--accent-line); color: #0a6e6e; outline: none;
+          border-color: rgba(125,229,229,.55); color: #7de5e5; outline: none;
         }
         .scope-drawer-body { padding: 24px 28px 34px; }
+        /* BLI-adjacent drawers/accordion triggers — small icon chips sitting
+           where full-width score support cards used to live in the main scroll. */
+        .score-panel-triggers {
+          display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 28px;
+        }
+        .score-panel-trigger {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 10px 16px; border-radius: 999px;
+          background: rgba(255,255,255,.06); border: 1px solid rgba(212,160,23,.38);
+          color: rgba(255,255,255,.8); font: inherit; font-size: 12.5px; font-weight: 700;
+          cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease;
+        }
+        .score-panel-trigger:hover, .score-panel-trigger:focus-visible {
+          background: rgba(255,255,255,.11); border-color: rgba(212,160,23,.65); color: #fff; outline: none;
+        }
+        .score-panel-trigger.is-active {
+          background: rgba(94,234,212,.16); border-color: rgba(94,234,212,.42); color: #fff;
+          box-shadow: 0 0 0 1px rgba(94,234,212,.12), 0 12px 30px rgba(10,163,163,.12);
+        }
+        .score-panel-trigger-icon { display: inline-flex; color: #5eead4; }
+        .knowledge-profile-panel {
+          margin: -10px 0 30px; padding: 22px;
+          border-radius: 18px; border: 1px solid rgba(255,255,255,.16);
+          background: rgba(255,255,255,.08);
+          box-shadow: 0 22px 58px rgba(0,0,0,.20);
+          backdrop-filter: blur(16px);
+          animation: knowledgeProfileIn .22s cubic-bezier(.22,.72,.18,1) both;
+        }
+        .knowledge-profile-panel .breakdown-head { margin-top: 0; }
+        .knowledge-profile-panel .section-eyebrow { margin-top: 0; }
+        .knowledge-profile-panel .sections-grid { margin-top: 0; }
+        @keyframes knowledgeProfileIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: none; }
+        }
         .scope-state {
           min-height: 280px; display: grid; place-content: center; text-align: center;
           color: var(--muted); font-size: 13px; line-height: 1.55;
@@ -2849,12 +4742,12 @@ export default function HomePage() {
         }
         .scope-evidence {
           display: flex; justify-content: space-between; align-items: center; gap: 16px;
-          padding-bottom: 20px; border-bottom: 1px solid rgba(27,36,66,.10);
+          padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,.14);
         }
         .scope-evidence-label {
           display: inline-flex; padding: 6px 10px; border-radius: 999px;
           background: var(--accent-dim); border: 1px solid var(--accent-line);
-          color: #0a6e6e; font-size: 11px; font-weight: 850;
+          color: #7de5e5; font-size: 11px; font-weight: 850;
         }
         .scope-evidence-copy { margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.45; }
         .scope-evidence-score {
@@ -2868,7 +4761,7 @@ export default function HomePage() {
         }
         .scope-metrics {
           display: grid; grid-template-columns: repeat(3,1fr);
-          padding: 19px 0; border-bottom: 1px solid rgba(27,36,66,.10);
+          padding: 19px 0; border-bottom: 1px solid rgba(255,255,255,.14);
         }
         .scope-metric { padding-right: 12px; }
         .scope-metric strong { display: block; font-size: 17px; }
@@ -2877,7 +4770,7 @@ export default function HomePage() {
           letter-spacing: .08em; text-transform: uppercase;
         }
         .scope-period { padding: 15px 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
-        .scope-breakdown { padding-top: 18px; border-top: 1px solid rgba(27,36,66,.10); }
+        .scope-breakdown { padding-top: 18px; border-top: 1px solid rgba(255,255,255,.14); }
         .scope-breakdown + .scope-breakdown { margin-top: 20px; }
         .scope-breakdown h3 {
           margin-bottom: 9px; font-size: 10px; font-weight: 850;
@@ -2885,7 +4778,7 @@ export default function HomePage() {
         }
         .scope-breakdown-row {
           display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px;
-          padding: 10px 0; border-bottom: 1px solid rgba(27,36,66,.07);
+          padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.09);
         }
         .scope-breakdown-row:last-child { border-bottom: 0; }
         .scope-breakdown-name { font-size: 13px; font-weight: 750; }
@@ -2893,22 +4786,18 @@ export default function HomePage() {
         .scope-breakdown-value { font-size: 13px; font-weight: 800; text-align: right; }
         .scope-focused-action {
           display: flex; justify-content: space-between; align-items: center; gap: 18px;
-          margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(27,36,66,.10);
+          margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.14);
         }
         .scope-focused-action p { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
         .scope-focused-link {
           flex: 0 0 auto; border-radius: 999px; padding: 10px 15px;
-          color: #fff; background: var(--navy); text-decoration: none;
-          font-size: 12px; font-weight: 800; box-shadow: 0 8px 20px rgba(27,36,66,.22);
+          color: #fff; background: #0aa3a3; text-decoration: none;
+          font-size: 12px; font-weight: 800; box-shadow: 0 8px 20px rgba(0,0,0,.3);
         }
         @media (max-width: 640px) {
-          .testament-score-overview { grid-template-columns: 1fr; }
-          .testament-score-item + .testament-score-item {
-            border-left: 0; border-top: 1px solid var(--border);
-          }
           .score-strip { grid-template-columns: 1fr; }
-          .score-block { border-right: none; border-bottom: 1px solid var(--border); }
-          .conf-block { border-left: none; border-top: 1px solid var(--border); align-items: center; text-align: center; }
+          .score-block { border-right: none; border-bottom: 1px solid rgba(255,255,255,.12); }
+          .conf-block { border-left: none; border-top: 1px solid rgba(255,255,255,.12); align-items: center; text-align: center; }
           .progress-card { padding: 22px 16px 18px; }
           .progress-head { flex-direction: column; gap: 14px; }
           .progress-controls { width: 100%; justify-content: space-between; }
@@ -2916,32 +4805,41 @@ export default function HomePage() {
           .progress-detail { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 12px; }
           .progress-detail-primary { grid-column: 1 / -1; }
           .progress-review-link { grid-column: 1 / -1; }
+          .recommendation-engine-head { flex-direction: column; align-items: flex-start; }
+          .recommendation-toggle { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .recommendation-toggle-btn { padding-inline: 8px; }
           .breakdown-head { flex-direction: column; align-items: flex-start; }
           .breakdown-controls { width: 100%; justify-content: flex-start; }
-          .profile-testament-tabs { flex: 0 0 auto; }
           .breakdown-tabs { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
           .breakdown-tab { padding-inline: 8px; }
           .sections-grid,
           .sections-grid.books,
           .sections-grid.domains { grid-template-columns: 1fr; }
-          .sections-grid.sections.is-prophets-expanded > .section-card.prophet-child {
-            width: calc(100% - 18px); margin-left: 18px;
-            border-left: 3px solid rgba(10,163,163,.42);
-          }
           .domain-radar-card { grid-template-columns: 1fr; padding: 22px 18px; }
           .domain-radar-wrap { min-height: 330px; }
           .domain-radar-svg { width: min(100%, 340px); }
           .recommended-card { grid-template-columns: 1fr; }
+          .frontier-card { grid-template-columns: 1fr; }
+          .frontier-context { border-left: 0; border-top: 1px solid var(--border); padding: 14px 0 0; }
           .recommended-side, .recommended-actions { align-items: flex-start; }
           .recommended-priority { max-width: none; }
           .retest-modal { padding: 24px 22px; }
           .retest-modal-actions { align-items: stretch; flex-direction: column-reverse; }
           .retest-modal-primary,
           .retest-modal-secondary { width: 100%; }
-          .save-results-card { grid-template-columns: 1fr; padding: 24px 20px; }
+          .save-results-card { grid-template-columns: 1fr; padding: 16px 18px; }
           .save-results-actions { align-items: stretch; }
           .save-results-btn { width: 100%; }
           .save-results-note { text-align: center; }
+          .first-assessment-card { grid-template-columns: 1fr; padding: 28px 20px; min-height: auto; }
+          .first-assessment-orbit { width: min(100%, 280px); }
+          .first-assessment-content h2 { font-size: 36px; }
+          .first-assessment-primary,
+          .first-assessment-secondary { width: 100%; }
+          .first-assessment-choice-panel { grid-template-columns: 1fr; }
+          .oba-feature-grid { grid-template-columns: 1fr; gap: 12px; }
+          .oba-feature-card { min-height: 0; padding: 18px; }
+          .oba-feature-graphic { height: 76px; }
           .knowledge-cone-card { padding: 24px 18px; }
           .knowledge-cone-head { align-items: flex-start; flex-direction: column; }
           .knowledge-cone-score { align-items: flex-start; }
@@ -2957,12 +4855,6 @@ export default function HomePage() {
           @keyframes coneDescriptionIn { from { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(.96); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
           .cone-marker { right: 50%; transform: translate(50%, -50%); }
           .cone-marker::before { width: 46px; }
-          .start-hero { padding: 36px 24px; }
-          .start-hero.compact { min-height: 144px; padding: 28px 18px; }
-          .assessment-cta-wrap { padding: 28px 18px; }
-          .start-hero.compact.is-charging .assessment-cta-wrap { padding: 0; }
-          .start-hero.compact .start-btn { width: min(100%, 330px); min-width: min(100%, 330px); justify-content: center; padding: 17px 24px; }
-          .assessment-suite { grid-template-columns: 1fr; }
           .dashboard-tabs { grid-template-columns: 1fr; margin-top: -8px; }
           .placeholder-dashboard { grid-template-columns: 1fr; padding: 30px 24px; min-height: 360px; }
           .placeholder-orbit { width: min(210px, 70vw); margin: 0 auto; }
@@ -2985,13 +4877,35 @@ export default function HomePage() {
           .beta-tooltip { left: 12px; right: 12px; width: auto; top: calc(100% + 6px); }
           .nav-right { flex-wrap: wrap; gap: 7px; }
           .nav-btn { padding: 7px 12px; font-size: 12px; }
+          .bli-tooltip,
+          .level-tooltip {
+            position: fixed;
+            left: 16px;
+            right: 16px;
+            top: auto;
+            bottom: 18px;
+            width: auto;
+            max-width: none;
+            transform: none;
+            z-index: 140;
+          }
+          .bli-tooltip::before,
+          .level-tooltip::before {
+            display: none;
+          }
+          .learn-more-menu {
+            position: fixed;
+            left: 16px;
+            right: 16px;
+            top: 86px;
+            width: auto;
+          }
+          .learn-more-menu::before { display: none; }
           .page { padding: 28px 16px 72px; }
         }
         @media (prefers-reduced-motion: reduce) {
           .water-fill, .water-fill::before, .water-fill::after,
           .water-wave, .water-wave::before,
-          .assessment-cta-wrap::before, .assessment-cta-wrap::after,
-          .start-hero.compact .start-btn::before,
           .progress-point,
           .scope-drawer-backdrop, .scope-drawer,
           .placeholder-orbit, .placeholder-orbit::before, .placeholder-orbit::after {
@@ -3010,10 +4924,66 @@ export default function HomePage() {
         }
       `}</style>
       <canvas ref={canvasRef} className="stars" aria-hidden="true" />
+      <StarfieldRewardsLayer userId={dashboardUserId} />
+
+      {deleteOpen && userEmail && (
+        <div
+          onClick={() => { if (!deleteBusy) setDeleteOpen(false); }}
+          style={{position:"fixed",inset:0,zIndex:80,background:"rgba(12,16,28,.55)",backdropFilter:"blur(5px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            onClick={e => e.stopPropagation()}
+            style={{width:"100%",maxWidth:460,background:"#fff",border:"1px solid var(--border)",borderRadius:18,padding:"26px 26px 22px",boxShadow:"0 30px 80px rgba(0,0,0,.28)"}}
+          >
+            <h2 id="delete-account-title" style={{fontFamily:"var(--font-crimson), Georgia, serif",fontSize:23,fontWeight:600,color:"var(--navy)",marginBottom:10}}>
+              Delete your account
+            </h2>
+            <p style={{fontSize:14,lineHeight:1.65,color:"var(--muted)",marginBottom:14}}>
+              This permanently removes your account and every assessment attempt, answer,
+              and score attached to it. It cannot be undone, and nothing is kept in a backup
+              you could ask us to restore from.
+            </p>
+            <label style={{display:"block",fontSize:12.5,fontWeight:700,color:"var(--navy)",marginBottom:7}}>
+              Type <span style={{fontFamily:"ui-monospace, SFMono-Regular, Menlo, monospace"}}>{userEmail}</span> to confirm
+            </label>
+            <input
+              value={deleteConfirm}
+              onChange={e => setDeleteConfirm(e.target.value)}
+              disabled={deleteBusy}
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Type your email address to confirm deletion"
+              style={{width:"100%",padding:"11px 13px",borderRadius:10,border:"1px solid var(--border)",fontSize:14.5,fontFamily:"inherit",color:"var(--navy)",outline:"none",marginBottom:deleteError?10:18}}
+            />
+            {deleteError && (
+              <p role="alert" style={{fontSize:13,lineHeight:1.55,color:"#b4402f",marginBottom:16}}>{deleteError}</p>
+            )}
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+              <button
+                onClick={() => setDeleteOpen(false)}
+                disabled={deleteBusy}
+                style={{padding:"10px 18px",borderRadius:999,border:"1px solid var(--border)",background:"transparent",color:"var(--muted)",fontSize:14,fontWeight:600,fontFamily:"inherit",cursor:deleteBusy?"not-allowed":"pointer"}}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteBusy || deleteConfirm.trim().toLowerCase() !== userEmail.trim().toLowerCase()}
+                style={{padding:"10px 18px",borderRadius:999,border:"none",background:deleteConfirm.trim().toLowerCase() === userEmail.trim().toLowerCase() && !deleteBusy ? "#b4402f" : "rgba(180,64,47,.35)",color:"#fff",fontSize:14,fontWeight:600,fontFamily:"inherit",cursor:deleteBusy||deleteConfirm.trim().toLowerCase()!==userEmail.trim().toLowerCase()?"not-allowed":"pointer"}}
+              >
+                {deleteBusy ? "Deleting…" : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <nav className="nav">
         <span className="brand-wrap">
-          <Link className="nav-brand" href="/">Open Bible Assessment</Link>
+          <BrandLogo className="nav-brand" />
           <span className="beta-badge" tabIndex={0}>
             Beta
             <span className="beta-tooltip" role="tooltip">
@@ -3022,30 +4992,130 @@ export default function HomePage() {
           </span>
         </span>
         <div className="nav-right">
+          <Link className="nav-btn" href="/assess">Assess</Link>
           <Link className="nav-btn" href="/knowledge-map">Knowledge Map</Link>
-          <Link className="nav-btn" href="/bli">How BLI Works</Link>
-          <Link className="nav-btn" href="/about">About</Link>
-          <Link className="nav-btn" href="/credential">Future Ideas</Link>
+          <Link className="nav-btn" href="/reading-log">Reading Log</Link>
+          <div className="learn-more" ref={learnMoreRef}>
+            <button
+              type="button"
+              className="nav-btn learn-more-trigger"
+              onClick={() => {
+                setLearnMoreOpen(open => !open);
+                setAccountMenuOpen(false);
+              }}
+              aria-haspopup="menu"
+              aria-expanded={learnMoreOpen}
+            >
+              Learn More
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {learnMoreOpen && (
+              <div className="learn-more-menu" role="menu" aria-label="Learn more pages">
+                <Link
+                  className="learn-more-item"
+                  role="menuitem"
+                  href="/credential"
+                  onClick={() => setLearnMoreOpen(false)}
+                  style={{ "--planet-color": "#d4a017" } as CSSProperties}
+                >
+                  <span className="learn-more-planet" aria-hidden="true" />
+                  <span className="learn-more-item-copy">
+                    <span className="learn-more-item-title">Future Ideas</span>
+                    <span>Where the project can grow next</span>
+                  </span>
+                </Link>
+                <Link
+                  className="learn-more-item"
+                  role="menuitem"
+                  href="/about"
+                  onClick={() => setLearnMoreOpen(false)}
+                  style={{ "--planet-color": "#0aa3a3" } as CSSProperties}
+                >
+                  <span className="learn-more-planet" aria-hidden="true" />
+                  <span className="learn-more-item-copy">
+                    <span className="learn-more-item-title">About</span>
+                    <span>Purpose, limits, and philosophy</span>
+                  </span>
+                </Link>
+                <Link
+                  className="learn-more-item"
+                  role="menuitem"
+                  href="/bli"
+                  onClick={() => setLearnMoreOpen(false)}
+                  style={{ "--planet-color": "#7c3aed" } as CSSProperties}
+                >
+                  <span className="learn-more-planet" aria-hidden="true" />
+                  <span className="learn-more-item-copy">
+                    <span className="learn-more-item-title">How BLI Works</span>
+                    <span>Scoring model and score bands</span>
+                  </span>
+                </Link>
+              </div>
+            )}
+          </div>
           {userEmail ? (
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:12,color:"var(--muted)",padding:"6px 12px",borderRadius:999,border:"1px solid var(--border)",background:"rgba(255,255,255,.5)"}}>
-                {userEmail}
-              </span>
+            <div ref={accountMenuRef} style={{position:"relative"}}>
               <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  clearAssessmentBrowserStorage();
-                  setUserEmail(null);
-                  setAssessmentData(null);
-                  setTestamentScores(null);
-                  setSectionScores({});
-                  setScopeScores(buildScopeScores([], []));
-                  setBackendRecommendation(null);
+                type="button"
+                onClick={() => {
+                  setAccountMenuOpen(open => !open);
+                  setLearnMoreOpen(false);
                 }}
-                style={{fontSize:12,color:"var(--muted)",padding:"6px 12px",borderRadius:999,border:"1px solid var(--border)",background:"rgba(255,255,255,.5)",cursor:"pointer",fontFamily:"inherit",transition:"color .14s"}}
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                title="Account"
+                style={{display:"inline-flex",alignItems:"center",gap:7,fontSize:12,color:"var(--muted)",padding:"6px 12px",borderRadius:999,border:"1px solid var(--border)",background:accountMenuOpen?"rgba(255,255,255,.72)":"rgba(255,255,255,.5)",cursor:"pointer",fontFamily:"inherit",transition:"background .14s"}}
               >
-                Sign out
+                {userEmail}
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{transform:accountMenuOpen?"rotate(180deg)":"none",transition:"transform .14s"}} aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
               </button>
+              {accountMenuOpen && (
+                <div
+                  role="menu"
+                  style={{position:"absolute",top:"calc(100% + 8px)",right:0,zIndex:40,minWidth:190,padding:6,borderRadius:12,background:"rgba(255,255,255,.98)",border:"1px solid var(--border)",boxShadow:"0 16px 40px rgba(0,0,0,.28)"}}
+                >
+                  <div style={{padding:"7px 10px 8px",fontSize:11,color:"var(--muted)",borderBottom:"1px solid var(--border)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    Signed in as<br/><span style={{color:"var(--navy)",fontWeight:700}}>{userEmail}</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={async () => {
+                      setAccountMenuOpen(false);
+                      await supabase.auth.signOut();
+                      clearAssessmentBrowserStorage();
+                      setUserEmail(null);
+                      setAssessmentData(null);
+                      setTestamentScores(null);
+                      setSectionScores({});
+                      setScopeScores(buildScopeScores([], []));
+                      setBackendRecommendation(null);
+                    }}
+                    style={{display:"flex",width:"100%",alignItems:"center",gap:9,marginTop:4,padding:"9px 10px",borderRadius:8,border:"none",background:"transparent",color:"var(--navy)",fontSize:13,fontWeight:600,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(27,36,66,.06)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign out
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setAccountMenuOpen(false); setDeleteConfirm(""); setDeleteError(null); setDeleteOpen(true); }}
+                    title="Permanently delete your account and assessment history"
+                    style={{display:"flex",width:"100%",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:8,border:"none",background:"transparent",color:"#b4402f",fontSize:13,fontWeight:600,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(180,64,47,.08)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    Delete account
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <button className="nav-btn" onClick={handleSignIn}>Sign in</button>
@@ -3053,62 +5123,263 @@ export default function HomePage() {
         </div>
       </nav>
 
-      <main className="page">
-        <header className="page-header">
-          <div>
-            <h1 className="page-title">Your Learning Dashboard</h1>
-            <p className="page-meta">
-              {activeDashboardTab === "bli" && (testamentScores?.combined_questions_answered
-                ? `${testamentScores.combined_questions_answered} questions answered across OT and NT`
-                : assessmentData ? `${assessmentData.answered} questions answered` : "No assessment taken yet")}
-              {activeDashboardTab === "church-history" && "Church History dashboard coming soon"}
-              {activeDashboardTab === "biblical-languages" && "Biblical Languages dashboard coming soon"}
-            </p>
-          </div>
-        </header>
+      <main className={`page ${isNewAssessmentLanding ? "is-new-assessment-landing" : ""} ${isDashboardLoading ? "is-dashboard-loading" : ""}`}>
+        {!isNewAssessmentLanding && !isDashboardLoading && (
+          <header className="page-header">
+            <div>
+              <div className="page-title-row">
+                <h1 className="page-title">Your Learning Dashboard</h1>
+                <div className="subject-switcher" ref={subjectMenuRef}>
+                  <button
+                    type="button"
+                    className="subject-trigger"
+                    onClick={() => setSubjectMenuOpen(open => !open)}
+                    aria-haspopup="menu"
+                    aria-expanded={subjectMenuOpen}
+                  >
+                    <span
+                      className="subject-trigger-dot"
+                      style={{ background: DASHBOARD_SUBJECTS.find(s => s.id === activeDashboardTab)?.color }}
+                      aria-hidden="true"
+                    />
+                    {DASHBOARD_SUBJECTS.find(s => s.id === activeDashboardTab)?.label}
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                  {subjectMenuOpen && (
+                    <div className="learn-more-menu subject-menu" role="menu" aria-label="Dashboard subject">
+                      {DASHBOARD_SUBJECTS.map(subject => (
+                        <button
+                          type="button"
+                          key={subject.id}
+                          role="menuitemradio"
+                          aria-checked={activeDashboardTab === subject.id}
+                          className={`learn-more-item subject-menu-item ${activeDashboardTab === subject.id ? "is-active" : ""}`}
+                          onClick={() => { setActiveDashboardTab(subject.id); setSubjectMenuOpen(false); }}
+                          style={{ "--planet-color": subject.color } as CSSProperties}
+                        >
+                          <span className="learn-more-planet" aria-hidden="true" />
+                          <span className="learn-more-item-copy">
+                            <span className="learn-more-item-title">{subject.label}</span>
+                            <span>{subject.id === "bli" ? subject.subtitle : "Coming soon"}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <p className="page-meta">
+                {activeDashboardTab === "bli" && (!dashboardHydrated
+                  ? "Loading your dashboard..."
+                  : testamentScores?.combined_questions_answered
+                  ? `${testamentScores.combined_questions_answered} questions answered across OT and NT`
+                  : visibleAssessmentData ? `${visibleAssessmentData.answered} questions answered` : "No assessment taken yet")}
+                {activeDashboardTab === "church-history" && "Church History dashboard coming soon"}
+                {activeDashboardTab === "biblical-languages" && "Biblical Languages dashboard coming soon"}
+              </p>
+            </div>
+            {activeDashboardTab === "bli" && dashboardHydrated && (() => {
+              const isOT = suiteTestament === "OT";
+              const hasData = isOT ? Boolean(visibleAssessmentData) : Boolean(testamentScores?.nt_questions_answered);
+              // The toggle already picked the testament, so both routes go
+              // straight to that assessment — no "which testament?" interstitial.
+              const ctaHref = isOT ? "/assess" : "/assess?testament=NT&scope=NT";
+              return (
+                <div className="header-assess" style={{ "--suite-hue": isOT ? "#d4a017" : "#7c3aed" } as CSSProperties}>
+                  <div className="std-assess-toggle" role="tablist" aria-label="Testament">
+                    <span className="std-assess-toggle-thumb" style={{ transform: isOT ? "translateX(0%)" : "translateX(100%)" }} />
+                    <button
+                      type="button" role="tab" aria-selected={isOT}
+                      className={`std-assess-toggle-btn ${isOT ? "is-active" : ""}`}
+                      onClick={() => setSuiteTestament("OT")}
+                    >
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="3" y="4" width="7" height="16" rx="2"/>
+                        <rect x="14" y="4" width="7" height="16" rx="2"/>
+                      </svg>
+                      Old Testament
+                    </button>
+                    <button
+                      type="button" role="tab" aria-selected={!isOT}
+                      className={`std-assess-toggle-btn ${!isOT ? "is-active" : ""}`}
+                      onClick={() => setSuiteTestament("NT")}
+                    >
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <line x1="12" y1="3" x2="12" y2="21"/>
+                        <line x1="7" y1="9" x2="17" y2="9"/>
+                      </svg>
+                      New Testament
+                    </button>
+                  </div>
+                  <div className="std-assess-actions">
+                    <Link className="std-assess-cta" href={ctaHref}>
+                      {hasData ? "Continue assessment" : "Start assessment"}
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                  </div>
+                </div>
+              );
+            })()}
+          </header>
+        )}
 
-        <div className="dashboard-tabs" role="tablist" aria-label="Dashboard views">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeDashboardTab === "bli"}
-            className={`dashboard-tab ${activeDashboardTab === "bli" ? "is-active" : ""}`}
-            onClick={() => setActiveDashboardTab("bli")}
-          >
-            <strong>BLI</strong>
-            <span>OT, NT, and combined literacy</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeDashboardTab === "church-history"}
-            className={`dashboard-tab ${activeDashboardTab === "church-history" ? "is-active" : ""}`}
-            onClick={() => setActiveDashboardTab("church-history")}
-          >
-            <strong>Church History</strong>
-            <span>Coming soon</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeDashboardTab === "biblical-languages"}
-            className={`dashboard-tab ${activeDashboardTab === "biblical-languages" ? "is-active" : ""}`}
-            onClick={() => setActiveDashboardTab("biblical-languages")}
-          >
-            <strong>Biblical Languages</strong>
-            <span>Coming soon</span>
-          </button>
-        </div>
+        {!hasCompletedAssessment && !isDashboardLoading && (
+          <div className="dashboard-tabs" role="tablist" aria-label="Dashboard views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeDashboardTab === "bli"}
+              className={`dashboard-tab ${activeDashboardTab === "bli" ? "is-active" : ""}`}
+              onClick={() => setActiveDashboardTab("bli")}
+            >
+              <strong>BLI</strong>
+              <span>OT, NT, and combined literacy</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeDashboardTab === "church-history"}
+              className={`dashboard-tab ${activeDashboardTab === "church-history" ? "is-active" : ""}`}
+              onClick={() => setActiveDashboardTab("church-history")}
+            >
+              <strong>Church History</strong>
+              <span>Coming soon</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeDashboardTab === "biblical-languages"}
+              className={`dashboard-tab ${activeDashboardTab === "biblical-languages" ? "is-active" : ""}`}
+              onClick={() => setActiveDashboardTab("biblical-languages")}
+            >
+              <strong>Biblical Languages</strong>
+              <span>Coming soon</span>
+            </button>
+          </div>
+        )}
 
         {activeDashboardTab === "bli" ? (
+          !dashboardHydrated ? (
+            <section className="dashboard-loading-card" aria-label="Loading dashboard" aria-live="polite">
+              <div className="dashboard-loading-orbit" aria-hidden="true" />
+              <span className="dashboard-loading-sr">Loading your dashboard</span>
+            </section>
+          ) : !hasCompletedAssessment ? (
+            <>
+              <section className="first-assessment-card" aria-label="Start your first assessment">
+                <div className="first-assessment-orbit" aria-hidden="true">
+                  <span className="first-assessment-sun" />
+                  <span className="first-assessment-planet" />
+                  <span className="first-assessment-moon" />
+                </div>
+                <div className="first-assessment-content">
+                  <p className="first-assessment-kicker">Start here</p>
+                  <h2>Take your first Bible assessment</h2>
+                  <p>
+                    Answer a short adaptive set of questions. OBA will estimate your BLI, map likely strengths and gaps, and recommend one next place to study.
+                  </p>
+                  <div className="first-assessment-actions">
+                    {inProgressTestament ? (
+                      <Link
+                        className="first-assessment-primary"
+                        href={inProgressTestament === "OT" ? "/assess" : "/assess?testament=NT&scope=NT"}
+                      >
+                        Continue assessment
+                        <span aria-hidden="true">→</span>
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="first-assessment-primary"
+                        aria-expanded={firstAssessmentChooserOpen}
+                        aria-controls="first-assessment-choice-panel"
+                        onClick={() => setFirstAssessmentChooserOpen(open => !open)}
+                      >
+                        Take assessment
+                        <span aria-hidden="true">→</span>
+                      </button>
+                    )}
+                    <Link className="first-assessment-secondary" href="/bli">
+                      Learn more
+                    </Link>
+                  </div>
+                  {!inProgressTestament && firstAssessmentChooserOpen && (
+                    <div
+                      id="first-assessment-choice-panel"
+                      className="first-assessment-choice-panel"
+                      aria-label="Choose assessment testament"
+                    >
+                      <Link className="first-assessment-choice" href="/assess">
+                        <strong>Old Testament</strong>
+                        <span>Genesis through Malachi, scored as its own 0-800 BLI.</span>
+                      </Link>
+                      <Link className="first-assessment-choice" href="/assess?testament=NT&scope=NT">
+                        <strong>New Testament</strong>
+                        <span>Matthew through Revelation, scored separately from OT.</span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="oba-feature-grid" aria-label="Open Bible Assessment features">
+                <article className="oba-feature-card" style={{ "--feature-hue": "#0aa3a3" } as CSSProperties}>
+                  <div className="oba-feature-graphic is-signal" aria-hidden="true">
+                    <span className="signal-node" />
+                    <span className="signal-node" />
+                    <span className="signal-node" />
+                    <span className="signal-line" />
+                    <span className="signal-line" />
+                  </div>
+                  <p className="oba-feature-kicker">Adaptive</p>
+                  <h3 className="oba-feature-title">Follows where you&rsquo;re unsure</h3>
+                  <p className="oba-feature-copy">
+                    OBA weights central passages more heavily and spends extra questions on your least-tested sections, so your score reflects real familiarity — not just how many questions you answered.
+                  </p>
+                </article>
+
+                <article className="oba-feature-card" style={{ "--feature-hue": "#d4a017" } as CSSProperties}>
+                  <div className="oba-feature-graphic is-map" aria-hidden="true">
+                    <span className="map-orbit" />
+                    <span className="map-star" />
+                    <span className="map-planet" />
+                  </div>
+                  <p className="oba-feature-kicker">Visual</p>
+                  <h3 className="oba-feature-title">See the Bible as a map</h3>
+                  <p className="oba-feature-copy">
+                    See which parts of the Bible you have started to cover, which areas are still untested, and how the sections fit together.
+                  </p>
+                </article>
+
+                <article className="oba-feature-card" style={{ "--feature-hue": "#7c3aed" } as CSSProperties}>
+                  <div className="oba-feature-graphic is-path" aria-hidden="true">
+                    <span className="path-line" />
+                    <span className="path-step" />
+                    <span className="path-step" />
+                    <span className="path-step" />
+                  </div>
+                  <p className="oba-feature-kicker">Practical</p>
+                  <h3 className="oba-feature-title">Study what helps next</h3>
+                  <p className="oba-feature-copy">
+                    After an assessment, OBA gives you a focused place to reread or review instead of a vague study plan.
+                  </p>
+                </article>
+              </section>
+            </>
+          ) : (
           <>
-        {isAnonymousDashboard && assessmentData && (
+        {!userEmail && visibleAssessmentData && (
           <section className="save-results-card" aria-label="Save assessment results">
+            <div className="save-results-graphic" aria-hidden="true">
+              <span className="save-results-check" />
+            </div>
             <div className="save-results-content">
-              <span className="save-results-kicker">Browser-only results</span>
-              <h2 className="save-results-title">Save your results by creating an account.</h2>
+              <span className="save-results-kicker">Keep this result</span>
+              <h2 className="save-results-title">Save your progress across devices.</h2>
               <p className="save-results-copy">
-                Your BLI is available in this browser session. Create a free account to keep your score, preserve your answer history, and continue refining your dashboard across devices.
+                You just created a BLI snapshot in this browser. Sign in to keep it, sync it across devices, and return to your recommendation later.
               </p>
             </div>
             <div className="save-results-actions">
@@ -3116,530 +5387,809 @@ export default function HomePage() {
                 Save results
                 <span aria-hidden="true">→</span>
               </button>
-              <span className="save-results-note">After you sign in, this message will disappear.</span>
+              <span className="save-results-note">Your existing answers transfer after sign-in.</span>
             </div>
           </section>
         )}
 
-        <section className="assessment-suite" aria-label="Assessment dashboards">
-          <div className="assessment-suite-card is-ot">
-            <div className="assessment-suite-top">
-              <h2 className="assessment-suite-title">Old Testament</h2>
-              <span className="assessment-suite-badge is-verified">Credential</span>
-            </div>
-            <p className="assessment-suite-copy">Full adaptive assessment across the Old Testament. This is the verified BLI track.</p>
-            <div className="assessment-suite-stats">
-              <span>{assessmentData ? `${assessmentData.answered} answered` : "Not yet assessed"}</span>
-              <span>{assessmentData ? `BLI ${currentDisplayScore}` : "Credential track"}</span>
-            </div>
-            <div className="assessment-suite-actions">
-              <Link className="assessment-suite-link" href="/assess?choose=1">
-                {assessmentData ? "Continue OT assessment" : "Start OT assessment"} →
-              </Link>
-              <button
-                type="button"
-                className="scope-text-btn"
-                onClick={() => void openScopeDetail({
-                  scopeType: "TESTAMENT",
-                  scopeKey: "OT",
-                  label: "Old Testament",
-                  subtitle: "Genesis - Malachi",
-                })}
-              >
-                View details
-              </button>
-            </div>
-          </div>
-          <div className="assessment-suite-card is-nt">
-            <div className="assessment-suite-top">
-              <h2 className="assessment-suite-title">New Testament</h2>
-              <span className="assessment-suite-badge">NT BLI</span>
-            </div>
-            <p className="assessment-suite-copy">Adaptive assessment across all 27 New Testament books. Results build a separate NT BLI.</p>
-            <div className="assessment-suite-stats">
-              <span>{testamentScores?.nt_questions_answered
-                ? `${testamentScores.nt_questions_answered} answered`
-                : ntPilotSummary ? `${ntPilotSummary.answered} answered` : "Not yet assessed"}</span>
-              <span>{testamentScores?.nt_questions_answered
-                ? `NT BLI ${testamentScores.nt_display_bli}`
-                : "Separate 0-800 score"}</span>
-            </div>
-            <div className="assessment-suite-actions">
-              <Link className="assessment-suite-link" href="/assess?testament=NT&scope=NT">
-                {testamentScores?.nt_questions_answered ? "Continue NT assessment" : "Start NT assessment"} →
-              </Link>
-              <button
-                type="button"
-                className="scope-text-btn"
-                onClick={() => void openScopeDetail({
-                  scopeType: "TESTAMENT",
-                  scopeKey: "NT",
-                  label: "New Testament",
-                  subtitle: "Matthew - Revelation",
-                })}
-              >
-                View details
-              </button>
-            </div>
-          </div>
-        </section>
 
-        <section className="testament-score-overview" aria-label="Bible Literacy Index scores">
-          <div className="testament-score-item is-ot">
-            <span className="testament-score-name">OT BLI</span>
-            <span className="testament-score-range">
-              {testamentScores?.ot_questions_answered ? `${testamentScores.ot_bli_level} · 0-800` : "Complete the OT assessment · 0-800"}
-            </span>
-            <span className={`testament-score-value ${testamentScores?.ot_questions_answered ? "" : "is-empty"}`}>
-              {testamentScores?.ot_questions_answered ? testamentScores.ot_display_bli : "—"}
-            </span>
-          </div>
-          <div className="testament-score-item is-nt">
-            <span className="testament-score-name">NT BLI</span>
-            <span className="testament-score-range">
-              {testamentScores?.nt_questions_answered ? `${testamentScores.nt_bli_level} · 0-800` : "Complete the NT assessment · 0-800"}
-            </span>
-            <span className={`testament-score-value ${testamentScores?.nt_questions_answered ? "" : "is-empty"}`}>
-              {testamentScores?.nt_questions_answered ? testamentScores.nt_display_bli : "—"}
-            </span>
-          </div>
-          <div className="testament-score-item is-combined">
-            <span className="testament-score-name">Combined</span>
-            <span className="testament-score-range">
-              {testamentScores?.combined_available ? "Pooled OT + NT · 0-800" : "Available after both assessments · 0-800"}
-            </span>
-            <span className={`testament-score-value ${testamentScores?.combined_available ? "" : "is-empty"}`}>
-              {testamentScores?.combined_available ? testamentScores.combined_display_bli : "—"}
-            </span>
-          </div>
-        </section>
+        {(() => {
+          // The three tabs share one description-band system (lib/bli.ts),
+          // whose wording is written for the OT by default; swap in the
+          // right noun for NT / Combined rather than forking the copy.
+          const testamentize = (description: string, noun: string) =>
+            description.replace(/the Old Testament/g, noun);
 
-        <div className="score-strip">
-          <div className="score-block">
-            {assessmentData ? (
-              <>
-                <span className="score-number" style={{color:"#1b2442"}}>
-                  {currentDisplayScore}
-                </span>
-                <span
-                  className="score-label score-label-row"
-                  onMouseEnter={openBliTooltip}
-                  onMouseLeave={closeBliTooltipSoon}
-                >
-                  OT BLI
-                  <button
-                    type="button"
-                    className="bli-info-btn"
-                    aria-label="About the Bible Literacy Index"
-                    aria-expanded={showBliTooltip}
-                    onFocus={openBliTooltip}
-                    onBlur={closeBliTooltipSoon}
-                    onClick={() => setShowBliTooltip(v => !v)}
+          const todaysVerse = verseOfTheDay();
+
+          const otHasData = Boolean(visibleAssessmentData);
+          const ntHasData = Boolean(testamentScores?.nt_questions_answered);
+          const combinedHasData = Boolean(testamentScores?.combined_available);
+
+          const ntLevel: BliLevel = ntHasData && testamentScores ? testamentScores.nt_bli_level : "Unfamiliar";
+          const ntBand = BLI_LEVELS.find((b) => b.name === ntLevel) ?? BLI_LEVELS[0];
+          const combinedScore = testamentScores?.combined_display_bli ?? null;
+          const combinedLevel: BliLevel = combinedHasData && combinedScore !== null ? levelForScore(combinedScore) : "Unfamiliar";
+          const combinedBand = BLI_LEVELS.find((b) => b.name === combinedLevel) ?? BLI_LEVELS[0];
+
+          const tabs = {
+            OT: {
+              name: "OT BLI", accent: "#d4a017", hasData: otHasData,
+              score: currentDisplayScore, level: currentDisplayLevel,
+              description: currentDisplayBand.description,
+              emptyDescription: <>Take your first assessment to place your score and get a next step.</>,
+              evidence: bliEvidence,
+              tooltip: "Your OT Bible Literacy Index measures Old Testament knowledge across four sections. The NT BLI is scored separately, and the combined score adds both 0-800 indexes for a total up to 1600.",
+              range: otHasData ? `${currentDisplayLevel} · 0-800` : "Complete the OT assessment · 0-800",
+            },
+            NT: {
+              name: "NT BLI", accent: "#7c3aed", hasData: ntHasData,
+              score: testamentScores?.nt_display_bli ?? 0, level: ntLevel,
+              description: testamentize(ntBand.description, "the New Testament"),
+              emptyDescription: <>Take the New Testament assessment to find out where you stand. It builds its own <strong>separate 0-800 score</strong>, distinct from the OT BLI.</>,
+              evidence: ntBliEvidence,
+              tooltip: "Your NT Bible Literacy Index measures New Testament knowledge across the Gospels, Acts, the Epistles, and Revelation. It is scored separately from the OT BLI.",
+              range: ntHasData ? `${ntLevel} · 0-800` : "Complete the NT assessment · 0-800",
+            },
+            COMBINED: {
+              name: "Combined BLI", accent: "#0aa3a3", hasData: combinedHasData,
+              score: combinedScore ?? 0, level: combinedLevel,
+              description: testamentize(combinedBand.description, "the whole Bible"),
+              emptyDescription: <>Complete both the OT and NT assessments to unlock a single, <strong>pooled picture</strong> of your whole-Bible literacy.</>,
+              evidence: combinedBliEvidence,
+              tooltip: "Your combined score pools evidence from both testaments into one 0-800 picture of whole-Bible literacy, available once both assessments have some evidence.",
+              range: combinedHasData ? "Pooled OT + NT · 0-800" : "Available after both assessments · 0-800",
+            },
+          } as const;
+          // The header's OT/NT toggle now drives this panel directly — no
+          // separate OT/NT/Combined tab row. Combined isn't a testament you
+          // can "switch to" (there's no combined assessment to continue), so
+          // it surfaces as a small standing note instead — see combinedNote
+          // below — rather than a third toggle position.
+          const active = tabs[suiteTestament];
+
+          return (
+            <>
+              {combinedHasData && (
+                <p className="combined-note">
+                  <span className="combined-note-dot" aria-hidden="true" />
+                  Combined BLI <strong>{combinedScore}</strong> · pooled across both testaments
+                </p>
+              )}
+
+              <div className="score-strip" style={{ "--score-accent": active.accent } as CSSProperties}>
+                <div className={`score-block ${active.hasData ? "has-score" : ""}`} key={`score-${suiteTestament}`}>
+                  <span className="score-number">
+                    {active.hasData ? active.score : "?"}
+                  </span>
+                  {/* The level name now doubles as the score's caption — no
+                      more separate "OT BLI" label. The small ⓘ next to it
+                      still explains what the index itself measures. */}
+                  <div
+                    className="level-label-row"
+                    onMouseEnter={cancelLevelTooltipClose}
+                    onMouseLeave={closeLevelTooltipSoon}
                   >
-                    ⓘ
-                  </button>
-                  <Link
-                    className={`bli-tooltip ${showBliTooltip ? "is-open" : ""}`}
-                    role="tooltip"
-                    href="/about"
-                    onMouseEnter={openBliTooltip}
-                    onMouseLeave={closeBliTooltipSoon}
-                    onFocus={openBliTooltip}
-                    onBlur={closeBliTooltipSoon}
-                  >
-                    Your OT Bible Literacy Index measures Old Testament knowledge across four sections. The NT BLI is scored separately, and the combined score adds both 0-800 indexes for a total up to 1600.
-                    <span>Learn more →</span>
-                  </Link>
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="score-number">?</span>
-                <span
-                  className="score-label score-label-row"
-                  onMouseEnter={openBliTooltip}
-                  onMouseLeave={closeBliTooltipSoon}
-                >
-                  OT BLI
-                  <button
-                    type="button"
-                    className="bli-info-btn"
-                    aria-label="About the Bible Literacy Index"
-                    aria-expanded={showBliTooltip}
-                    onFocus={openBliTooltip}
-                    onBlur={closeBliTooltipSoon}
-                    onClick={() => setShowBliTooltip(v => !v)}
-                  >
-                    ⓘ
-                  </button>
-                  <Link
-                    className={`bli-tooltip ${showBliTooltip ? "is-open" : ""}`}
-                    role="tooltip"
-                    href="/about"
-                    onMouseEnter={openBliTooltip}
-                    onMouseLeave={closeBliTooltipSoon}
-                    onFocus={openBliTooltip}
-                    onBlur={closeBliTooltipSoon}
-                  >
-                    Your OT Bible Literacy Index measures Old Testament knowledge across four sections. The NT BLI is scored separately, and the combined score adds both 0-800 indexes for a total up to 1600.
-                    <span>Learn more →</span>
-                  </Link>
-                </span>
-              </>
-            )}
-          </div>
-          <div className="level-block">
-            {assessmentData ? (
-              <>
-                <div className="level-badge-empty" style={{background:"var(--accent-dim)",borderColor:"var(--accent-line)",color:"#0a6e6e"}}>
-                  {currentDisplayLevel}
+                    {active.hasData && (
+                      <>
+                        <button
+                          type="button"
+                          className="level-badge-empty level-badge-btn"
+                          aria-expanded={showLevelTooltip}
+                          aria-label={`What does ${active.level} mean?`}
+                          onClick={() => setShowLevelTooltip((v) => !v)}
+                          onFocus={cancelLevelTooltipClose}
+                          onBlur={closeLevelTooltipSoon}
+                        >
+                          {active.level}
+                        </button>
+                        <Link
+                          className={`level-tooltip ${showLevelTooltip ? "is-open" : ""}`}
+                          role="tooltip"
+                          href="/bli#score-bands"
+                          onClick={() => setShowLevelTooltip(false)}
+                          onFocus={cancelLevelTooltipClose}
+                          onBlur={closeLevelTooltipSoon}
+                        >
+                          {active.description}
+                          <span>Learn more →</span>
+                        </Link>
+                      </>
+                    )}
+                    <span
+                      className="score-label-row"
+                      onMouseEnter={openBliTooltip}
+                      onMouseLeave={closeBliTooltipSoon}
+                    >
+                      <button
+                        type="button"
+                        className="bli-info-btn"
+                        aria-label={`About the ${active.name}`}
+                        aria-expanded={showBliTooltip}
+                        onFocus={openBliTooltip}
+                        onBlur={closeBliTooltipSoon}
+                        onClick={() => setShowBliTooltip((v) => !v)}
+                      >
+                        ⓘ
+                      </button>
+                      <Link
+                        className={`bli-tooltip ${showBliTooltip ? "is-open" : ""}`}
+                        role="tooltip"
+                        href="/about"
+                        onMouseEnter={openBliTooltip}
+                        onMouseLeave={closeBliTooltipSoon}
+                        onFocus={openBliTooltip}
+                        onBlur={closeBliTooltipSoon}
+                      >
+                        {active.tooltip}
+                        <span>Learn more →</span>
+                      </Link>
+                    </span>
+                  </div>
                 </div>
-                <p className="level-desc-empty">
-                  {currentDisplayBand.description}
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="level-badge-empty">Not yet assessed</div>
-                <p className="level-desc-empty">
-                  Take your first assessment to find out where you stand. The engine will build a picture of your knowledge across the Old Testament — <strong>starting with the events that matter most.</strong>
-                </p>
-              </>
-            )}
-          </div>
-          <div className="conf-block">
-            <span className="conf-empty-label">
-              Score evidence
-              <button
-                className="evidence-info-btn"
-                type="button"
-                aria-label="About score evidence"
-                aria-expanded={showEvidenceTooltip}
-                onMouseEnter={() => setShowEvidenceTooltip(true)}
-                onMouseLeave={() => setShowEvidenceTooltip(false)}
-                onFocus={() => setShowEvidenceTooltip(true)}
-                onBlur={() => setShowEvidenceTooltip(false)}
-                onClick={() => setShowEvidenceTooltip(value => !value)}
-              >
-                i
-              </button>
+                {/* Once there's a score, the level moved under the score
+                    number above, so this middle column used to just be
+                    breathing room — now it holds the verse of the day
+                    instead. Before an assessment exists, it still carries
+                    the explanatory copy telling you what to do next. */}
+                <div className="level-block" key={`level-${suiteTestament}`}>
+                  {!active.hasData ? (
+                    <>
+                      <div className="level-badge-empty">Not yet assessed</div>
+                      <p className="level-desc-empty">
+                        {active.emptyDescription}
+                      </p>
+                    </>
+                  ) : !userEmail && visibleAssessmentData ? (
+                    // A brand-new, signed-out result in this browser only — the
+                    // verse of the day can wait; the one thing worth this slot
+                    // right now is not losing the score just taken.
+                    <div className="save-progress-mini">
+                      <p className="save-progress-mini-text">Save your progress</p>
+                      <button type="button" className="save-progress-mini-btn" onClick={handleSignIn}>
+                        Save results
+                      </button>
+                    </div>
+                  ) : (
+                    <figure className="verse-of-day">
+                      <p className="verse-of-day-kicker">Verse of the Day</p>
+                      <blockquote className="verse-of-day-text">{todaysVerse.text}</blockquote>
+                      <figcaption className="verse-of-day-ref">{todaysVerse.reference}</figcaption>
+                    </figure>
+                  )}
+                </div>
+                <div className="conf-block" key={`conf-${suiteTestament}`}>
+                  <span className="conf-empty-label">
+                    Score evidence
+                    <button
+                      className="evidence-info-btn"
+                      type="button"
+                      aria-label="About score evidence"
+                      aria-expanded={showEvidenceTooltip}
+                      onMouseEnter={() => setShowEvidenceTooltip(true)}
+                      onMouseLeave={() => setShowEvidenceTooltip(false)}
+                      onFocus={() => setShowEvidenceTooltip(true)}
+                      onBlur={() => setShowEvidenceTooltip(false)}
+                      onClick={() => setShowEvidenceTooltip((value) => !value)}
+                    >
+                      i
+                    </button>
+                  </span>
+                  <span className="conf-note">
+                    {active.evidence ? (
+                      <>
+                        <span className="conf-level">{active.evidence.evidence_level}</span>
+                        <span>{active.evidence.n_responses} responses</span>
+                      </>
+                    ) : "Answer questions to establish evidence"}
+                  </span>
+                  <span className={`evidence-tooltip ${showEvidenceTooltip ? "is-open" : ""}`} role="tooltip">
+                    {active.evidence?.evidence_description || "Score evidence reflects the amount and consistency of psychometric evidence supporting your current estimate."}
+                  </span>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+
+        <div className="score-panel-triggers">
+          <button
+            type="button"
+            className={`score-panel-trigger ${knowledgeProfileOpen ? "is-active" : ""}`}
+            aria-expanded={knowledgeProfileOpen}
+            aria-controls="knowledge-profile-panel"
+            onClick={() => setKnowledgeProfileOpen(open => !open)}
+          >
+            <span className="score-panel-trigger-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"/>
+                <path d="M8 7h8"/>
+                <path d="M8 11h6"/>
+              </svg>
             </span>
-            <span className="conf-note">
-              {bliEvidence ? (
-                <>
-                  <span className="conf-level">{bliEvidence.evidence_level}</span>
-                  <span>{bliEvidence.n_responses} responses</span>
-                </>
-              ) : "Answer questions to establish evidence"}
+            Knowledge profile
+          </button>
+          <button
+            type="button"
+            className={`score-panel-trigger ${progressPanelOpen ? "is-active" : ""}`}
+            aria-expanded={progressPanelOpen}
+            aria-controls="progress-over-time-panel"
+            onClick={() => setProgressPanelOpen(open => !open)}
+          >
+            <span className="score-panel-trigger-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 3v18h18"/>
+                <path d="M7 14l4-4 3 3 5-6"/>
+              </svg>
             </span>
-            <span className={`evidence-tooltip ${showEvidenceTooltip ? "is-open" : ""}`} role="tooltip">
-              {bliEvidence?.evidence_description || "Score evidence reflects the amount and consistency of psychometric evidence supporting your current estimate."}
+            Knowledge over time
+          </button>
+          <button
+            type="button"
+            className={`score-panel-trigger ${conePanelOpen ? "is-active" : ""}`}
+            aria-expanded={conePanelOpen}
+            aria-controls="knowledge-cone-panel"
+            onClick={() => setConePanelOpen(open => !open)}
+          >
+            <span className="score-panel-trigger-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3l9 18H3z"/>
+                <path d="M9.5 9h5"/>
+                <path d="M8 15h8"/>
+              </svg>
             </span>
-          </div>
+            Knowledge cone
+          </button>
         </div>
 
-        <section className="progress-card" aria-labelledby="progress-title">
-          <div className="progress-head">
-            <div>
-              <p className="progress-eyebrow">Assessment snapshots</p>
-              <h2 className="progress-title" id="progress-title">Progress over time</h2>
-              <p className="progress-sub">
-                A record of completed assessments, shown on the full 0-800 BLI scale.
-              </p>
-            </div>
-            <div className="progress-controls">
-              <div className="progress-tabs" role="tablist" aria-label="Progress testament">
-                {(["OT", "NT"] as const).map(testament => (
-                  <button
-                    key={testament}
-                    type="button"
-                    role="tab"
-                    aria-selected={progressTestament === testament}
-                    className={`progress-tab ${progressTestament === testament ? "is-active" : ""}`}
-                    onClick={() => setProgressTestament(testament)}
-                  >
-                    {testament}
-                  </button>
-                ))}
-              </div>
-              <div className="progress-latest">
-                {progressHistory[0]?.display_bli ?? "--"}
-                <span>Latest {progressTestament} BLI</span>
-              </div>
-            </div>
-          </div>
-
-          {progressLoading ? (
-            <div className="progress-empty" role="status">
-              <strong>Plotting your progress...</strong>
-              <span>Loading completed assessment snapshots.</span>
-            </div>
-          ) : progressError ? (
-            <div className="progress-empty progress-error" role="status">
-              <strong>Progress is temporarily unavailable</strong>
-              <span>{progressError}</span>
-            </div>
-          ) : plottedProgress.length === 0 ? (
-            <div className="progress-empty">
-              <strong>No {progressTestament} snapshots yet</strong>
-              <span>
-                Complete an {progressTestament} assessment to begin a durable progress record.
-              </span>
-            </div>
-          ) : (
-            <>
-              <div className="progress-chart-shell">
-                <div className="progress-axis" aria-hidden="true">
-                  {progressAxisLabels.map((v, i) => <span key={i}>{v}</span>)}
+        {knowledgeProfileOpen && (
+          <section id="knowledge-profile-panel" className="knowledge-profile-panel" aria-labelledby="knowledge-profile-title">
+            <div className="breakdown-head">
+              <p className="section-eyebrow" id="knowledge-profile-title">Knowledge profile</p>
+              <div className="breakdown-controls">
+                <div className="breakdown-tabs" role="tablist" aria-label="Knowledge profile breakdown">
+                  {[
+                    { key: "sections", label: "Sections" },
+                    { key: "books", label: "Books" },
+                    { key: "domains", label: "Skills" },
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeBreakdownTab === tab.key}
+                      className={`breakdown-tab ${activeBreakdownTab === tab.key ? "is-active" : ""}`}
+                      onClick={() => setActiveBreakdownTab(tab.key as BreakdownTab)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
-                <div className="progress-chart-scroll">
-                  <div className="progress-chart">
-                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                      <defs>
-                        <linearGradient id="progressArea" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="rgba(111,218,221,.34)" />
-                          <stop offset="55%" stopColor="rgba(111,218,221,.10)" />
-                          <stop offset="100%" stopColor="rgba(111,218,221,0)" />
-                        </linearGradient>
-                        <linearGradient id="progressStroke" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#3ba8ab" />
-                          <stop offset="62%" stopColor="#6fdadd" />
-                          <stop offset="88%" stopColor="#b8ecd9" />
-                          <stop offset="100%" stopColor="#f5c842" />
-                        </linearGradient>
-                      </defs>
-                      <line className="progress-guide" x1="0" y1="8" x2="100" y2="8" />
-                      <line className="progress-guide" x1="0" y1="50" x2="100" y2="50" />
-                      <line className="progress-guide" x1="0" y1="92" x2="100" y2="92" />
-                      {progressAreaPath && <path className="progress-area" d={progressAreaPath} />}
-                      {progressPath && <path className="progress-line-glow" d={progressPath} />}
-                      {progressPath && <path className="progress-line" d={progressPath} />}
-                      {progressPath && <path className="progress-line-flow" d={progressPath} pathLength={100} />}
-                    </svg>
-                    {plottedProgress.map(({point, x, y}, pointIndex) => {
-                      const pointDate = formatProgressDate(point.captured_at);
-                      const isLatest = pointIndex === plottedProgress.length - 1;
-                      return (
-                        <button
-                          key={`${point.attempt_id}:${point.captured_at}`}
-                          type="button"
-                          className={`progress-point ${isLatest ? "is-latest" : ""} ${activeProgressPoint?.attempt_id === point.attempt_id ? "is-active" : ""}`}
-                          style={{left: `${x}%`, top: `${y}%`}}
-                          aria-label={`${pointDate}: BLI ${point.display_bli}, ${point.bli_level}, ${point.questions_answered} questions answered`}
-                          onMouseEnter={() => setActiveProgressAttemptId(point.attempt_id)}
-                          onFocus={() => setActiveProgressAttemptId(point.attempt_id)}
-                          onClick={() => setActiveProgressAttemptId(point.attempt_id)}
-                        />
-                      );
-                    })}
-                    <div className="progress-xaxis" aria-hidden="true">
-                      {progressXAxisLabels.map((lbl, i) => (
-                        <span key={i} style={{ left: `${lbl.x}%` }}>{lbl.text}</span>
-                      ))}
+              </div>
+            </div>
+            <p className="breakdown-note">
+              {activeBreakdownTab === "sections" && `Major ${profileTestament} sections.`}
+              {activeBreakdownTab === "books" && `${profileTestament} scores by book.`}
+              {activeBreakdownTab === "domains" && `Skill areas tested across your ${profileTestament} answers.`}
+            </p>
+            <div className={`sections-grid ${activeBreakdownTab}`}>
+              {visibleBreakdownScores.map(s => {
+                const hasScore = s.rawScore !== null && s.answered > 0;
+                const scoreEvidence = sectionEvidence(s.answered);
+                const assessmentHref = assessmentHrefForScore(s);
+                const fillColor = s.className === "torah" ? "linear-gradient(90deg,#d4a017,#f5c842)"
+                  : s.className === "former" ? "linear-gradient(90deg,#0e8c6a,#34d399)"
+                  : s.className === "latter" ? "linear-gradient(90deg,#2563c4,#60a5fa)"
+                  : s.className === "writings" ? "linear-gradient(90deg,#7c3aed,#a78bfa)"
+                  : s.className === "prophets" ? "linear-gradient(90deg,#0e8c6a,#2563c4)"
+                  : s.className === "ot" ? "linear-gradient(90deg,#0aa3a3,#d4a017,#2563c4,#7c3aed)"
+                  : s.className === "nt" ? "linear-gradient(90deg,#14b8a6,#2563eb,#7c3aed)"
+                  : s.className === "gospels" ? "linear-gradient(90deg,#0d9488,#2dd4bf)"
+                  : s.className === "acts" ? "linear-gradient(90deg,#0284c7,#38bdf8)"
+                  : s.className === "pauline" ? "linear-gradient(90deg,#4f46e5,#818cf8)"
+                  : s.className === "general" ? "linear-gradient(90deg,#7c3aed,#c084fc)"
+                  : s.className === "revelation" ? "linear-gradient(90deg,#be123c,#fb7185)"
+                  : "linear-gradient(90deg,#0aa3a3,#67e8f9)";
+                return (
+                  <article
+                    key={s.key}
+                    className={`section-card ${s.className} ${hasScore ? "has-score" : ""} ${scoreEvidence.isProvisional ? "low-evidence" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="section-card-main"
+                      onClick={() => void openScopeDetail(detailTargetForScore(s))}
+                    >
+                      <div className="sc-top">
+                        <div>
+                          <div className="sc-name">{s.label}</div>
+                          <div className="sc-books">{s.subtitle}</div>
+                        </div>
+                        <div
+                          className="sc-pct-empty"
+                          style={{color: hasScore ? "#1b2442" : undefined}}
+                          aria-label={hasScore && scoreEvidence.isProvisional ? `Early BLI estimate ${s.displayScore}` : undefined}
+                        >
+                          {hasScore ? s.displayScore : "--"}
+                          {hasScore && scoreEvidence.isProvisional && (
+                            <span className="sc-provisional-label">Early</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="sc-bar-track">
+                        {hasScore && (
+                          <div className="sc-bar-fill" style={{
+                            width: `${Math.max(3, Math.min(100, s.rawScore ?? 0))}%`,
+                            background: fillColor,
+                            height: "100%", borderRadius: 999, transition: "width 1s ease"
+                          }} />
+                        )}
+                      </div>
+                    </button>
+                    <div className="sc-card-footer">
+                      <div className="sc-chip-row">
+                        <span className={`sc-chip-empty evidence-${s.confidence}`}>
+                          {hasScore ? `${s.answered} answered` : "Not yet assessed"}
+                        </span>
+                        {hasScore && <span className={`sc-chip-empty evidence-${s.confidence}`}>{evidenceLabel(s)}</span>}
+                      </div>
+                      {assessmentHref && (
+                        <Link className="sc-test-link" href={assessmentHref}>
+                          {hasScore ? "Retest" : "Test"}
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
+                          </svg>
+                        </Link>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {progressPanelOpen && (
+          <section id="progress-over-time-panel" className="progress-card progress-panel" aria-labelledby="progress-title">
+            <div className="progress-head">
+              <div>
+                <p className="progress-eyebrow">Assessment snapshots</p>
+                <h2 className="progress-title" id="progress-title">Knowledge over time</h2>
+                <p className="progress-sub">
+                  A record of completed assessments, shown on the full 0-800 BLI scale.
+                </p>
+              </div>
+              <div className="progress-controls">
+                <div className="progress-latest">
+                  {progressHistory[0]?.display_bli ?? "--"}
+                  <span>Latest {progressTestament} BLI</span>
+                </div>
+              </div>
+            </div>
+
+            {progressLoading ? (
+              <div className="progress-empty" role="status">
+                <strong>Plotting your progress...</strong>
+                <span>Loading completed assessment snapshots.</span>
+              </div>
+            ) : progressError ? (
+              <div className="progress-empty progress-error" role="status">
+                <strong>Progress is temporarily unavailable</strong>
+                <span>{progressError}</span>
+              </div>
+            ) : plottedProgress.length === 0 ? (
+              <div className="progress-empty">
+                <strong>No {progressTestament} snapshots yet</strong>
+                <span>
+                  Complete an {progressTestament} assessment to begin a durable progress record.
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="progress-chart-shell">
+                  <div className="progress-axis" aria-hidden="true">
+                    {progressAxisLabels.map((v, i) => <span key={i}>{v}</span>)}
+                  </div>
+                  <div className="progress-chart-scroll">
+                    <div className="progress-chart">
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="progressArea" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="rgba(111,218,221,.34)" />
+                            <stop offset="55%" stopColor="rgba(111,218,221,.10)" />
+                            <stop offset="100%" stopColor="rgba(111,218,221,0)" />
+                          </linearGradient>
+                          <linearGradient id="progressStroke" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor="#3ba8ab" />
+                            <stop offset="62%" stopColor="#6fdadd" />
+                            <stop offset="88%" stopColor="#b8ecd9" />
+                            <stop offset="100%" stopColor="#f5c842" />
+                          </linearGradient>
+                        </defs>
+                        <line className="progress-guide" x1="0" y1="8" x2="100" y2="8" />
+                        <line className="progress-guide" x1="0" y1="50" x2="100" y2="50" />
+                        <line className="progress-guide" x1="0" y1="92" x2="100" y2="92" />
+                        {progressAreaPath && <path className="progress-area" d={progressAreaPath} />}
+                        {progressPath && <path className="progress-line-glow" d={progressPath} />}
+                        {progressPath && <path className="progress-line" d={progressPath} />}
+                        {progressPath && <path className="progress-line-flow" d={progressPath} pathLength={100} />}
+                      </svg>
+                      {plottedProgress.map(({point, x, y}, pointIndex) => {
+                        const pointDate = formatProgressDate(point.captured_at);
+                        const isLatest = pointIndex === plottedProgress.length - 1;
+                        return (
+                          <button
+                            key={`${point.attempt_id}:${point.captured_at}`}
+                            type="button"
+                            className={`progress-point ${isLatest ? "is-latest" : ""} ${activeProgressPoint?.attempt_id === point.attempt_id ? "is-active" : ""}`}
+                            style={{left: `${x}%`, top: `${y}%`}}
+                            aria-label={`${pointDate}: BLI ${point.display_bli}, ${point.bli_level}, ${point.questions_answered} questions answered`}
+                            onMouseEnter={() => setActiveProgressAttemptId(point.attempt_id)}
+                            onFocus={() => setActiveProgressAttemptId(point.attempt_id)}
+                            onClick={() => setActiveProgressAttemptId(point.attempt_id)}
+                          />
+                        );
+                      })}
+                      <div className="progress-xaxis" aria-hidden="true">
+                        {progressXAxisLabels.map((lbl, i) => (
+                          <span key={i} style={{ left: `${lbl.x}%` }}>{lbl.text}</span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {activeProgressPoint && (
-                <div className="progress-detail" aria-live="polite">
-                  <div className="progress-detail-primary">
-                    <strong>{formatProgressDate(activeProgressPoint.captured_at)}</strong>
-                    <span>{activeProgressPoint.bli_level}</span>
+                {activeProgressPoint && (
+                  <div className="progress-detail" aria-live="polite">
+                    <div className="progress-detail-primary">
+                      <strong>{formatProgressDate(activeProgressPoint.captured_at)}</strong>
+                      <span>{activeProgressPoint.bli_level}</span>
+                    </div>
+                    <div className="progress-stat">
+                      <strong>{activeProgressPoint.display_bli}</strong>
+                      <span>BLI score</span>
+                    </div>
+                    <div className="progress-stat">
+                      <strong>{activeProgressPoint.questions_answered}</strong>
+                      <span>Questions answered</span>
+                    </div>
+                    <div className="progress-stat">
+                      <strong>{formatScoreChange(activeProgressPoint.score_change)}</strong>
+                      <span>From prior snapshot</span>
+                    </div>
+                    <Link className="progress-review-link" href={`/results/${activeProgressPoint.attempt_id}`}>
+                      Review assessment
+                    </Link>
                   </div>
-                  <div className="progress-stat">
-                    <strong>{activeProgressPoint.display_bli}</strong>
-                    <span>BLI score</span>
+                )}
+                <p className="progress-note">
+                  Ordinary movement is expected as evidence accumulates; a single change does not necessarily indicate a meaningful shift in ability.
+                </p>
+              </>
+            )}
+          </section>
+        )}
+
+        {conePanelOpen && (
+          <section id="knowledge-cone-panel" className="knowledge-cone-card knowledge-cone-panel" aria-label="BLI knowledge cone">
+            <div className="knowledge-cone-head">
+              <div>
+                <h2 className="knowledge-cone-title">Biblical Literacy Index</h2>
+                <p className="knowledge-cone-sub">Knowledge expands upward from Unfamiliar to Scholar.</p>
+              </div>
+              <div className="knowledge-cone-score">
+                {activeHasScore ? activeDisplayScore : "--"}
+                <span>{activeHasScore ? activeDisplayLevel : "Not assessed"}</span>
+              </div>
+            </div>
+            <div className="knowledge-cone-wrap">
+              <div
+                ref={coneRef}
+                className="knowledge-cone"
+                onPointerEnter={handleConePointerEnter}
+                onPointerMove={handleConePointerMove}
+                onPointerLeave={handleConePointerLeave}
+                style={{"--marker-y": `${coneMarkerPercent(activeDisplayScore)}`} as { [key: string]: string }}
+              >
+                <div className="glass-vessel" aria-hidden="true">
+                  <div
+                    key={`water-${suiteTestament}-${activeDisplayScore}`}
+                    className="water-fill"
+                    style={{"--water-level": `${waterFillPercent}%`} as { [key: string]: string }}
+                  >
+                    <span className="water-wave water-wave-a" />
+                    <span className="water-wave water-wave-b" />
+                    <span className="water-wave water-wave-c" />
                   </div>
-                  <div className="progress-stat">
-                    <strong>{activeProgressPoint.questions_answered}</strong>
-                    <span>Questions answered</span>
+                </div>
+                {[...BLI_LEVELS].reverse().map((band, index) => {
+                  const topWidth = 98 - index * 7;
+                  const bottomWidth = index === BLI_LEVELS.length - 1 ? topWidth - 7 : 98 - (index + 1) * 7;
+                  return (
+                    <button
+                      key={band.name}
+                      type="button"
+                      className={`cone-tier ${activeHasScore && activeDisplayLevel === band.name ? "is-active" : ""} ${expandedConeLayer === band.name ? "is-expanded" : ""}`}
+                      aria-expanded={expandedConeLayer === band.name}
+                      onClick={() => setExpandedConeLayer(expandedConeLayer === band.name ? null : band.name)}
+                      style={{
+                        "--tier-color": band.color,
+                        "--tier-index": String(index),
+                        "--top-left": `${(100 - topWidth) / 2}%`,
+                        "--top-right": `${100 - (100 - topWidth) / 2}%`,
+                        "--bottom-left": `${(100 - bottomWidth) / 2}%`,
+                        "--bottom-right": `${100 - (100 - bottomWidth) / 2}%`,
+                        "--text-inset": `${Math.max((100 - topWidth) / 2, (100 - bottomWidth) / 2)}%`,
+                      } as { [key: string]: string }}
+                    >
+                      <span className="cone-tier-name">{band.name}</span>
+                      <span className="cone-tier-range">{band.min}-{band.max}</span>
+                    </button>
+                  );
+                })}
+                {expandedConeLayer && (() => {
+                  const band = BLI_LEVELS.find((item) => item.name === expandedConeLayer);
+                  const index = [...BLI_LEVELS].reverse().findIndex((item) => item.name === expandedConeLayer);
+                  return band && index >= 0 ? (
+                    <div
+                      className="cone-layer-popover"
+                      style={{"--popover-y": `${((index + 0.5) / BLI_LEVELS.length) * 100}`} as { [key: string]: string }}
+                    >
+                      <strong>{band.name} · {band.min}-{band.max}</strong>
+                      <span>{band.description}</span>
+                    </div>
+                  ) : null;
+                })()}
+                {activeHasScore && (
+                  <div className="cone-marker" aria-label={`Current BLI ${activeDisplayScore}, ${activeDisplayLevel}`}>
+                    <span>{activeDisplayScore}</span>
+                    <span className="cone-marker-dot" />
                   </div>
-                  <div className="progress-stat">
-                    <strong>{formatScoreChange(activeProgressPoint.score_change)}</strong>
-                    <span>From prior snapshot</span>
-                  </div>
-                  <Link className="progress-review-link" href={`/results/${activeProgressPoint.attempt_id}`}>
-                    Review assessment
+                )}
+              </div>
+              {!activeHasScore && (
+                <p className="cone-empty-note">Take an assessment to place your score on the cone.</p>
+              )}
+            </div>
+          </section>
+        )}
+
+        <ReadingLogWidget userId={dashboardUserId} />
+
+        {coverageTree.sections.length > 0 && (
+          <section className={`coverage-map-section is-${activeCoverageMapMode}`} aria-labelledby="coverage-map-title">
+            <div className="coverage-map-head">
+              <div>
+                <p className="section-eyebrow">Coverage map</p>
+                <h2 id="coverage-map-title" className="coverage-map-title">
+                  {suiteTestament === "NT" ? "New Testament" : "Old Testament"}
+                </h2>
+                <p className="coverage-map-copy">{coverageModeCopy}</p>
+              </div>
+              {suiteTestament === "OT" && (
+                <div className="coverage-mode-controls" role="tablist" aria-label="Coverage map view">
+                  {[
+                    {
+                      key: "recommended" as const,
+                      label: "Recommended",
+                      disabled: !hasReadingRecommendation,
+                      icon: (
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z" />
+                        </svg>
+                      ),
+                    },
+                    {
+                      key: "overview" as const,
+                      label: "Overview",
+                      disabled: false,
+                      icon: (
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="4" y="4" width="6" height="6" rx="1.2" />
+                          <rect x="14" y="4" width="6" height="6" rx="1.2" />
+                          <rect x="4" y="14" width="6" height="6" rx="1.2" />
+                          <rect x="14" y="14" width="6" height="6" rx="1.2" />
+                        </svg>
+                      ),
+                    },
+                    {
+                      key: "skill" as const,
+                      label: "Knowledge Gap",
+                      disabled: false,
+                      icon: (
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 4v16" />
+                          <path d="M5 8h14" />
+                          <path d="M7 14h10" />
+                          <path d="M9 20h6" />
+                        </svg>
+                      ),
+                    },
+                  ].map((mode) => (
+                    <button
+                      key={mode.key}
+                      type="button"
+                      role="tab"
+                      title={mode.label}
+                      aria-label={mode.label}
+                      aria-selected={activeCoverageMapMode === mode.key}
+                      disabled={mode.disabled}
+                      className={`coverage-mode-btn ${activeCoverageMapMode === mode.key ? "is-active" : ""}`}
+                      onClick={() => setCoverageMapMode(mode.key)}
+                    >
+                      {mode.icon}
+                      <span>{mode.label}</span>
+                    </button>
+                  ))}
+                  <Link className="coverage-map-link" href="/knowledge-map" title="Open Knowledge Map" aria-label="Open Knowledge Map">
+                    <span className="cml-icon" aria-hidden="true">
+                      <span className="cml-star" />
+                      <span className="cml-orbit">
+                        <span className="cml-planet" />
+                      </span>
+                    </span>
                   </Link>
                 </div>
               )}
-              <p className="progress-note">
-                Ordinary movement is expected as evidence accumulates; a single change does not necessarily indicate a meaningful shift in ability.
-              </p>
-            </>
-          )}
-        </section>
-
-        <div className={`start-hero compact ${isAssessmentCharging ? "is-charging" : ""}`}>
-          <div className="assessment-cta-wrap">
-            <Link
-              className="start-btn"
-              href={assessmentData ? "/assess" : "/assess?choose=1"}
-              onPointerDown={startAssessmentHold}
-              onPointerUp={cancelAssessmentHold}
-              onPointerLeave={cancelAssessmentHold}
-              onPointerCancel={cancelAssessmentHold}
-              onClick={cancelAssessmentHold}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12h13"/><path d="M11 5l7 7-7 7"/>
-              </svg>
-              <span className="start-btn-label">{assessmentData ? "Continue assessment" : "Start assessment"}</span>
-            </Link>
-          </div>
-        </div>
-
-        <section className="knowledge-cone-card" aria-label="BLI knowledge cone">
-          <div className="knowledge-cone-head">
-            <div>
-              <h2 className="knowledge-cone-title">Biblical Literacy Index</h2>
-              <p className="knowledge-cone-sub">Knowledge expands upward from Unfamiliar to Scholar.</p>
             </div>
-            <div className="knowledge-cone-score">
-              {assessmentData ? currentDisplayScore : "--"}
-              <span>{assessmentData ? currentDisplayLevel : "Not assessed"}</span>
+            <div className="coverage-legend-rail">
+              <CoverageLegend hasRecommendation={hasFocusRecommendation(coverageTree)} testament={suiteTestament} />
             </div>
-          </div>
-          <div className="knowledge-cone-wrap">
-            <div
-              ref={coneRef}
-              className="knowledge-cone"
-              onPointerEnter={handleConePointerEnter}
-              onPointerMove={handleConePointerMove}
-              onPointerLeave={handleConePointerLeave}
-              style={{"--marker-y": `${coneMarkerPercent(currentDisplayScore)}`} as { [key: string]: string }}
-            >
-              <div className="glass-vessel" aria-hidden="true">
-                <div
-                  key={`water-${currentDisplayScore}-${assessmentData?.answered ?? 0}`}
-                  className="water-fill"
-                  style={{"--water-level": `${waterFillPercent}%`} as { [key: string]: string }}
-                >
-                  <span className="water-wave water-wave-a" />
-                  <span className="water-wave water-wave-b" />
-                  <span className="water-wave water-wave-c" />
+            <div className="coverage-map-card">
+            {suiteTestament === "OT" && activeCoverageMapMode === "recommended" && frontier.focusLeaf && (
+              <section className="coverage-focus-card" aria-label="Recommended reading">
+                <div>
+                  <p className="coverage-focus-eyebrow">Recommended reading</p>
+                  <h3 className="coverage-focus-title">{readableUnitLabel(frontier.focusLeaf.label)}</h3>
+                  <p className="coverage-focus-meta">{passageReference(frontier.focusLeaf)}</p>
                 </div>
-              </div>
-              {[...BLI_LEVELS].reverse().map((band, index) => {
-                const topWidth = 98 - index * 7;
-                const bottomWidth = index === BLI_LEVELS.length - 1 ? topWidth - 7 : 98 - (index + 1) * 7;
-                return (
-                  <button
-                    key={band.name}
-                    type="button"
-                    className={`cone-tier ${assessmentData && currentDisplayLevel === band.name ? "is-active" : ""} ${expandedConeLayer === band.name ? "is-expanded" : ""}`}
-                    aria-expanded={expandedConeLayer === band.name}
-                    onClick={() => setExpandedConeLayer(expandedConeLayer === band.name ? null : band.name)}
-                    style={{
-                      "--tier-color": band.color,
-                      "--tier-index": String(index),
-                      "--top-left": `${(100 - topWidth) / 2}%`,
-                      "--top-right": `${100 - (100 - topWidth) / 2}%`,
-                      "--bottom-left": `${(100 - bottomWidth) / 2}%`,
-                      "--bottom-right": `${100 - (100 - bottomWidth) / 2}%`,
-                      "--text-inset": `${Math.max((100 - topWidth) / 2, (100 - bottomWidth) / 2)}%`,
-                    } as { [key: string]: string }}
+                <div className="coverage-focus-actions">
+                  <a
+                    className="coverage-focus-primary"
+                    href={rereadHref(frontier.focusLeaf)}
+                    target="_blank"
+                    rel="noopener noreferrer"
                   >
-                    <span className="cone-tier-name">{band.name}</span>
-                    <span className="cone-tier-range">{band.min}-{band.max}</span>
-                  </button>
-                );
-              })}
-              {expandedConeLayer && (() => {
-                const band = BLI_LEVELS.find((item) => item.name === expandedConeLayer);
-                const index = [...BLI_LEVELS].reverse().findIndex((item) => item.name === expandedConeLayer);
-                return band && index >= 0 ? (
-                  <div
-                    className="cone-layer-popover"
-                    style={{"--popover-y": `${((index + 0.5) / BLI_LEVELS.length) * 100}`} as { [key: string]: string }}
-                  >
-                    <strong>{band.name} · {band.min}-{band.max}</strong>
-                    <span>{band.description}</span>
+                    Reread {compactReference(frontier.focusLeaf)}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7 17L17 7"/><path d="M9 7h8v8"/>
+                    </svg>
+                  </a>
+                </div>
+              </section>
+            )}
+            {suiteTestament === "OT" && activeCoverageMapMode === "skill" && (
+              <section className="coverage-focus-card is-skill" aria-label="Recommended knowledge gap review">
+                <div>
+                  <div className="coverage-diagnostic-head">
+                    <p className="coverage-focus-eyebrow">{knowledgeGapEyebrow}</p>
                   </div>
-                ) : null;
-              })()}
-              {assessmentData && (
-                <div className="cone-marker" aria-label={`Current BLI ${currentDisplayScore}, ${currentDisplayLevel}`}>
-                  <span>{currentDisplayScore}</span>
-                  <span className="cone-marker-dot" />
+                  {backendRecommendation?.dimension_key ? (
+                    <h3 className="coverage-focus-title">
+                      <button
+                        type="button"
+                        className="coverage-focus-title-link"
+                        onClick={() => {
+                          const dimensionKey = backendRecommendation.dimension_key!;
+                          const dimensionName = backendRecommendation.dimension_short_label
+                            ?? backendRecommendation.dimension_label
+                            ?? dimensionDisplayName(dimensionKey);
+                          void openScopeDetail({
+                            scopeType: "DIMENSION",
+                            scopeKey: `${suiteTestament}:${dimensionKey}`,
+                            label: dimensionName,
+                            // This card only ever renders for suiteTestament === "OT" (see the
+                            // guard above), so the subtitle doesn't need to branch on testament.
+                            subtitle: "Old Testament knowledge dimension",
+                          });
+                        }}
+                      >
+                        {recommendedStudy.label}
+                      </button>
+                    </h3>
+                  ) : (
+                    <h3 className="coverage-focus-title">{recommendedStudy.label}</h3>
+                  )}
+                  <p className="coverage-focus-meta">{recommendedStudy.books}</p>
+                  <p className="coverage-focus-copy">{recommendedStudy.focus}</p>
+                  {recommendedGuidanceSteps.length > 0 && (
+                    <div className="recommended-guidance">
+                      <p className="recommended-guidance-title">{recommendedGuidanceLabel}</p>
+                      <ul className="recommended-guidance-list">
+                        {recommendedGuidanceSteps.map(step => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ul>
+                      {recommendedResources.length > 0 && (
+                        <div className="recommended-resources" aria-label="Study resources">
+                          {recommendedResources.map(resource => (
+                            <a
+                              key={resource.href}
+                              className="recommended-resource"
+                              href={resource.href}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {resource.label}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {!assessmentData && (
-              <p className="cone-empty-note">Take an assessment to place your score on the cone.</p>
+                <div className="coverage-focus-actions">
+                  <p className="coverage-focus-priority">{recommendedStudy.priority}</p>
+                  {backendRecommendation && isBackendRecommendationShown && (
+                    <button
+                      type="button"
+                      className="scope-text-btn"
+                      onClick={() => {
+                        // Expanding the recommendation is an explicit view.
+                        void recordRecommendationView("scope_detail");
+                        void openScopeDetail({
+                          scopeType: "UNIT",
+                          scopeKey: backendRecommendation.unit_key,
+                          unitKey: backendRecommendation.unit_key,
+                          label: backendRecommendation.label,
+                          subtitle: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}`,
+                        });
+                      }}
+                    >
+                      Details
+                    </button>
+                  )}
+                  <Link className="coverage-focus-primary" href={recommendedStudy.actionHref} onClick={handleRecommendedAction}>
+                    {recommendedStudy.actionLabel}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
+                    </svg>
+                  </Link>
+                  {progressHistory[0]?.attempt_id && (
+                    <Link className="recommended-review" href={`/results/${progressHistory[0].attempt_id}`}>
+                      Recent results <span aria-hidden="true">›</span>
+                    </Link>
+                  )}
+                </div>
+              </section>
             )}
-          </div>
-        </section>
-
-        <section className="recommended-card" aria-label="Recommended reading">
-          <div>
-            <p className="recommended-eyebrow">Recommendation &amp; review</p>
-            <h2 className="recommended-title">{recommendedStudy.label}</h2>
-            <p className="recommended-books">{recommendedStudy.books}</p>
-            <p className="recommended-focus">{recommendedStudy.focus}</p>
-          </div>
-          <div className="recommended-side">
-            <p className="recommended-priority">{recommendedStudy.priority}</p>
-            {backendRecommendation && (
-              <button
-                type="button"
-                className="scope-text-btn"
-                onClick={() => void openScopeDetail({
-                  scopeType: "UNIT",
-                  scopeKey: backendRecommendation.unit_key,
-                  unitKey: backendRecommendation.unit_key,
-                  label: backendRecommendation.label,
-                  subtitle: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}`,
-                })}
-              >
-                View learning details
-              </button>
-            )}
-            <div className="recommended-actions">
-              <Link className="recommended-action" href={recommendedStudy.actionHref} onClick={handleRecommendedAction}>
-                {recommendedStudy.actionLabel}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
-                </svg>
-              </Link>
-              <Link className="recommended-map" href="/knowledge-map#recommended-next">
-                View on knowledge map <span aria-hidden="true">›</span>
-              </Link>
-              {progressHistory[0]?.attempt_id && (
-                <Link className="recommended-review" href={`/results/${progressHistory[0].attempt_id}`}>
-                  Review recent assessment <span aria-hidden="true">›</span>
-                </Link>
-              )}
+            <CoverageGrid
+              tree={coverageTree}
+              testament={suiteTestament}
+              view={activeCoverageMapMode}
+              showSummary={false}
+              onFocusView={suiteTestament === "OT" ? () => router.push("/knowledge-map") : undefined}
+              // The gold-ringed unit group (e.g. Genesis 12-50) is a whole
+              // learning range; the actual "Recommended reading" card above
+              // points at a narrower slice inside it (e.g. 20-22). Only wire
+              // this up while that card is the one actually showing, so the
+              // highlight never points at chapters unrelated to what's on
+              // screen.
+              focusChapterRange={
+                suiteTestament === "OT" && activeCoverageMapMode === "recommended"
+                  && frontier.focusLeaf?.book_code && frontier.focusLeaf.start_ch !== null
+                  ? {
+                      bookCode: frontier.focusLeaf.book_code,
+                      startCh: frontier.focusLeaf.start_ch,
+                      endCh: frontier.focusLeaf.end_ch ?? frontier.focusLeaf.start_ch,
+                    }
+                  : null
+              }
+            />
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
+        <div className="legacy-knowledge-profile" hidden>
         <div className="breakdown-head">
-          <p className="section-eyebrow">BLI profile</p>
+          <p className="section-eyebrow">Knowledge profile</p>
           <div className="breakdown-controls">
-            <div className="profile-testament-tabs" role="tablist" aria-label="BLI profile testament">
-              {(["OT", "NT"] as const).map(testament => (
-                <button
-                  key={testament}
-                  type="button"
-                  role="tab"
-                  aria-selected={profileTestament === testament}
-                  className={`profile-testament-tab ${profileTestament === testament ? "is-active" : ""}`}
-                  onClick={() => {
-                    setProfileTestament(testament);
-                    setProphetsExpanded(false);
-                  }}
-                >
-                  {testament}
-                </button>
-              ))}
-            </div>
-            <div className="breakdown-tabs" role="tablist" aria-label="BLI profile breakdown">
+            <div className="breakdown-tabs" role="tablist" aria-label="Knowledge profile breakdown">
               {[
                 { key: "sections", label: "Sections" },
                 { key: "books", label: "Books" },
-                { key: "domains", label: "Domains" },
+                { key: "domains", label: "Skills" },
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -3656,9 +6206,9 @@ export default function HomePage() {
           </div>
         </div>
         <p className="breakdown-note">
-          {activeBreakdownTab === "sections" && `Scoped BLI groups your ${profileTestament === "NT" ? "New" : "Old"} Testament evidence into its major literary sections.`}
-          {activeBreakdownTab === "books" && `${profileTestament} book scores become more reliable after several answered questions; low-evidence cards are intentionally muted.`}
-          {activeBreakdownTab === "domains" && `Dimensions show the kinds of ${profileTestament} knowledge being tested. Cross Ref unlocks after baseline competence in Torah and Former Prophets.`}
+          {activeBreakdownTab === "sections" && `Major ${profileTestament} sections.`}
+          {activeBreakdownTab === "books" && `${profileTestament} scores by book.`}
+          {activeBreakdownTab === "domains" && `Skill areas tested across your ${profileTestament} answers.`}
         </p>
         {activeBreakdownTab === "domains" ? (() => {
           const center = 160;
@@ -3680,9 +6230,9 @@ export default function HomePage() {
             .join(" ");
 
           return (
-            <section className="domain-radar-card" aria-label="BLI dimension radar chart">
+            <section className="domain-radar-card" aria-label="Bible knowledge skill chart">
               <div className="domain-radar-wrap">
-                <svg ref={radarSvgRef} className="domain-radar-svg" viewBox="0 0 320 320" role="img" aria-label="Dimension scores radar chart">
+                <svg ref={radarSvgRef} className="domain-radar-svg" viewBox="0 0 320 320" role="img" aria-label="Skill scores radar chart">
                   {[0.2, 0.4, 0.6, 0.8, 1].map(level => (
                     <polygon key={level} className="radar-ring" points={polygonFor(radius * level)} />
                   ))}
@@ -3731,9 +6281,9 @@ export default function HomePage() {
               </div>
               <div className="domain-radar-side">
                 <div>
-                  <h3 className="domain-radar-title">Knowledge by Dimension</h3>
+                  <h3 className="domain-radar-title">Knowledge by skill area</h3>
                   <p className="domain-radar-copy">
-                    This profile shows the kinds of {profileTestament === "NT" ? "New" : "Old"} Testament knowledge being tested. Cross Ref stays locked until the earlier foundation is stable enough for cross-reference questions.
+                    Knowledge types tested across your {profileTestament} answers.
                   </p>
                 </div>
                 <div className="domain-radar-list">
@@ -3766,11 +6316,10 @@ export default function HomePage() {
             </section>
           );
         })() : (
-          <div className={`sections-grid ${activeBreakdownTab} ${activeBreakdownTab === "sections" && prophetsExpanded ? "is-prophets-expanded" : ""}`}>
+          <div className={`sections-grid ${activeBreakdownTab}`}>
             {visibleBreakdownScores.map(s => {
               const hasScore = s.rawScore !== null && s.answered > 0;
-              const isProphetsParent = activeBreakdownTab === "sections" && s.key === "prophets";
-              const isProphetsChild = activeBreakdownTab === "sections" && (s.key === "former" || s.key === "latter");
+              const scoreEvidence = sectionEvidence(s.answered);
               const assessmentHref = assessmentHrefForScore(s);
               const fillColor = s.className === "torah" ? "linear-gradient(90deg,#d4a017,#f5c842)"
                 : s.className === "former" ? "linear-gradient(90deg,#0e8c6a,#34d399)"
@@ -3788,28 +6337,27 @@ export default function HomePage() {
               return (
                 <article
                   key={s.key}
-                  className={`section-card ${s.className} ${isProphetsParent ? "prophets-parent" : ""} ${isProphetsParent && prophetsExpanded ? "is-expanded" : ""} ${isProphetsChild ? "prophet-child" : ""} ${hasScore ? "has-score" : ""} ${s.confidence === "low" || s.confidence === "none" ? "low-evidence" : ""}`}
+                  className={`section-card ${s.className} ${hasScore ? "has-score" : ""} ${scoreEvidence.isProvisional ? "low-evidence" : ""}`}
                 >
                   <button
                     type="button"
                     className="section-card-main"
-                    aria-expanded={isProphetsParent ? prophetsExpanded : undefined}
-                    onClick={() => {
-                      if (isProphetsParent) {
-                        setProphetsExpanded(expanded => !expanded);
-                        return;
-                      }
-                      void openScopeDetail(detailTargetForScore(s));
-                    }}
+                    onClick={() => void openScopeDetail(detailTargetForScore(s))}
                   >
                     <div className="sc-top">
                       <div>
-                        {isProphetsChild && <div className="sc-parent-label">Prophets</div>}
                         <div className="sc-name">{s.label}</div>
                         <div className="sc-books">{s.subtitle}</div>
                       </div>
-                      <div className="sc-pct-empty" style={{color: hasScore ? "#1b2442" : undefined}}>
+                      <div
+                        className="sc-pct-empty"
+                        style={{color: hasScore ? "#1b2442" : undefined}}
+                        aria-label={hasScore && scoreEvidence.isProvisional ? `Early BLI estimate ${s.displayScore}` : undefined}
+                      >
                         {hasScore ? s.displayScore : "--"}
+                        {hasScore && scoreEvidence.isProvisional && (
+                          <span className="sc-provisional-label">Early</span>
+                        )}
                       </div>
                     </div>
                     <div className="sc-bar-track">
@@ -3829,25 +6377,13 @@ export default function HomePage() {
                       </span>
                       {hasScore && <span className={`sc-chip-empty evidence-${s.confidence}`}>{evidenceLabel(s)}</span>}
                     </div>
-                    {assessmentHref ? (
+                    {assessmentHref && (
                       <Link className="sc-test-link" href={assessmentHref}>
                         {hasScore ? "Retest" : "Test"}
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
                         </svg>
                       </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        className="sc-test-link"
-                        aria-expanded={prophetsExpanded}
-                        onClick={() => setProphetsExpanded(expanded => !expanded)}
-                      >
-                        {prophetsExpanded ? "Hide sections" : "Choose section"}
-                        <svg className="sc-expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="m6 9 6 6 6-6"/>
-                        </svg>
-                      </button>
                     )}
                   </div>
                 </article>
@@ -3855,7 +6391,9 @@ export default function HomePage() {
             })}
           </div>
         )}
+        </div>
           </>
+          )
         ) : (
           <section className="placeholder-dashboard" aria-label={`${activeDashboardTab === "church-history" ? "Church History" : "Biblical Languages"} dashboard placeholder`}>
             <div>
@@ -3878,6 +6416,7 @@ export default function HomePage() {
           </section>
         )}
       </main>
+      <SiteFooter />
       {scopeDetailTarget && (
         <div className="scope-drawer-backdrop" role="presentation" onClick={closeScopeDetail}>
           <aside
@@ -3922,17 +6461,19 @@ export default function HomePage() {
                 <>
                   <div className="scope-evidence">
                     <div>
-                      <span className="scope-evidence-label">{scopeSummary.evidence_level}</span>
+                      <span className="scope-evidence-label">{sectionEvidence(scopeSummary.answered).label}</span>
                       <p className="scope-evidence-copy">
-                        {scopeSummary.evidence_level === "Needs more evidence" || scopeSummary.evidence_level === "Low evidence"
-                          ? "The sample is still small, so accuracy may move substantially."
-                          : "There is enough response evidence for this scope to be more informative."}
+                        {sectionEvidence(scopeSummary.answered).isProvisional
+                          ? `This is still an early read. Add ${sectionEvidence(scopeSummary.answered).answersToInterpretation} more eligible responses before treating it as a clear weakness.`
+                          : sectionEvidence(scopeSummary.answered).status === "developing"
+                            ? "This is getting clearer, but may still move as more answers are added."
+                            : "This area has a reliable sample, though ordinary score movement is still expected."}
                       </p>
                     </div>
                     <div className="scope-evidence-score">
                       {scopeSummary.accuracy === null ? "--" : `${Math.round(scopeSummary.accuracy)}%`}
                       <span>
-                        {scopeSummary.evidence_level === "Needs more evidence" || scopeSummary.evidence_level === "Low evidence"
+                        {sectionEvidence(scopeSummary.answered).isProvisional
                           ? "Early accuracy"
                           : "Accuracy"}
                       </span>
