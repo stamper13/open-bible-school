@@ -19,13 +19,15 @@ import {
   evidenceLabel,
   formatProgressDate,
   formatScoreChange,
-  type BackendRecommendation,
-  type BreakdownTab,
-  type ProgressPoint,
-  type ScopeDetailTarget,
-  type ScopeScore,
-  type ScopeSummary,
 } from "./homeHelpers";
+import type {
+  BackendRecommendation,
+  BreakdownTab,
+  ProgressPoint,
+  ScopeDetailTarget,
+  ScopeScore,
+  ScopeSummary,
+} from "./homeTypes";
 
 // ---------------------------------------------------------------------------
 

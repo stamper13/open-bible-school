@@ -51,22 +51,26 @@ import {
 } from "@/lib/recommendationEvents";
 
 import {
-  ANON_SESSION_ACTIVE_KEY,
-  ANON_USER_ID_KEY,
-  SESSION_ANSWERED_KEY,
-  SESSION_CORRECT_KEY,
-  RECOMMENDATION_RETEST_WAIT_MS,
   isAnonymousSession,
   clearAssessmentBrowserStorage,
   readSessionAssessmentData,
   coneMarkerPercent,
-  mergeKnowledgeGapGuidance,
   dimensionDisplayName,
   buildScopeScores,
   applyCanonicalBliToSectionScopes,
   hasBaselineEvidence,
   getRecommendedStudy,
   loadDimensionAwareQuestionBank,
+} from "./homeHelpers";
+import {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+  RECOMMENDATION_RETEST_WAIT_MS,
+} from "./homeConstants";
+import { mergeKnowledgeGapGuidance } from "./homeKnowledgeGapGuidance";
+import {
   type SectionScoreMap,
   type BreakdownTab,
   type DashboardTab,
@@ -81,7 +85,7 @@ import {
   type BliSectionFollowup,
   type ProgressPoint,
   type NtPilotSummary,
-} from "./homeHelpers";
+} from "./homeTypes";
 import {
   HomeNavBar,
   DashboardHeader,

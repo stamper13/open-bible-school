@@ -19,7 +19,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createSeededRandom, getOrCreateSkySeed, SHOOTING_PALETTES, drawStreak } from "@/lib/skyStreak";
 import type { Testament as BibleTestament } from "@/lib/bibleTaxonomy";
-import type { BreakdownTab, ScopeScore } from "./homeHelpers";
+import type { BreakdownTab, ScopeScore } from "./homeTypes";
 
 type UseHomeStarfieldOptions = {
   activeBreakdownTab: BreakdownTab;

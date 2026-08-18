@@ -18,17 +18,17 @@ import CoverageGrid, { CoverageLegend, hasFocusRecommendation, type CoverageGrid
 import { BOOK_NAMES, type Testament as BibleTestament } from "@/lib/bibleTaxonomy";
 import type { RecommendationInteractionSurface } from "@/lib/recommendationEvents";
 import type { BliContractScores } from "@/lib/bliContract";
-import {
-  DASHBOARD_SUBJECTS,
-  dimensionDisplayName,
-  type AssessmentSnapshot,
-  type BackendRecommendation,
-  type BliEvidence,
-  type DashboardTab,
-  type ProgressPoint,
-  type RecommendedStudy,
-  type ScopeDetailTarget,
-} from "./homeHelpers";
+import { dimensionDisplayName } from "./homeHelpers";
+import { DASHBOARD_SUBJECTS } from "./homeConstants";
+import type {
+  AssessmentSnapshot,
+  BackendRecommendation,
+  BliEvidence,
+  DashboardTab,
+  ProgressPoint,
+  RecommendedStudy,
+  ScopeDetailTarget,
+} from "./homeTypes";
 
 // ---------------------------------------------------------------------------
 // Site nav bar: brand, top links, "Learn More" menu, and the account menu
