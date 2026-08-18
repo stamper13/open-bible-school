@@ -42,6 +42,19 @@ export function getOrCreateSkySeed() {
   return seed;
 }
 
+// How far along the assess sky's nebula-growth visualization a given
+// answered-question count is (0 = just-formed wisp, 4 = fully ignited
+// nebula). Shared between components/Starfield.tsx (which draws the nebula
+// at this stage) and the assess page's "Evidence" HUD label (which names
+// the stage — see NEBULA_STAGE_NAMES in app/assess/constants.ts).
+export function nebulaStageIndex(n: number) {
+  if (n < 20) return 0;
+  if (n < 50) return 1;
+  if (n < 100) return 2;
+  if (n < 200) return 3;
+  return 4;
+}
+
 export type StreakSpec = {
   tailX: number;
   tailY: number;

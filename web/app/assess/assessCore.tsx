@@ -1,6 +1,6 @@
 "use client";
 
-import { type Dispatch, type RefObject, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { BOOK_NAMES } from "@/lib/bibleTaxonomy";
@@ -201,7 +201,7 @@ export function QuestionInteraction({
   isLoadingNextQuestion,
   sectionSortReadyToSubmit,
   submitSectionSort,
-  pendingSpawnRef,
+  onSpawnPoint,
   isSequenceQuestion,
   handleSequenceDragEnd,
   sequenceOrder,
@@ -224,7 +224,7 @@ export function QuestionInteraction({
   isLoadingNextQuestion: boolean;
   sectionSortReadyToSubmit: boolean;
   submitSectionSort: (submissionMode?: "answer" | "skip") => Promise<void>;
-  pendingSpawnRef: RefObject<{ x: number; y: number } | null>;
+  onSpawnPoint: (x: number, y: number) => void;
   isSequenceQuestion: boolean;
   handleSequenceDragEnd: (event: DragEndEvent) => void;
   sequenceOrder: Choice[];
@@ -282,7 +282,7 @@ export function QuestionInteraction({
                       type="button"
                       disabled={isSubmittingAnswer || isLoadingNextQuestion || !sectionSortReadyToSubmit}
                       onClick={(event) => {
-                        pendingSpawnRef.current = { x: event.clientX, y: event.clientY };
+                        onSpawnPoint(event.clientX, event.clientY);
                         void submitSectionSort();
                       }}
                     >
@@ -333,7 +333,7 @@ export function QuestionInteraction({
                       type="button"
                       disabled={isSubmittingAnswer || isLoadingNextQuestion || sequenceOrder.length === 0}
                       onClick={(event) => {
-                        pendingSpawnRef.current = { x: event.clientX, y: event.clientY };
+                        onSpawnPoint(event.clientX, event.clientY);
                         submitSequenceOrder();
                       }}
                     >
@@ -351,7 +351,7 @@ export function QuestionInteraction({
                     className={`choice ${phase === "feedback" ? choiceLabel(choice.id) : ""}`}
                     onClick={(e) => {
                       if (phase !== "question" || isSubmittingAnswer || isLoadingNextQuestion || isQuestionInteractionLocked()) return;
-                      pendingSpawnRef.current = { x: e.clientX, y: e.clientY };
+                      onSpawnPoint(e.clientX, e.clientY);
                       if (assessmentMode === "NT") submitNtAnswer(choice.id);
                       else submitAnswer(choice.id);
                     }}

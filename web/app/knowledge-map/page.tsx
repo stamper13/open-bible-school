@@ -17,7 +17,7 @@ import { supabase } from "@/lib/supabase/client";
 import FocusStarMap from "./FocusStarMap";
 import FocusTransition from "./FocusTransition";
 import MapOverview from "./MapOverview";
-import StarfieldBackground from "./StarfieldBackground";
+import Starfield from "@/components/Starfield";
 import { KNOWLEDGE_MAP_PAGE_STYLES } from "./knowledgeMapPageStyles";
 
 /**
@@ -155,7 +155,7 @@ export default function KnowledgeMapPage() {
     <>
       <style>{KNOWLEDGE_MAP_PAGE_STYLES}</style>
 
-      <StarfieldBackground motionPaused={motionPaused} />
+      <Starfield variant="knowledgeMap" motionPaused={motionPaused} />
 
       <nav className="nav">
         <BrandLogo className="nav-brand" />

@@ -8,6 +8,7 @@ import BlackHoleEvent from "./BlackHoleEvent";
 import {
   ANON_SESSION_ACTIVE_KEY,
   ANON_USER_ID_KEY,
+  EVIDENCE_VISUAL_STRENGTH,
   IDK_CHOICE,
   IDK_CHOICE_ID,
   NEBULA_STAGE_NAMES,
@@ -71,7 +72,8 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
-import { nebulaStageIndex, useAssessmentStarfield } from "./useAssessmentStarfield";
+import { nebulaStageIndex } from "@/lib/skyStreak";
+import Starfield, { type StarfieldHandle } from "@/components/Starfield";
 import { ASSESS_PAGE_STYLES } from "./assessStyles";
 import {
   AssessmentErrorScreen,
@@ -175,18 +177,11 @@ export default function AssessPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const {
-    canvasRef,
-    skyFrameRef,
-    offsetRef,
-    pendingSpawnRef,
-    spawnTraveler,
-    shiftSky,
-  } = useAssessmentStarfield({
-    answeredCount,
-    scoreEvidence,
-    isDashboardTransitioning,
-  });
+  const starfieldRef = useRef<StarfieldHandle>(null);
+  // Lifetime evidence responses drive the nebula; the in-session answered
+  // counter resets each session, so the nebula uses whichever is larger.
+  const nebulaAnswered = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
+  const evidenceStrength = scoreEvidence ? EVIDENCE_VISUAL_STRENGTH[scoreEvidence.evidence_level] : 0;
 
   // ---------------------------------------------------------------------------
   // Parse the initial mode/scope from the URL (?choose=1, ?testament=NT, or an
@@ -256,7 +251,7 @@ export default function AssessPage() {
     isSubmittingAnswerRef.current = true;
     questionInteractionLockedUntilRef.current = Date.now() + 650;
     activeQuestionIdRef.current = null;
-    pendingSpawnRef.current = null;
+    starfieldRef.current?.clearPendingSpawn();
     setIsLoadingNextQuestion(true);
     setIsSubmittingAnswer(true);
     setQuestion(null);
@@ -268,7 +263,7 @@ export default function AssessPage() {
     setRetryNotice("");
     setPhase("starting");
     return true;
-  }, [pendingSpawnRef]);
+  }, []);
 
   const finishQuestionLoad = useCallback((questionId: string | null = null) => {
     activeQuestionIdRef.current = questionId;
@@ -331,8 +326,8 @@ export default function AssessPage() {
     setReportError("");
     finishQuestionLoad(row.out_generated_question_id);
     setPhase("question");
-    shiftSky();
-  }, [finishQuestionLoad, shiftSky]);
+    starfieldRef.current?.shiftSky();
+  }, [finishQuestionLoad]);
 
   const handleOtQuestionResult = useCallback(async (
     aid: string,
@@ -595,9 +590,9 @@ export default function AssessPage() {
     setCorrectChoiceId(null);
     finishQuestionLoad(parsed.out_generated_question_id);
     setPhase("question");
-    shiftSky();
+    starfieldRef.current?.shiftSky();
     return true;
-  }, [finishQuestionLoad, shiftSky]);
+  }, [finishQuestionLoad]);
 
   const handleNtQuestionResult = useCallback((
     aid: string,
@@ -1103,12 +1098,12 @@ export default function AssessPage() {
       void loadScoreEvidence(userId, "OT");
       if (newAnswered < newTarget) prefetchOtQuestion(attemptId, newAnswered);
       else otQuestionPrefetchRef.current = null;
-      spawnTraveler();
+      starfieldRef.current?.spawnTraveler();
     }
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setPhase("feedback");
-  }, [attemptId, userId, question, phase, isQuestionInteractionLocked, sequenceOrder, answeredCount, correctCount, failAnswerSubmission, isChangedRetryRejection, loadScoreEvidence, otTargetCount, prefetchOtQuestion, rpcErrorMessage, spawnTraveler]);
+  }, [attemptId, userId, question, phase, isQuestionInteractionLocked, sequenceOrder, answeredCount, correctCount, failAnswerSubmission, isChangedRetryRejection, loadScoreEvidence, otTargetCount, prefetchOtQuestion, rpcErrorMessage]);
 
   // ---------------------------------------------------------------------------
   // Sequence-question interaction (drag-to-order events)
@@ -1249,9 +1244,9 @@ export default function AssessPage() {
     else ntQuestionPrefetchRef.current = null;
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
-    spawnTraveler();
+    starfieldRef.current?.spawnTraveler();
     setPhase("feedback");
-  }, [answeredCount, attemptId, correctCount, failAnswerSubmission, isChangedRetryRejection, isQuestionInteractionLocked, loadScoreEvidence, ntTargetCount, phase, prefetchNtQuestion, question, spawnTraveler, userId]);
+  }, [answeredCount, attemptId, correctCount, failAnswerSubmission, isChangedRetryRejection, isQuestionInteractionLocked, loadScoreEvidence, ntTargetCount, phase, prefetchNtQuestion, question, userId]);
 
   // ---------------------------------------------------------------------------
   // Section-sort submission
@@ -1342,7 +1337,7 @@ export default function AssessPage() {
     }
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
-    spawnTraveler();
+    starfieldRef.current?.spawnTraveler();
     setPhase("feedback");
   }, [
     answeredCount,
@@ -1360,7 +1355,6 @@ export default function AssessPage() {
     phase,
     prefetchNtQuestion,
     prefetchOtQuestion,
-    spawnTraveler,
     userId,
   ]);
 
@@ -1572,7 +1566,7 @@ export default function AssessPage() {
 
   // ---------------------------------------------------------------------------
   // Transition to dashboard (writes the starfield handoff keys the home
-  // page's useHomeStarfield reads on arrival)
+  // page's <Starfield variant="home"> reads on arrival)
   // ---------------------------------------------------------------------------
   const transitionToDashboard = () => {
     if (isDashboardTransitioning) return;
@@ -1580,8 +1574,11 @@ export default function AssessPage() {
     sessionStorage.setItem("obs_dashboard_arriving", "1");
     sessionStorage.setItem("obs_dashboard_sky_rotation", "90");
     window.setTimeout(() => {
-      sessionStorage.setItem("obs_dashboard_sky_frame", String(skyFrameRef.current));
-      sessionStorage.setItem("obs_dashboard_sky_offset", JSON.stringify(offsetRef.current));
+      const handoff = starfieldRef.current?.getHandoffState();
+      if (handoff) {
+        sessionStorage.setItem("obs_dashboard_sky_frame", String(handoff.frame));
+        sessionStorage.setItem("obs_dashboard_sky_offset", JSON.stringify(handoff.offset));
+      }
       window.location.href = "/";
     }, 2350);
   };
@@ -1590,7 +1587,13 @@ export default function AssessPage() {
     <>
       <style>{ASSESS_PAGE_STYLES}</style>
 
-      <canvas ref={canvasRef} className={`stars ${isDashboardTransitioning ? "dashboard-transition" : ""}`} aria-hidden="true" />
+      <Starfield
+        ref={starfieldRef}
+        variant="assess"
+        nebulaAnswered={nebulaAnswered}
+        evidenceStrength={evidenceStrength}
+        isDashboardTransitioning={isDashboardTransitioning}
+      />
       <BlackHoleEvent answeredCount={answeredCount} userId={userId} />
       {answeredCount > 0 && !isDashboardTransitioning && (
         <div className="confidence-nebula-label" aria-hidden="true">
@@ -1713,7 +1716,7 @@ export default function AssessPage() {
               isLoadingNextQuestion={isLoadingNextQuestion}
               sectionSortReadyToSubmit={sectionSortReadyToSubmit}
               submitSectionSort={submitSectionSort}
-              pendingSpawnRef={pendingSpawnRef}
+              onSpawnPoint={(x, y) => starfieldRef.current?.setPendingSpawn(x, y)}
               isSequenceQuestion={isSequenceQuestion}
               handleSequenceDragEnd={handleSequenceDragEnd}
               sequenceOrder={sequenceOrder}
