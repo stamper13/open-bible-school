@@ -17,6 +17,31 @@ export const SHOOTING_PALETTES: StreakPalette[] = [
   { core: "245,240,255", glow: "124,58,237" },
 ];
 
+// A per-session seed for the starfield's star/shooting-star layout, so a
+// visitor's sky looks the same star-for-star across the home dashboard and
+// the assess flow instead of re-randomizing on every navigation. Previously
+// declared twice (once in app/homeHelpers.ts, once privately inside
+// app/assess/useAssessmentStarfield.ts) with identical implementations;
+// this is the one copy both sides import.
+const SKY_SEED_KEY = "obs_sky_seed";
+
+export function createSeededRandom(seed: number) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value * 1664525 + 1013904223) >>> 0;
+    return value / 4294967296;
+  };
+}
+
+export function getOrCreateSkySeed() {
+  if (typeof window === "undefined") return 1;
+  const existing = sessionStorage.getItem(SKY_SEED_KEY);
+  if (existing) return Number(existing) || 1;
+  const seed = Math.floor(Math.random() * 4294967295) || 1;
+  sessionStorage.setItem(SKY_SEED_KEY, String(seed));
+  return seed;
+}
+
 export type StreakSpec = {
   tailX: number;
   tailY: number;

@@ -1,27 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import { createSeededRandom, getOrCreateSkySeed } from "@/lib/skyStreak";
 import { EVIDENCE_VISUAL_STRENGTH } from "./constants";
 import type { BliEvidence } from "./types";
-
-const SKY_SEED_KEY = "obs_sky_seed";
-
-function createSeededRandom(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
-
-function getOrCreateSkySeed() {
-  if (typeof window === "undefined") return 1;
-  const existing = sessionStorage.getItem(SKY_SEED_KEY);
-  if (existing) return Number(existing) || 1;
-  const seed = Math.floor(Math.random() * 4294967295) || 1;
-  sessionStorage.setItem(SKY_SEED_KEY, String(seed));
-  return seed;
-}
 
 // Deterministic per-index pseudo-random: star #29 always looks like star #29.
 function nebHash(i: number) {

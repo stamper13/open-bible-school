@@ -41,7 +41,6 @@ export {
   OT_ATTEMPT_ID_KEY,
   NT_ATTEMPT_ID_KEY,
 };
-export const SKY_SEED_KEY = "obs_sky_seed";
 export const RECOMMENDATION_RETEST_WAIT_MS = 20 * 60 * 1000;
 
 export function isAnonymousSession(session: { user?: { email?: string | null } } | null) {
@@ -78,22 +77,6 @@ export function readSessionAssessmentData() {
     correct: Math.max(0, Math.min(correct, answered)),
     bli: Math.round((Math.max(0, Math.min(correct, answered)) / answered) * 100),
   };
-}
-
-export function createSeededRandom(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
-export function getOrCreateSkySeed() {
-  if (typeof window === "undefined") return 1;
-  const existing = sessionStorage.getItem(SKY_SEED_KEY);
-  if (existing) return Number(existing) || 1;
-  const seed = Math.floor(Math.random() * 4294967295) || 1;
-  sessionStorage.setItem(SKY_SEED_KEY, String(seed));
-  return seed;
 }
 
 export function coneMarkerPercent(s: number): number {
