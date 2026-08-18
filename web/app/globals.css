@@ -38,6 +38,43 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Shared with components/BetaBanner.tsx (about/credential/bli pages).
+ * Previously a byte-for-byte identical .beta-banner/.beta-badge block
+ * (base rules + narrow-viewport override) was copy-pasted into all three
+ * pages' own <style> tags, each with a different breakpoint for the same
+ * override (600px/640px/680px) — standardized on 640px here, the
+ * convention used elsewhere in the app. Named oba-beta-banner/-badge
+ * (not beta-banner/-badge) so this global rule can't collide with the
+ * differently-styled .beta-badge nav pill in home/assess's own styles. */
+.oba-beta-banner {
+  position: relative;
+  z-index: 1;
+  background: rgba(124, 58, 237, .12);
+  border-bottom: 1px solid rgba(124, 58, 237, .28);
+  padding: 9px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #d8c7fb;
+  text-align: center;
+}
+.oba-beta-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  background: #7c3aed;
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .oba-beta-banner { padding: 9px 16px; font-size: 12px; }
+}
+
 .oba-site-footer {
   position: relative;
   z-index: 2;

@@ -4,6 +4,7 @@ import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import SiteFooter from "@/components/SiteFooter";
+import BetaBanner from "@/components/BetaBanner";
 import { supabase } from "@/lib/supabase/client";
 import { BLI_LEVELS, levelForScore } from "@/lib/bli";
 import ScoringLab from "./ScoringLab";
@@ -247,10 +248,9 @@ export default function BliMechanicsPage() {
 
       <canvas ref={canvasRef} className="stars" aria-hidden="true" />
 
-      <div className="beta-banner">
-        <span className="beta-badge">Beta</span>
+      <BetaBanner>
         The scoring model and question bank are being refined as the assessment grows.
-      </div>
+      </BetaBanner>
 
       <nav className="nav">
         <BrandLogo className="nav-brand" />

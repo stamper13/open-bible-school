@@ -16,17 +16,8 @@ export const ABOUT_PAGE_STYLES = `
         }
         canvas.stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 
-        .beta-banner {
-          position: relative; z-index: 1;
-          background: rgba(124,58,237,.12); border-bottom: 1px solid rgba(124,58,237,.28);
-          padding: 9px 32px; display: flex; align-items: center; justify-content: center;
-          gap: 10px; font-size: 13px; color: #d8c7fb; text-align: center;
-        }
-        .beta-badge {
-          font-size: 10px; font-weight: 800; letter-spacing: .08em;
-          text-transform: uppercase; background: #7c3aed;
-          color: #fff; padding: 2px 7px; border-radius: 4px; flex-shrink: 0;
-        }
+        /* .beta-banner/.beta-badge now come from components/BetaBanner.tsx
+           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css */
         .nav {
           position: sticky; top: 0; z-index: 20;
           display: flex; align-items: center; justify-content: space-between;
@@ -481,7 +472,6 @@ export const ABOUT_PAGE_STYLES = `
           .hero { padding-top: 40px; }
           .donate-block { padding: 28px 22px; }
           .cta-row { flex-direction: column; }
-          .beta-banner { padding: 9px 16px; font-size: 12px; }
           .map-block { padding: 20px 16px; }
           .objection-btn { padding: 20px 18px; }
           .objection-a { padding: 0 18px 20px 18px; }

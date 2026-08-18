@@ -3,6 +3,7 @@
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
 import SiteFooter from "@/components/SiteFooter";
+import BetaBanner from "@/components/BetaBanner";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { CREDENTIAL_PAGE_STYLES } from "./credentialStyles";
 
@@ -308,10 +309,9 @@ export default function CredentialPage() {
 
       <canvas ref={canvasRef} className="stars" aria-hidden="true" />
 
-      <div className="beta-banner">
-        <span className="beta-badge">Ideas</span>
+      <BetaBanner label="Ideas">
         Nothing on this page exists yet. These are future goals, not features you can use.
-      </div>
+      </BetaBanner>
 
       <nav className="nav">
         <BrandLogo className="nav-brand" />

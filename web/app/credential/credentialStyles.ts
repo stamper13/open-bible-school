@@ -14,17 +14,8 @@ export const CREDENTIAL_PAGE_STYLES = `
         }
         canvas.stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 
-        .beta-banner {
-          position: relative; z-index: 1;
-          background: rgba(124,58,237,.12); border-bottom: 1px solid rgba(124,58,237,.28);
-          padding: 9px 32px; display: flex; align-items: center; justify-content: center;
-          gap: 10px; font-size: 13px; color: #d8c7fb; text-align: center;
-        }
-        .beta-badge {
-          font-size: 10px; font-weight: 800; letter-spacing: .08em;
-          text-transform: uppercase; background: #7c3aed;
-          color: #fff; padding: 2px 7px; border-radius: 4px; flex-shrink: 0;
-        }
+        /* .beta-banner/.beta-badge now come from components/BetaBanner.tsx
+           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css */
 
         .nav {
           position: sticky; top: 0; z-index: 20;
@@ -332,7 +323,6 @@ export const CREDENTIAL_PAGE_STYLES = `
           .nav { padding: 13px 16px; }
           .nav-links .nav-link { display: none; }
           .page { padding: 36px 16px 72px; }
-          .beta-banner { padding: 9px 16px; font-size: 12px; }
           .module-card { min-height: 380px; padding: 28px 20px 26px; }
           .module-desc { max-width: 100%; }
           .contact-strip { padding: 26px 22px; flex-direction: column; align-items: flex-start; }

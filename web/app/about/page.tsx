@@ -4,6 +4,7 @@ import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import SiteFooter from "@/components/SiteFooter";
+import BetaBanner from "@/components/BetaBanner";
 import { BLI_LEVELS, levelForScore } from "@/lib/bli";
 import { ABOUT_PAGE_STYLES } from "./aboutStyles";
 
@@ -351,10 +352,9 @@ export default function AboutPage() {
 
       <canvas ref={canvasRef} className="stars" aria-hidden="true" />
 
-      <div className="beta-banner">
-        <span className="beta-badge">Beta</span>
+      <BetaBanner>
         Open Bible Assessment is in active development. Questions and resources are being refined — feedback on accuracy and wording is welcome.
-      </div>
+      </BetaBanner>
 
       <nav className="nav">
         <BrandLogo className="nav-brand" />
