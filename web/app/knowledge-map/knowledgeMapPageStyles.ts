@@ -3,9 +3,7 @@
 
 export const KNOWLEDGE_MAP_PAGE_STYLES = `
         :root {
-          --navy: #1b2442;
-          --muted: #596477;
-          --accent: #0aa3a3;
+          /* --navy/--accent/--muted now come from app/globals.css */
           --line: rgba(209,224,235,.30);
         }
         *, *::before, *::after { box-sizing: border-box; }

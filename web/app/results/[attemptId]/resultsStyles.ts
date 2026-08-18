@@ -3,9 +3,7 @@
 
 export const RESULTS_PAGE_STYLES = `
         :root {
-          --navy: #1b2442;
-          --accent: #0aa3a3;
-          --muted: #566070;
+          /* --navy/--accent/--muted now come from app/globals.css */
           --gold: #d4a017;
           --card: rgba(255,255,255,.95);
           --line: rgba(27,36,66,.11);

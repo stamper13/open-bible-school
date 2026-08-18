@@ -3,8 +3,8 @@
 
 export const ABOUT_PAGE_STYLES = `
         :root {
-          --muted: #566070; --navy: #1b2442;
-          --accent: #0aa3a3; --accent-dim: rgba(10,163,163,.12);
+          /* --navy/--accent/--muted now come from app/globals.css */
+          --accent-dim: rgba(10,163,163,.12);
           --accent-line: rgba(10,163,163,.26);
           --beta: #a78bfa;
         }

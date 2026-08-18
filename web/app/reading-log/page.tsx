@@ -103,11 +103,7 @@ export default function ReadingLogPage() {
   return (
     <>
       <style>{`
-        :root {
-          --navy: #1b2442;
-          --muted: #596477;
-          --accent: #0aa3a3;
-        }
+        /* --navy/--accent/--muted now come from app/globals.css */
         *, *::before, *::after { box-sizing: border-box; }
         html { background: #060a14; }
         body {

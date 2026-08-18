@@ -5,8 +5,9 @@ export const HOME_PAGE_STYLES = `
            Root CSS variables & global reset
            ============================================================ */
         :root {
-          --ink: #0e1116; --muted: #566070; --navy: #1b2442;
-          --accent: #0aa3a3; --accent-dim: rgba(10,163,163,.10);
+          /* --navy/--accent/--muted now come from app/globals.css */
+          --ink: #0e1116;
+          --accent-dim: rgba(10,163,163,.10);
           --accent-line: rgba(10,163,163,.22);
           --card: rgba(255,255,255,.96); --border: rgba(27,36,66,.09);
           --shadow: 0 22px 58px rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.2);

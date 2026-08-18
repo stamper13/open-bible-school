@@ -2,7 +2,8 @@
 // Pure CSS text, rendered via <style> tag(s). No behavior change intended.
 
 export const ADMIN_QUESTIONS_STYLES_1 = `
-        :root { --navy:#1b2442; --muted:#5b6474; --teal:#0a8989; --line:#d9dee7; --soft:#f4f6f8; --danger:#a52a2a; }
+        /* --navy/--muted now come from app/globals.css */
+        :root { --teal:#0a8989; --line:#d9dee7; --soft:#f4f6f8; --danger:#a52a2a; }
         * { box-sizing:border-box; }
         body { margin:0; background:#edf0f3; color:var(--navy); font-family:var(--font-inter),system-ui,sans-serif; }
         button, input, select, textarea { font:inherit; }

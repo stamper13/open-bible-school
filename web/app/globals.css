@@ -3,6 +3,19 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Shared brand palette, used by every page's own <style> block (about,
+   * assess, bli, credential, home, knowledge-map, reading-log, results).
+   * Previously each page redeclared these in its own :root, and --muted
+   * had drifted to three different values (#566070 / #596477 / #5b6474)
+   * across pages with no single place to fix it. Declared once here now;
+   * pages should not redeclare --navy/--accent/--muted locally. Other
+   * tokens (--card, --shadow, --border, page-specific accents like
+   * --gold/--mono/--beta) are deliberately page-tuned and stay local.
+   */
+  --navy: #1b2442;
+  --accent: #0aa3a3;
+  --muted: #566070;
 }
 
 @theme inline {

@@ -3,7 +3,7 @@
 
 export const CREDENTIAL_PAGE_STYLES = `
         :root {
-          --navy: #1b2442; --accent: #0aa3a3; --muted: #566070;
+          /* --navy/--accent/--muted now come from app/globals.css */
           --accent-dim: rgba(10,163,163,.10); --accent-line: rgba(10,163,163,.22);
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
