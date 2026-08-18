@@ -1495,7 +1495,13 @@ export default function AssessPage() {
       ? `${otAssessment?.label ?? otRequest.label ?? "Targeted assessment"} · ${answeredCount} of ${otTargetCount}`
       : hasBrowserSavedProgress
         ? `${answeredCount} of ${otTargetCount} answered in this browser`
-        : `${Math.max(0, otTargetCount - answeredCount)} questions until first BLI snapshot`)
+        // scoreEvidence is lifetime evidence for this account/testament, not
+        // just this attempt — if it already exists, this account already has
+        // a BLI (however early), even if this particular attempt just
+        // started (e.g. a retake), so don't call the next one "first".
+        : scoreEvidence
+          ? `${Math.max(0, otTargetCount - answeredCount)} questions until your BLI updates`
+          : `${Math.max(0, otTargetCount - answeredCount)} questions until first BLI snapshot`)
     : (isSignedIn ? "Your BLI refines after every answer" : "Sign in to preserve your BLI across devices");
   const displayNavPhaseLabel = assessmentMode === "NT" ? "New Testament Assessment" : navPhaseLabel;
   const displayNavSubLabel = assessmentMode === "NT"
