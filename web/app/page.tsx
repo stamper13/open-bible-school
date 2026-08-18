@@ -99,6 +99,9 @@ import {
 } from "./homeDashboard";
 
 export default function HomePage() {
+  // ---------------------------------------------------------------------------
+  // State & refs
+  // ---------------------------------------------------------------------------
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [dashboardUserId, setDashboardUserId] = useState<string | null>(null);
@@ -181,6 +184,9 @@ export default function HomePage() {
     running: false,
     lastFrameT: 0,
   });
+  // ---------------------------------------------------------------------------
+  // Derived display values: current BLI score, level, and knowledge-cone fill
+  // ---------------------------------------------------------------------------
   const visibleAssessmentData = assessmentData ?? sessionAssessmentData;
   const coverageTree = coverageTrees[suiteTestament];
   const currentDisplayScore = visibleAssessmentData
@@ -206,6 +212,10 @@ export default function HomePage() {
     setShowLevelTooltip(false);
   }, [suiteTestament]);
 
+  // ---------------------------------------------------------------------------
+  // Initial hydration from browser storage (signed-out session snapshot, NT
+  // pilot summary)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     setSessionAssessmentData(readSessionAssessmentData());
     try {
@@ -227,6 +237,11 @@ export default function HomePage() {
     }
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Recommendation engine: what to study next, and the copy/links to show for
+  // it (evidence-gap interstitial, backend unit/dimension recommendation, or
+  // the local fallback in getRecommendedStudy)
+  // ---------------------------------------------------------------------------
   const localSectionFollowup = useMemo(
     () => leastEvidenceSection(scopeScores.sections.filter(score => (
       score.testament === "OT" && score.kind === "section"
@@ -336,6 +351,9 @@ export default function HomePage() {
       && typeof resource.href === "string"
     ))
     : [];
+  // ---------------------------------------------------------------------------
+  // Knowledge-profile breakdown scores & progress-over-time chart data
+  // ---------------------------------------------------------------------------
   const visibleBreakdownScores = useMemo(() => {
     if (activeBreakdownTab === "sections") {
       const visibleKeys = profileTestament === "OT"
@@ -434,6 +452,9 @@ export default function HomePage() {
   const activeProgressPoint = progressHistory.find(point => point.attempt_id === activeProgressAttemptId)
     ?? progressHistory[0]
     ?? null;
+  // ---------------------------------------------------------------------------
+  // Coverage-map mode & assessment-completion status
+  // ---------------------------------------------------------------------------
   const hasReadingRecommendation = Boolean(frontier.focusLeaf);
   const activeCoverageMapMode: CoverageGridView = suiteTestament === "OT"
     ? (coverageMapMode === "recommended" && !hasReadingRecommendation ? "overview" : coverageMapMode)
@@ -471,6 +492,9 @@ export default function HomePage() {
   const isNewAssessmentLanding = activeDashboardTab === "bli" && dashboardHydrated && !hasCompletedAssessment;
   const isDashboardLoading = activeDashboardTab === "bli" && !dashboardHydrated;
 
+  // ---------------------------------------------------------------------------
+  // Recommendation view/interaction tracking (analytics)
+  // ---------------------------------------------------------------------------
   // `obs_recommendation_seen:<actionHref>` is UI STATE ONLY — a per-device
   // record of when this recommendation was first shown, used solely to decide
   // whether the retest CTA opens the "have you reread this?" interstitial (see
@@ -547,6 +571,9 @@ export default function HomePage() {
     }
   }, [backendRecommendation?.unit_key, dashboardUserId, recordStudyEvent]);
 
+  // ---------------------------------------------------------------------------
+  // Scope-detail drawer & score-panel open/close handling
+  // ---------------------------------------------------------------------------
   const openScopeDetail = async (target: ScopeDetailTarget) => {
     setScopeDetailTarget(target);
     setScopeSummary(null);
@@ -626,6 +653,9 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [progressPanelOpen, conePanelOpen]);
 
+  // ---------------------------------------------------------------------------
+  // Recommendation click-through & retest confirmation
+  // ---------------------------------------------------------------------------
   const handleRecommendedAction = (event: MouseEvent<HTMLAnchorElement>) => {
     // Clicking through the recommendation is an explicit view, in both the
     // interstitial branch and the direct-navigation branch below.
@@ -649,6 +679,9 @@ export default function HomePage() {
     window.location.href = pendingRetestHref;
   };
 
+  // ---------------------------------------------------------------------------
+  // Score-strip tooltip hover handling (BLI info popover, level popover)
+  // ---------------------------------------------------------------------------
   const openBliTooltip = () => {
     if (tooltipCloseRef.current) clearTimeout(tooltipCloseRef.current);
     setShowBliTooltip(true);
@@ -670,6 +703,9 @@ export default function HomePage() {
     levelTooltipCloseRef.current = setTimeout(() => setShowLevelTooltip(false), 220);
   };
 
+  // ---------------------------------------------------------------------------
+  // Knowledge-cone water-slosh interaction
+  // ---------------------------------------------------------------------------
   // Water slosh physics: two damped harmonic oscillators (fundamental sloshing
   // mode ~1.05 Hz + a faster, more damped second mode). Pointer movement
   // injects energy proportional to swipe distance and speed, so the water
@@ -753,6 +789,9 @@ export default function HomePage() {
     sloshRef.current.lastPointerX = null;
   };
 
+  // ---------------------------------------------------------------------------
+  // Auth: sign in / sign out / delete account
+  // ---------------------------------------------------------------------------
   const handleSignIn = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     // Mint the transfer capability while the guest session is still active.
@@ -837,6 +876,10 @@ export default function HomePage() {
     };
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Dashboard bootstrap: session, canonical BLI scores, and recommendation
+  // data, all loaded together once a user id is known
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     supabase.auth.getSession().then(async ({ data }) => {
@@ -990,6 +1033,9 @@ export default function HomePage() {
     };
   }, [accountMenuOpen, learnMoreOpen, subjectMenuOpen]);
 
+  // ---------------------------------------------------------------------------
+  // Knowledge-map / coverage-map / progress-history data loads
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     // Zero rows is a real state (unauthorized or not enough evidence yet), so

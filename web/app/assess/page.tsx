@@ -102,6 +102,9 @@ function isStatementTimeoutError(err: RpcErrorLike) {
 }
 
 export default function AssessPage() {
+  // ---------------------------------------------------------------------------
+  // State & refs
+  // ---------------------------------------------------------------------------
   const [assessmentMode, setAssessmentMode] = useState<AssessmentMode>("OT");
   const [modeReady, setModeReady] = useState(false);
   const [phase, setPhase] = useState<Phase>("starting");
@@ -185,6 +188,10 @@ export default function AssessPage() {
     isDashboardTransitioning,
   });
 
+  // ---------------------------------------------------------------------------
+  // Parse the initial mode/scope from the URL (?choose=1, ?testament=NT, or an
+  // OT focus/scope/target request) — runs once on mount.
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const parsePositiveInteger = (value: string | null) => {
@@ -233,6 +240,10 @@ export default function AssessPage() {
     setModeReady(true);
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Question-load lifecycle helpers (locking, begin/finish) & shared
+  // score-evidence loading
+  // ---------------------------------------------------------------------------
   const isQuestionInteractionLocked = useCallback(() => (
     isLoadingQuestionRef.current
     || isSubmittingAnswerRef.current
@@ -285,6 +296,9 @@ export default function AssessPage() {
     setScoreEvidence(evidence);
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // OT question loading & prefetch
+  // ---------------------------------------------------------------------------
   const applyOtQuestionRow = useCallback((row: Question) => {
     let choices: Choice[] = [];
     if (Array.isArray(row.choices)) {
@@ -416,6 +430,10 @@ export default function AssessPage() {
     await handleOtQuestionResult(aid, lastData, lastError);
   }, [handleOtQuestionResult]);
 
+  // ---------------------------------------------------------------------------
+  // NT book metadata loading, and the effects that trigger it / drive the
+  // slow-startup indicator
+  // ---------------------------------------------------------------------------
   const loadNtMetadata = useCallback(async () => {
     if (!NT_PILOT_ENABLED) return;
     setNtMetadataLoaded(false);
@@ -477,6 +495,10 @@ export default function AssessPage() {
     };
   }, [assessmentMode, phase]);
 
+  // ---------------------------------------------------------------------------
+  // Assessment session bootstrap: reuse or create an anonymous/signed-in
+  // session and its user id
+  // ---------------------------------------------------------------------------
   const ensureAssessmentSession = useCallback(async () => {
     let { data: { session } } = await supabase.auth.getSession();
     if (session?.user && !session.user.email) {
@@ -510,6 +532,9 @@ export default function AssessPage() {
     return uid;
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // NT question loading & prefetch, and starting the NT pilot
+  // ---------------------------------------------------------------------------
   const applyNtQuestionRow = useCallback((aid: string, scope: NtScopeOption, row: NtAssessmentQuestionRow) => {
     if (!row) {
       finishQuestionLoad(null);
@@ -706,6 +731,10 @@ export default function AssessPage() {
     }
   }, [ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, ntRequestedTargetCount, ntScope]);
 
+  // ---------------------------------------------------------------------------
+  // Resume or start the NT assessment on mount (once mode + book metadata are
+  // ready)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!modeReady || assessmentMode !== "NT" || !ntMetadataLoaded || ntResumeStartedRef.current) return;
     ntResumeStartedRef.current = true;
@@ -761,6 +790,9 @@ export default function AssessPage() {
     void resumeNtAssessment();
   }, [assessmentMode, ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, modeReady, ntBooks, ntMetadataLoaded, ntRequestedScopeKey, ntRequestedTargetCount, startNtPilot]);
 
+  // ---------------------------------------------------------------------------
+  // Resume or start the OT assessment on mount
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     async function init() {
       if (!modeReady || assessmentMode !== "OT") return;
@@ -826,6 +858,9 @@ export default function AssessPage() {
     init();
   }, [assessmentMode, ensureAssessmentSession, loadQuestion, loadScoreEvidence, modeReady, otRequest]);
 
+  // ---------------------------------------------------------------------------
+  // RPC error helpers & answer-submission failure handling
+  // ---------------------------------------------------------------------------
   // The backend is first-write-wins: an exact retry returns the original
   // result, but a *changed* retry is rejected as already answered. That is not
   // a failure the user needs to see as an error — their first answer stands, so
@@ -977,6 +1012,9 @@ export default function AssessPage() {
     userId,
   ]);
 
+  // ---------------------------------------------------------------------------
+  // OT answer submission
+  // ---------------------------------------------------------------------------
   const submitAnswer = useCallback(async (choiceId: string) => {
     if (!attemptId || !userId || !question || phase !== "question" || isQuestionInteractionLocked()) return;
     const submittedQuestionId = question.out_generated_question_id;
@@ -1072,6 +1110,9 @@ export default function AssessPage() {
     setPhase("feedback");
   }, [attemptId, userId, question, phase, isQuestionInteractionLocked, sequenceOrder, answeredCount, correctCount, failAnswerSubmission, isChangedRetryRejection, loadScoreEvidence, otTargetCount, prefetchOtQuestion, rpcErrorMessage, spawnTraveler]);
 
+  // ---------------------------------------------------------------------------
+  // Sequence-question interaction (drag-to-order events)
+  // ---------------------------------------------------------------------------
   const moveSequenceItem = useCallback((itemId: string, direction: -1 | 1) => {
     if (phase !== "question" || isQuestionInteractionLocked()) return;
     setSequenceOrder(current => {
@@ -1099,6 +1140,9 @@ export default function AssessPage() {
     void submitAnswer(`__ORDER__:${JSON.stringify(sequenceOrder.map(item => item.id))}`);
   }, [isQuestionInteractionLocked, phase, sequenceOrder, submitAnswer]);
 
+  // ---------------------------------------------------------------------------
+  // Section-sort-question interaction (drag books into their canon section)
+  // ---------------------------------------------------------------------------
   const sectionSortInteraction = useMemo(
     () => getSectionSortInteraction(question),
     [question],
@@ -1137,6 +1181,9 @@ export default function AssessPage() {
     }));
   }, [isQuestionInteractionLocked, phase, sectionSortInteraction]);
 
+  // ---------------------------------------------------------------------------
+  // NT answer submission
+  // ---------------------------------------------------------------------------
   const submitNtAnswer = useCallback(async (choiceId: string) => {
     if (!attemptId || !question || phase !== "question" || isQuestionInteractionLocked()) return;
     const submittedQuestionId = question.out_generated_question_id;
@@ -1206,6 +1253,9 @@ export default function AssessPage() {
     setPhase("feedback");
   }, [answeredCount, attemptId, correctCount, failAnswerSubmission, isChangedRetryRejection, isQuestionInteractionLocked, loadScoreEvidence, ntTargetCount, phase, prefetchNtQuestion, question, spawnTraveler, userId]);
 
+  // ---------------------------------------------------------------------------
+  // Section-sort submission
+  // ---------------------------------------------------------------------------
   const submitSectionSort = useCallback(async (submissionMode: "answer" | "skip" = "answer") => {
     if (!attemptId || !question || !sectionSortInteraction || phase !== "question" || isQuestionInteractionLocked()) return;
     const submittedQuestionId = question.out_generated_question_id;
@@ -1314,6 +1364,9 @@ export default function AssessPage() {
     userId,
   ]);
 
+  // ---------------------------------------------------------------------------
+  // Report-a-problem submission
+  // ---------------------------------------------------------------------------
   const submitQuestionReport = useCallback(async () => {
     if (!question || !userId) return;
     const trimmedFeedback = reportText.trim();
@@ -1349,6 +1402,9 @@ export default function AssessPage() {
     setReportStatus("sent");
   }, [attemptId, correctChoiceId, question, reportCategory, reportText, selectedChoice, userId]);
 
+  // ---------------------------------------------------------------------------
+  // Advance to the next question
+  // ---------------------------------------------------------------------------
   const nextQuestion = useCallback(async () => {
     if (phase !== "feedback" || isSubmittingAnswerRef.current || isLoadingQuestionRef.current) return;
     if (assessmentMode === "NT") {
@@ -1391,6 +1447,9 @@ export default function AssessPage() {
     phase,
   ]);
 
+  // ---------------------------------------------------------------------------
+  // Answer-choice display + nav phase/progress derived values
+  // ---------------------------------------------------------------------------
   const choiceLabel = (id: string) => {
     if (!selectedChoice) return "";
     if (assessmentMode === "OT") return id === selectedChoice ? "recorded" : "";
@@ -1458,6 +1517,9 @@ export default function AssessPage() {
     && assessmentMode !== "select",
   );
 
+  // ---------------------------------------------------------------------------
+  // Auth: sign in / sign out
+  // ---------------------------------------------------------------------------
   const handleSignOut = useCallback(async () => {
     // Never leave a pending capability behind for the next person on this
     // browser — it would move this visitor's guest progress into their account.
@@ -1508,6 +1570,10 @@ export default function AssessPage() {
     setSaved(true);
   };
 
+  // ---------------------------------------------------------------------------
+  // Transition to dashboard (writes the starfield handoff keys the home
+  // page's useHomeStarfield reads on arrival)
+  // ---------------------------------------------------------------------------
   const transitionToDashboard = () => {
     if (isDashboardTransitioning) return;
     setIsDashboardTransitioning(true);
