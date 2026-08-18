@@ -1,6 +1,9 @@
 // Extracted from app/assess/page.tsx during a file-size cleanup (2026-08-16).
 // Pure CSS text, rendered via a <style> tag on the assessment page. No behavior change intended.
 export const ASSESS_PAGE_STYLES = `
+        /* ============================================================
+           Root CSS variables & global reset
+           ============================================================ */
         :root {
           --navy: #1b2442; --accent: #0aa3a3; --muted: #566070;
           --accent-dim: rgba(10,163,163,.10); --accent-line: rgba(10,163,163,.22);
@@ -20,6 +23,9 @@ export const ASSESS_PAGE_STYLES = `
           position: fixed; left: 50%; top: 50%; z-index: 0; pointer-events: none;
           transform-origin: 50% 50%; transform: translate3d(-50%,-50%,0);
         }
+        /* ============================================================
+           Evidence/nebula HUD label & dashboard-transition warp overlay
+           ============================================================ */
         .confidence-nebula-label {
           position: fixed; right: 110px; bottom: 26px; z-index: 1;
           transform: translateX(50%);
@@ -61,6 +67,9 @@ export const ASSESS_PAGE_STYLES = `
         }
 
         /* Nav */
+        /* ============================================================
+           Nav bar (brand, phase/progress readout, sign in/out + exit)
+           ============================================================ */
         .nav {
           position: sticky; top: 0; z-index: 20;
           display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 760px) minmax(0, 1fr);
@@ -147,6 +156,9 @@ export const ASSESS_PAGE_STYLES = `
         }
 
         /* Scene */
+        /* ============================================================
+           Question card scene: location head, report trigger, prompt
+           ============================================================ */
         .scene {
           flex: 1; display: flex; align-items: center; justify-content: center;
           padding: 32px 24px 80px; position: relative; z-index: 1;
@@ -198,6 +210,9 @@ export const ASSESS_PAGE_STYLES = `
           font-size: 25px; font-weight: 600; line-height: 1.42;
           color: var(--navy); margin-bottom: 30px;
         }
+        /* ============================================================
+           Multiple-choice answer buttons
+           ============================================================ */
         .choices { display: flex; flex-direction: column; gap: 12px; }
         .choice {
           display: flex; align-items: center; gap: 15px;
@@ -227,6 +242,9 @@ export const ASSESS_PAGE_STYLES = `
         .choice.wrong   .choice-letter { background: var(--wrong);   color: #fff; }
         .choice.skipped .choice-letter { background: var(--muted); color: #fff; }
         .choice.recorded .choice-letter { background: var(--accent); color: #fff; }
+        /* ============================================================
+           Sequence-question interaction (drag events into order)
+           ============================================================ */
         .sequence-instruction {
           margin: -18px 0 14px; color: var(--muted);
           font-size: 13px; line-height: 1.45;
@@ -288,6 +306,9 @@ export const ASSESS_PAGE_STYLES = `
           color: var(--muted);
         }
         .sequence-submit:disabled, .sequence-skip:disabled { opacity: .55; cursor: default; }
+        /* ============================================================
+           Section-sort-question interaction (drag books into their section)
+           ============================================================ */
         .section-sort-question { display: flex; flex-direction: column; gap: 16px; }
         .section-sort-bank {
           min-height: 62px; display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
@@ -341,6 +362,9 @@ export const ASSESS_PAGE_STYLES = `
         }
 
         /* Feedback */
+        /* ============================================================
+           Retry notice & post-answer feedback bar
+           ============================================================ */
         .retry-notice {
           display: flex; align-items: flex-start; gap: 10px;
           margin-bottom: 16px; padding: 11px 13px; border-radius: 10px;
@@ -389,6 +413,9 @@ export const ASSESS_PAGE_STYLES = `
         .next-btn:hover { background: #253566; transform: translateY(-1px); }
 
         /* Score row */
+        /* ============================================================
+           NT running-score row
+           ============================================================ */
         .score-row {
           display: flex; gap: 20px; margin-top: 20px; padding-top: 16px;
           border-top: 1px solid var(--border);
@@ -402,6 +429,9 @@ export const ASSESS_PAGE_STYLES = `
            achievement elsewhere in the app (first-assessment-card, Torah
            bar), so this borrows that language instead of the standard
            interactive teal. */
+        /* ============================================================
+           OT milestone banner (baseline/retest complete)
+           ============================================================ */
         .milestone-banner {
           position: relative; overflow: hidden;
           margin-top: 16px; padding: 16px 18px; border-radius: 14px;
@@ -446,6 +476,9 @@ export const ASSESS_PAGE_STYLES = `
         }
         .milestone-dashboard { color: #4a3a08; background: rgba(255,255,255,.65); border: 1px solid rgba(212,160,23,.28); }
 
+        /* ============================================================
+           Correct-answer celebration burst (fireworks)
+           ============================================================ */
         .cosmic-burst {
           position: fixed; inset: 0; z-index: 12; pointer-events: none; overflow: hidden;
           mix-blend-mode: screen;
@@ -503,6 +536,9 @@ export const ASSESS_PAGE_STYLES = `
         }
 
         /* Floating results button */
+        /* ============================================================
+           DEAD CSS below (.results-fab): no JSX references this class anymore.
+           ============================================================ */
         .results-fab {
           position: fixed; bottom: 28px; right: 28px; z-index: 30;
           display: flex; align-items: center; gap: 11px;
@@ -519,6 +555,9 @@ export const ASSESS_PAGE_STYLES = `
         .results-fab svg { width: 18px; height: 18px; }
 
         /* Results overlay */
+        /* ============================================================
+           Report-a-problem & OT results overlay modals
+           ============================================================ */
         .overlay-backdrop {
           position: fixed; inset: 0; z-index: 40;
           background: rgba(0,0,0,.6); backdrop-filter: blur(6px);
@@ -604,6 +643,9 @@ export const ASSESS_PAGE_STYLES = `
         .overlay-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         .overlay-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 18px; font-weight: 600; color: var(--navy); margin-bottom: 12px; }
         .overlay-desc { font-size: 13.5px; color: var(--muted); line-height: 1.65; margin-bottom: 16px; }
+        /* ============================================================
+           Google sign-in & magic-link sign-in
+           ============================================================ */
         .google-btn {
           display: flex; align-items: center; justify-content: center; gap: 10px;
           width: 100%; padding: 12px 20px; border-radius: 12px;
@@ -636,6 +678,9 @@ export const ASSESS_PAGE_STYLES = `
         .skip-link:hover { color: var(--navy); }
 
         /* Center card (loading/error/complete) */
+        /* ============================================================
+           Generic center-card / button / spinner primitives
+           ============================================================ */
         .center-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; }
         .big-num { font-family: var(--font-crimson), Georgia, serif; font-size: 72px; font-weight: 700; color: var(--navy); line-height: 1; }
         .card-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; color: var(--navy); }
@@ -660,6 +705,9 @@ export const ASSESS_PAGE_STYLES = `
           animation: spin .8s linear infinite; margin: 0 auto;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        /* ============================================================
+           Between-question loader (orbit spinner)
+           ============================================================ */
         .orbit-loader {
           position: relative; width: 96px; height: 96px; margin: 0 auto 2px;
           border-radius: 50%;
@@ -739,6 +787,9 @@ export const ASSESS_PAGE_STYLES = `
         .startup-actions {
           display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 4px;
         }
+        /* ============================================================
+           Mode-select & OT/NT testament chooser cards
+           ============================================================ */
         .selection-grid {
           display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 16px; width: 100%;
@@ -767,6 +818,10 @@ export const ASSESS_PAGE_STYLES = `
           background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
         }
         .testament-desc { color: var(--muted); font-size: 14px; line-height: 1.55; }
+        /* ============================================================
+           DEAD CSS below (.nt-scope-grid/.nt-scope-btn/.nt-results-grid/
+           .nt-result-row): no JSX references these classes anymore.
+           ============================================================ */
         .nt-scope-grid {
           display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px; width: 100%; max-height: 330px; overflow: auto; padding-right: 4px;
@@ -802,6 +857,9 @@ export const ASSESS_PAGE_STYLES = `
           color: var(--navy); font-size: 13px;
         }
         .nt-result-row span { color: var(--muted); font-weight: 650; }
+        /* ============================================================
+           Sky-discovery button & Bible-fact modal
+           ============================================================ */
         .sky-discovery {
           position: fixed; z-index: 12;
           top: clamp(112px, 18vh, 180px); right: clamp(22px, 9vw, 150px);
@@ -849,6 +907,9 @@ export const ASSESS_PAGE_STYLES = `
           .dashboard-warp { display: none !important; }
         }
         .testament-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        /* ============================================================
+           Responsive: narrow-viewport overrides
+           ============================================================ */
         @media (max-width: 640px) {
           .card { padding: 30px 22px; max-width: 100%; }
           .nav { display: flex; justify-content: space-between; padding: 12px 16px; }

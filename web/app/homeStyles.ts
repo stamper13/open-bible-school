@@ -1,6 +1,9 @@
 // Extracted from app/page.tsx during a file-size cleanup (2026-08-16).
 // Pure CSS text, rendered via a <style> tag on the homepage. No behavior change intended.
 export const HOME_PAGE_STYLES = `
+        /* ============================================================
+           Root CSS variables & global reset
+           ============================================================ */
         :root {
           --ink: #0e1116; --muted: #566070; --navy: #1b2442;
           --accent: #0aa3a3; --accent-dim: rgba(10,163,163,.10);
@@ -24,6 +27,9 @@ export const HOME_PAGE_STYLES = `
           position: fixed; left: 50%; top: 50%; z-index: 0; pointer-events: none;
           transform-origin: 50% 50%; transform: translate3d(-50%,-50%,0) rotate(var(--sky-start-rotation, 0deg));
         }
+        /* ============================================================
+           Nav bar (brand, links, Learn More menu, account menu)
+           ============================================================ */
         .nav {
           position: sticky; top: 0; z-index: 20;
           display: flex; align-items: center; justify-content: space-between;
@@ -162,6 +168,9 @@ export const HOME_PAGE_STYLES = `
         @media (prefers-reduced-motion: reduce) {
           .learn-more-menu::before { display: none; }
         }
+        /* ============================================================
+           Page shell & dashboard header (title, subject switcher, OT/NT toggle)
+           ============================================================ */
         .page {
           max-width: 1180px; margin: 0 auto; padding: 44px 24px 88px; position: relative; z-index: 1;
           /* backwards (not both): holds the "from" state during the .08s
@@ -234,6 +243,9 @@ export const HOME_PAGE_STYLES = `
           width: 7px; height: 7px; border-radius: 50%;
           background: rgba(255,255,255,.25);
         }
+        /* ============================================================
+           Dashboard subject tabs & loading card
+           ============================================================ */
         .dashboard-tabs {
           display: inline-grid; grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 6px; width: 100%; max-width: 760px;
@@ -297,6 +309,9 @@ export const HOME_PAGE_STYLES = `
           clip: rect(0 0 0 0); white-space: nowrap;
         }
         @keyframes dashboardLoadingSpin { to { transform: rotate(1turn); } }
+        /* ============================================================
+           Save-results card (signed-out snapshot prompt)
+           ============================================================ */
         .save-results-card {
           position: relative; overflow: hidden;
           background: rgba(255,255,255,.92);
@@ -378,6 +393,9 @@ export const HOME_PAGE_STYLES = `
           text-align: right;
         }
         @keyframes saveResultsGlow { to { transform: rotate(1turn); } }
+        /* ============================================================
+           First-assessment card & feature grid
+           ============================================================ */
         .first-assessment-card {
           position: relative; overflow: hidden;
           display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
@@ -604,6 +622,9 @@ export const HOME_PAGE_STYLES = `
           margin: 8px 0 0; color: rgba(57,67,87,.78);
           font-size: 13px; line-height: 1.5; font-weight: 650;
         }
+        /* ============================================================
+           Placeholder dashboard (Church History / Biblical Languages)
+           ============================================================ */
         .placeholder-dashboard {
           background: var(--card); border: 1px solid var(--border); border-radius: 20px;
           box-shadow: var(--shadow); backdrop-filter: blur(16px);
@@ -641,6 +662,9 @@ export const HOME_PAGE_STYLES = `
         }
         /* No card here on purpose — the score sits straight on the
            starfield, like the header-assess controls above it. */
+        /* ============================================================
+           Score strip: combined-BLI note & score/level/confidence blocks
+           ============================================================ */
         .score-strip {
           display: grid; grid-template-columns: auto 1fr auto;
           background: transparent; border: 1px solid rgba(212,160,23,.4); border-radius: 14px;
@@ -669,6 +693,9 @@ export const HOME_PAGE_STYLES = `
           background: #0aa3a3; box-shadow: 0 0 8px rgba(10,163,163,.7);
           flex-shrink: 0;
         }
+        /* ============================================================
+           Progress-over-time panel
+           ============================================================ */
         .progress-card {
           position: relative; z-index: 3; overflow: hidden;
           margin: 0 0 18px; padding: 24px 26px 20px;
@@ -861,6 +888,9 @@ export const HOME_PAGE_STYLES = `
         }
         .progress-empty span { max-width: 420px; margin-top: 6px; font-size: 12px; line-height: 1.5; }
         .progress-error { color: #b4402f; }
+        /* ============================================================
+           Score strip continued: score number, BLI/level tooltips, verse of day
+           ============================================================ */
         .score-block {
           display: flex; flex-direction: column; align-items: center; justify-content: center;
           padding: 30px 40px; gap: 6px; border-right: 1px solid rgba(255,255,255,.12);
@@ -1050,6 +1080,9 @@ export const HOME_PAGE_STYLES = `
           font-weight: 700; text-decoration: none;
         }
         .level-tooltip:hover span { text-decoration: underline; }
+        /* ============================================================
+           Knowledge cone panel (water-slosh visual, tier popovers)
+           ============================================================ */
         .knowledge-cone-card {
           position: relative; z-index: 1;
           background: rgba(255,255,255,.94); border: 1px solid var(--border);
@@ -1276,6 +1309,9 @@ export const HOME_PAGE_STYLES = `
           text-align: center; color: var(--muted); font-size: 14px; line-height: 1.6;
           max-width: 460px; margin: 0 auto;
         }
+        /* ============================================================
+           Score strip: score-evidence column
+           ============================================================ */
         .conf-block {
           display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
           padding: 30px 32px; gap: 9px;
@@ -1316,6 +1352,9 @@ export const HOME_PAGE_STYLES = `
            now they're just the page header's primary action (see
            .header-assess below), so these are themed for sitting directly
            on the dark starfield instead of on a light card. */
+        /* ============================================================
+           Dashboard header: OT/NT testament toggle
+           ============================================================ */
         .header-assess {
           display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
           animation: stdAssessIn .4s ease both;
@@ -1381,6 +1420,14 @@ export const HOME_PAGE_STYLES = `
           .std-assess-toggle-btn { flex: 1; }
           .std-assess-actions { width: 100%; justify-content: space-between; }
         }
+        /* ============================================================
+           DEAD CSS below (.recommendation-engine*, .recommended-card/-side/
+           -priority/-actions/-action, .frontier-*): no JSX references these
+           classes anymore -- superseded by CoverageMapSection's
+           coverage-focus-card. Still LIVE in this stretch: .recommended-guidance*,
+           .recommended-resource*, .recommended-review (CoverageMapSection's
+           "is-skill" branch still renders them).
+           ============================================================ */
         .recommendation-engine {
           margin-bottom: 28px;
         }
@@ -1554,6 +1601,9 @@ export const HOME_PAGE_STYLES = `
           font-family: var(--font-crimson), Georgia, serif;
           font-size: 15px; font-weight: 700; color: var(--muted);
         }
+        /* ============================================================
+           Retest confirmation modal
+           ============================================================ */
         .retest-modal-backdrop {
           position: fixed; inset: 0; z-index: 90;
           background: rgba(7,12,28,.66); backdrop-filter: blur(8px);
@@ -1600,6 +1650,9 @@ export const HOME_PAGE_STYLES = `
           border: 1px solid var(--border); color: var(--muted);
           background: rgba(255,255,255,.70);
         }
+        /* ============================================================
+           Coverage map section (mode switcher, focus/recommended card, grid wrapper)
+           ============================================================ */
         .section-eyebrow {
           font-size: 11px; font-weight: 700; letter-spacing: .10em;
           text-transform: uppercase; color: rgba(255,255,255,.45);
@@ -1846,6 +1899,11 @@ export const HOME_PAGE_STYLES = `
         .sections-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .sections-grid.books { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .sections-grid.domains { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        /* ============================================================
+           DEAD CSS below (.domain-radar-card / .radar-*): styling for the legacy
+           hidden knowledge-profile radar chart deleted from page.tsx in an
+           earlier cleanup pass. No JSX references these classes anymore.
+           ============================================================ */
         .domain-radar-card {
           position: relative; overflow: hidden;
           background:
@@ -1966,6 +2024,9 @@ export const HOME_PAGE_STYLES = `
           font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
           color: var(--muted);
         }
+        /* ============================================================
+           Knowledge-profile section cards (sections/books/domains grid)
+           ============================================================ */
         .section-card {
           background: var(--card); border: 1px solid var(--border);
           border-radius: 16px; padding: 20px 22px;
@@ -2031,6 +2092,9 @@ export const HOME_PAGE_STYLES = `
           transform: translateX(1px); outline: none;
         }
         .sc-test-link svg { width: 13px; height: 13px; }
+        /* ============================================================
+           Scope-detail drawer
+           ============================================================ */
         .scope-drawer-backdrop {
           position: fixed; inset: 0; z-index: 120; display: flex; justify-content: flex-end;
           background: rgba(3,8,20,.58); backdrop-filter: blur(5px);
@@ -2084,6 +2148,9 @@ export const HOME_PAGE_STYLES = `
         .scope-drawer-body { padding: 24px 28px 34px; }
         /* BLI-adjacent drawers/accordion triggers — small icon chips sitting
            where full-width score support cards used to live in the main scroll. */
+        /* ============================================================
+           Score-panel triggers & knowledge-profile panel wrapper
+           ============================================================ */
         .score-panel-triggers {
           display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 28px;
         }
@@ -2179,6 +2246,9 @@ export const HOME_PAGE_STYLES = `
           color: #fff; background: #0aa3a3; text-decoration: none;
           font-size: 12px; font-weight: 800; box-shadow: 0 8px 20px rgba(0,0,0,.3);
         }
+        /* ============================================================
+           Responsive: narrow-viewport overrides
+           ============================================================ */
         @media (max-width: 640px) {
           .score-strip { grid-template-columns: 1fr; }
           .score-block { border-right: none; border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -2288,6 +2358,9 @@ export const HOME_PAGE_STYLES = `
           .learn-more-menu::before { display: none; }
           .page { padding: 28px 16px 72px; }
         }
+        /* ============================================================
+           Reduced-motion overrides
+           ============================================================ */
         @media (prefers-reduced-motion: reduce) {
           .water-fill, .water-fill::before, .water-fill::after,
           .water-wave, .water-wave::before,
