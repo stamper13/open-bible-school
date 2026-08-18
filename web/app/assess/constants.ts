@@ -1,4 +1,4 @@
-import type { BliEvidence, NtSectionKey } from "./types";
+import type { BliEvidence, NtSectionKey, ReportCategory } from "./types";
 
 export const SECTION_COLORS: Record<string, string> = {
   "Torah": "#d4a017",
@@ -41,3 +41,10 @@ export const EVIDENCE_VISUAL_STRENGTH: Record<BliEvidence["evidence_level"], num
   "Strong": 80,
   "Very strong": 96,
 };
+
+export const REPORT_OPTIONS: { value: ReportCategory; label: string }[] = [
+  { value: "wrong_answer", label: "Wrong answer" },
+  { value: "inaccurate", label: "Inaccurate" },
+  { value: "poorly_worded", label: "Poorly worded" },
+  { value: "other", label: "Other" },
+];

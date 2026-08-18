@@ -1,5 +1,14 @@
 import { BIBLE_BOOKS } from "@/lib/bibleTaxonomy";
-import { NT_SECTION_LABELS, NT_SECTION_RPC_VALUES } from "./constants";
+import {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  NT_ATTEMPT_ID_KEY,
+  NT_SECTION_LABELS,
+  NT_SECTION_RPC_VALUES,
+  OT_ATTEMPT_ID_KEY,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+} from "./constants";
 import type {
   Choice,
   NtBookMetadata,
@@ -299,4 +308,18 @@ export function ntScopeFromKey(scopeKey: string, books: NtBookMetadata[]): NtSco
         label: "All New Testament",
         description: "Adaptive questions across all 27 New Testament books.",
       };
+}
+
+export function clearAssessmentBrowserStorage() {
+  localStorage.removeItem("obs_answered");
+  localStorage.removeItem("obs_correct");
+  localStorage.removeItem("obs_attempt_id");
+  localStorage.removeItem("obs_user_id");
+  localStorage.removeItem(ANON_USER_ID_KEY);
+  sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);
+  sessionStorage.removeItem(ANON_USER_ID_KEY);
+  sessionStorage.removeItem(SESSION_ANSWERED_KEY);
+  sessionStorage.removeItem(SESSION_CORRECT_KEY);
+  sessionStorage.removeItem(OT_ATTEMPT_ID_KEY);
+  sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
 }
