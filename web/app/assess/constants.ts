@@ -1,4 +1,4 @@
-import type { BliEvidence, NtSectionKey, ReportCategory } from "./types";
+import type { BliEvidence, Choice, NtSectionKey, ReportCategory } from "./types";
 
 export const SECTION_COLORS: Record<string, string> = {
   "Torah": "#d4a017",
@@ -7,6 +7,9 @@ export const SECTION_COLORS: Record<string, string> = {
   "Writings": "#7c3aed",
   "Old Testament": "#0aa3a3",
 };
+
+export const IDK_CHOICE_ID = "__IDK__";
+export const IDK_CHOICE: Choice = { id: IDK_CHOICE_ID, text: "I don't know" };
 
 export const TOTAL_INITIAL = 20;
 export const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
