@@ -144,6 +144,16 @@ export type SectionScoreMap = Record<string, {
   total: number;
 }>;
 export type BreakdownTab = "sections" | "books" | "domains";
+export type DashboardTab = "bli" | "church-history" | "biblical-languages";
+export type AssessmentSnapshot = { answered: number; correct: number; bli?: number };
+export type RecommendedStudy = {
+  label: string;
+  books: string;
+  focus: string;
+  priority: string;
+  actionHref: string;
+  actionLabel: string;
+};
 export type ScopeKind = "canon" | "section" | "book" | "domain";
 export type ScopeScore = {
   key: string;
@@ -1260,7 +1270,7 @@ export function hasBaselineEvidence(score: ScopeScore | undefined) {
     && (score.displayScore ?? 0) >= 513;
 }
 
-export function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: boolean, bookScores: ScopeScore[]) {
+export function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessment: boolean, bookScores: ScopeScore[]): RecommendedStudy {
   if (!hasAssessment) {
     return {
       label: "Take your first assessment",
@@ -1324,7 +1334,7 @@ export function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessmen
 }
 
 export const DASHBOARD_SUBJECTS: Array<{
-  id: "bli" | "church-history" | "biblical-languages";
+  id: DashboardTab;
   label: string;
   subtitle: string;
   color: string;
