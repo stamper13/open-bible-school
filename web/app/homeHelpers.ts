@@ -24,14 +24,24 @@ import {
   testamentForBook,
   type Testament as BibleTestament,
 } from "@/lib/bibleTaxonomy";
+import {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+  OT_ATTEMPT_ID_KEY,
+  NT_ATTEMPT_ID_KEY,
+} from "@/lib/assessmentSessionKeys";
 
+export {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+  OT_ATTEMPT_ID_KEY,
+  NT_ATTEMPT_ID_KEY,
+};
 export const SKY_SEED_KEY = "obs_sky_seed";
-export const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
-export const ANON_USER_ID_KEY = "obs_anon_user_id";
-export const SESSION_ANSWERED_KEY = "obs_session_answered";
-export const SESSION_CORRECT_KEY = "obs_session_correct";
-export const OT_ATTEMPT_ID_KEY = "obs_ot_attempt_id";
-export const NT_ATTEMPT_ID_KEY = "obs_nt_attempt_id";
 export const RECOMMENDATION_RETEST_WAIT_MS = 20 * 60 * 1000;
 
 export function isAnonymousSession(session: { user?: { email?: string | null } } | null) {

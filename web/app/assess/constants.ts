@@ -1,4 +1,21 @@
 import type { BliEvidence, Choice, NtSectionKey, ReportCategory } from "./types";
+import {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+  OT_ATTEMPT_ID_KEY,
+  NT_ATTEMPT_ID_KEY,
+} from "@/lib/assessmentSessionKeys";
+
+export {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+  OT_ATTEMPT_ID_KEY,
+  NT_ATTEMPT_ID_KEY,
+};
 
 export const SECTION_COLORS: Record<string, string> = {
   "Torah": "#d4a017",
@@ -12,12 +29,6 @@ export const IDK_CHOICE_ID = "__IDK__";
 export const IDK_CHOICE: Choice = { id: IDK_CHOICE_ID, text: "I don't know" };
 
 export const TOTAL_INITIAL = 20;
-export const ANON_SESSION_ACTIVE_KEY = "obs_anon_session_active";
-export const ANON_USER_ID_KEY = "obs_anon_user_id";
-export const SESSION_ANSWERED_KEY = "obs_session_answered";
-export const SESSION_CORRECT_KEY = "obs_session_correct";
-export const OT_ATTEMPT_ID_KEY = "obs_ot_attempt_id";
-export const NT_ATTEMPT_ID_KEY = "obs_nt_attempt_id";
 export const NT_PILOT_TARGET = 20;
 export const NT_PILOT_ENABLED = process.env.NEXT_PUBLIC_NT_PILOT_ENABLED !== "false";
 
