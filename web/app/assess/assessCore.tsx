@@ -2,7 +2,7 @@
 
 import { type Dispatch, type RefObject, type SetStateAction } from "react";
 import Link from "next/link";
-import BrandLogo from "@/components/BrandLogo";
+import BrandMark from "@/components/BrandMark";
 import { BOOK_NAMES } from "@/lib/bibleTaxonomy";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -23,9 +23,11 @@ import type {
 
 // ---------------------------------------------------------------------------
 // Assess page nav bar: brand, phase/progress readout, sign in/out + exit.
+// Named AssessNavBar (not NavBar) so it doesn't collide with
+// homeDashboard.tsx's unrelated nav bar of the same shape.
 // ---------------------------------------------------------------------------
 
-export function NavBar({
+export function AssessNavBar({
   isDashboardTransitioning,
   displayNavPhaseLabel,
   displayNavSubLabel,
@@ -52,15 +54,7 @@ export function NavBar({
 }) {
   return (
       <nav className={`nav ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
-        <span className="brand-wrap">
-          <BrandLogo className="nav-brand" />
-          <span className="beta-badge" tabIndex={0}>
-            Beta
-            <span className="beta-tooltip" role="tooltip">
-              Open Bible Assessment is still in active development. Scores and questions are being refined, so your results may shift as the platform matures.
-            </span>
-          </span>
-        </span>
+        <BrandMark />
         <div className="nav-center">
           <span className="nav-phase">{displayNavPhaseLabel}</span>
           <span className="nav-subphase">{displayNavSubLabel}</span>

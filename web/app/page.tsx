@@ -85,7 +85,7 @@ import {
   type NtPilotSummary,
 } from "./homeHelpers";
 import {
-  NavBar,
+  HomeNavBar,
   DashboardHeader,
   DashboardTabsBar,
   FirstAssessmentCard,
@@ -1377,7 +1377,7 @@ export default function HomePage() {
         />
       )}
 
-      <NavBar
+      <HomeNavBar
         userEmail={userEmail}
         accountMenuOpen={accountMenuOpen}
         accountMenuRef={accountMenuRef}

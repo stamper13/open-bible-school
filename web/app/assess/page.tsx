@@ -84,7 +84,7 @@ import {
   OtStartingScreen,
   ReportQuestionModal,
 } from "./assessScreens";
-import { FeedbackPanel, NavBar, QuestionHead, QuestionInteraction } from "./assessCore";
+import { FeedbackPanel, AssessNavBar, QuestionHead, QuestionInteraction } from "./assessCore";
 
 function rpcErrorMessageText(err: RpcErrorLike) {
   return typeof err?.message === "string" && err.message.trim()
@@ -1559,7 +1559,7 @@ export default function AssessPage() {
       )}
 
       {/* Nav */}
-      <NavBar
+      <AssessNavBar
         isDashboardTransitioning={isDashboardTransitioning}
         displayNavPhaseLabel={displayNavPhaseLabel}
         displayNavSubLabel={displayNavSubLabel}

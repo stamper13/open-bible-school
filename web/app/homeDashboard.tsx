@@ -3,7 +3,7 @@
 import { type CSSProperties, type Dispatch, type MouseEvent, type RefObject, type SetStateAction } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import BrandLogo from "@/components/BrandLogo";
+import BrandMark from "@/components/BrandMark";
 import { BLI_LEVELS, levelForScore, type BliLevel, type BliLevelBand } from "@/lib/bli";
 import {
   compactReference,
@@ -32,10 +32,11 @@ import {
 
 // ---------------------------------------------------------------------------
 // Site nav bar: brand, top links, "Learn More" menu, and the account menu
-// (sign in / sign out / delete account).
+// (sign in / sign out / delete account). Named HomeNavBar (not NavBar) so it
+// doesn't collide with assessCore.tsx's unrelated nav bar of the same shape.
 // ---------------------------------------------------------------------------
 
-export function NavBar({
+export function HomeNavBar({
   userEmail,
   accountMenuOpen,
   accountMenuRef,
@@ -60,15 +61,7 @@ export function NavBar({
 }) {
   return (
       <nav className="nav">
-        <span className="brand-wrap">
-          <BrandLogo className="nav-brand" />
-          <span className="beta-badge" tabIndex={0}>
-            Beta
-            <span className="beta-tooltip" role="tooltip">
-              Open Bible Assessment is still in active development. Scores and questions are being refined, so your results may shift as the platform matures.
-            </span>
-          </span>
-        </span>
+        <BrandMark />
         <div className="nav-right">
           <Link className="nav-btn" href="/assess">Assess</Link>
           <Link className="nav-btn" href="/knowledge-map">Knowledge Map</Link>
