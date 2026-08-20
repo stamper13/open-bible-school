@@ -5,9 +5,11 @@ anyone who needs to read or change it. The database does not document
 itself well yet — this file exists to close that gap. See `README.md` for
 the app and `COLLABORATING.md` for environment setup.
 
-**Last verified:** 2026-08-18, against 55 tables / 146 functions / 31 views,
-by tracing every `.rpc()` and `.from()` call in this repo's `app/`, `lib/`,
-`components/`, `scripts/`, and `tests/` directories back into the schema.
+**Last verified:** 2026-08-20, against 55 public tables / 153 public functions /
+31 public views, by tracing every `.rpc()` and `.from()` call in this repo's
+`app/`, `lib/`, `components/`, `scripts/`, and `tests/` directories back into
+the schema. The live Supabase migration ledger had 194 rows, latest
+`20260820123333 restore_ot_submit_chain`.
 See "How to re-verify this" at the bottom before trusting anything here on
 a much later date.
 
@@ -61,6 +63,7 @@ internal helpers, admin/manual tooling, or dead code (see below).
 | `obs_get_public_question_metadata` | Answer-free question metadata for the knowledge-map visualization. |
 | `obs_get_random_starfield_passage` | Powers the `BlackHoleEvent` mini-game. |
 | `obs_record_study_event` | Logs reading-log / study activity. |
+| `obs_issue_anonymous_transfer_token`, `obs_claim_anonymous_transfer` | Guest-to-account progress transfer. Restored in `supabase/migrations/20260820054500_restore_anonymous_transfer_rpcs.sql` with the private token table hardened in `20260820060000_harden_anonymous_transfer_token_table.sql`. |
 | `obs_admin_get_question_quality_queue`, `obs_admin_set_question_review_status` | Admin console only (`app/api/admin/`), gated by `SUPABASE_SERVICE_ROLE_KEY` + email allowlist — bypasses RLS entirely. |
 | `obs_backfill_assessment_snapshots` | Ops/maintenance RPC, not part of normal user flow. |
 
@@ -105,9 +108,14 @@ too narrow: it checked app callers, triggers, and constraints, but missed
 function-to-function calls inside live function bodies. The ordinary OT
 start path was restored from repository source in
 `supabase/migrations/20260818180000_restore_obs_start_or_resume_ot_assessment.sql`.
-The OT submit chain still needs exact function bodies from PITR before it
-can be safely restored; do not reconstruct `submit_assessment_answer_v1`
-from guesses, because it owns grading/theta behavior.
+The OT submit path was restored on 2026-08-20 in
+`supabase/migrations/20260820123333_restore_ot_submit_chain.sql`.
+That restore deliberately uses repo source for `submit_assessment_answer_v2`
+and `obs_submit_ot_assessment_response`, and restores
+`submit_assessment_answer_v1` only as a compatibility delegate to v2. The
+companion verification script asserts the full live chain:
+browser `_v2` → internal response delegate → `obs_submit_ot_assessment_answer`
+→ v1 shim → v2 grading/theta writer.
 
 ## Table categories
 
@@ -153,6 +161,9 @@ This file will go stale. To check whether it still matches reality:
 grep -rhoE '\.rpc\(\s*["\x27][a-zA-Z0-9_]+["\x27]' app lib components scripts tests | sort -u
 grep -rhoE '\.from\(\s*["\x27][a-zA-Z0-9_]+["\x27]' app lib components scripts tests | sort -u
 ```
+
+For the live RPC existence contract, run
+`supabase/verify/frontend_rpc_contract_verify.sql` against the target database.
 
 Then cross-reference that list against `pg_proc`/`pg_tables` in Supabase
 (via the dashboard SQL editor or MCP). Anything in the database but not in

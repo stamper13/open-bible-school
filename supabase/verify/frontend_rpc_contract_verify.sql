@@ -1,0 +1,49 @@
+do $$
+declare
+  v_missing jsonb;
+begin
+  with frontend_rpc(name) as (
+    values
+      ('obs_admin_get_question_quality_queue'),
+      ('obs_admin_set_question_review_status'),
+      ('obs_backfill_assessment_snapshots'),
+      ('obs_claim_anonymous_transfer'),
+      ('obs_get_attempt_review'),
+      ('obs_get_attempt_summary'),
+      ('obs_get_bli_scores_v2'),
+      ('obs_get_bli_section_followup_v1'),
+      ('obs_get_bli_uncertainty'),
+      ('obs_get_current_focus_path'),
+      ('obs_get_ladder_state_v1'),
+      ('obs_get_nt_assessment_status'),
+      ('obs_get_progress_history'),
+      ('obs_get_public_question_metadata'),
+      ('obs_get_random_starfield_passage'),
+      ('obs_get_scope_summary'),
+      ('obs_get_user_recommendation_v2'),
+      ('obs_issue_anonymous_transfer_token'),
+      ('obs_record_study_event'),
+      ('obs_skip_broken_assessment_question'),
+      ('obs_start_nt_assessment'),
+      ('obs_start_or_resume_ot_assessment_v2'),
+      ('obs_start_or_resume_ot_scope_assessment'),
+      ('obs_submit_nt_assessment_answer'),
+      ('obs_submit_ot_assessment_response_v2'),
+      ('obs_submit_section_sort_answers')
+  ), live_public_rpc as (
+    select distinct p.proname as name
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+  )
+  select coalesce(jsonb_agg(f.name order by f.name), '[]'::jsonb)
+  into v_missing
+  from frontend_rpc f
+  left join live_public_rpc live using (name)
+  where live.name is null;
+
+  if jsonb_array_length(v_missing) > 0 then
+    raise exception 'FAIL: frontend RPC contract missing functions: %', v_missing;
+  end if;
+end;
+$$;

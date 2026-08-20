@@ -3,7 +3,7 @@
 Only forward, production-safe schema migrations belong in `migrations/`.
 Supabase applies every SQL file in that directory when migrations are pushed.
 
-> **Migration hold (2026-07-31):** do not run `supabase db push` yet. The live
+> **Migration hold (updated 2026-08-20):** do not run `supabase db push` yet. The live
 > project was changed through both dashboard migrations and manually executed
 > repository files. The local directory contains repeated short migration
 > versions such as `20260729`, while the remote ledger uses unique 14-digit
@@ -16,6 +16,30 @@ Supabase applies every SQL file in that directory when migrations are pushed.
 - `verify/`: read-only or transaction-rolled-back verification scripts
 - `manual/`: one-time data recomputations that intentionally persist changes
 - `diagnostics/`: read-only investigation queries
+
+## Current backend shape
+
+This backend is mostly a Supabase/Postgres application, not an app-server
+codebase. Most behavior lives in RPC functions, triggers, views, and migrations.
+That is workable, but the history is currently harder to understand than the
+domain model:
+
+- Production has 55 public tables, 153 public functions, and 31 public views.
+- The production ledger has 194 migrations; latest verified version is
+  `20260820123333 restore_ot_submit_chain`.
+- The repo has both legacy 8-digit migration names and newer 14-digit versions.
+- Several historical migrations patch functions by reading `pg_get_functiondef`
+  and string-replacing the body. Treat those files as history, not as the
+  preferred pattern for new work.
+- The current frontend RPC contract is captured in
+  `verify/frontend_rpc_contract_verify.sql`.
+- The OT answer-submit outage from the 2026-08-18 cleanup is fixed in
+  `migrations/20260820123333_restore_ot_submit_chain.sql` and verified by its
+  companion file in `verify/`.
+
+For new work, prefer complete `create or replace function` definitions with
+preconditions, postconditions, explicit grants, and a companion rollback/verify
+file. Avoid mutation-style function patches unless there is no safer option.
 
 ## Applying a change
 

@@ -73,3 +73,26 @@ commands against production until the baseline procedure below is complete.
 - OT and NT assessment lifecycle tests pass on the recreated project.
 - The security advisor has no errors on the recreated project.
 - Production changes are performed through reviewed migration files thereafter.
+
+## 2026-08-20 Addendum
+
+The live project is still the operational source of truth, but the most urgent
+frontend/backend contract breaks from the 2026-08-18 cleanup have been repaired.
+
+- Production ledger: 194 rows; latest version `20260820123333`
+  (`restore_ot_submit_chain`).
+- Live public schema: 55 tables, 153 functions, 31 views.
+- Current frontend RPC contract: 26 distinct function names; all exist in
+  production. See `supabase/verify/frontend_rpc_contract_verify.sql`.
+- Restored from repo source and verified: `obs_start_or_resume_ot_assessment`,
+  `obs_start_or_resume_ot_scope_assessment`,
+  `obs_issue_anonymous_transfer_token`, `obs_claim_anonymous_transfer`,
+  `obs_submit_ot_assessment_response`, and `submit_assessment_answer_v2`.
+- Restored as compatibility shim: `submit_assessment_answer_v1` delegates to
+  `submit_assessment_answer_v2`.
+
+The baseline task is still mandatory before any normal Supabase CLI push. The
+new rule for backend work is: new migrations must carry a forward SQL file, a
+rollback file, a verification file, and enough inline pre/postconditions that a
+reviewer can understand the blast radius without reconstructing old migration
+history.
