@@ -38,6 +38,8 @@ domain model:
   `npm --prefix web run test:rpc-contract`.
 - Load-bearing internal RPC chains are captured in
   `verify/load_bearing_rpc_chain_verify.sql`.
+- The intentional client-executable `SECURITY DEFINER` grant surface is
+  snapshotted in `verify/security_definer_client_surface_verify.sql`.
 - New active migrations are checked by `scripts/check-backend-repo-health.mjs`;
   it requires rollback/verify companions and blocks function-body mutation
   patches in migrations after the 2026-08-18 repair floor.

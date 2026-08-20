@@ -27,6 +27,8 @@ policies, and migration files rather than an app server.
   `supabase/verify/frontend_rpc_contract_verify.sql`.
 - Load-bearing indirect RPC chains now have an explicit verifier:
   `supabase/verify/load_bearing_rpc_chain_verify.sql`.
+- The client-executable `SECURITY DEFINER` grant surface is snapshotted in
+  `supabase/verify/security_definer_client_surface_verify.sql`.
 - Repo health gates now fail on new production migrations that lack rollback or
   verify companions, or that reintroduce function-body mutation patches.
 
