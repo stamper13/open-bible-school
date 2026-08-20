@@ -36,6 +36,11 @@ domain model:
   `verify/frontend_rpc_contract_verify.sql`. Regenerate/check it with
   `node scripts/check-frontend-rpc-contract.mjs --write` or
   `npm --prefix web run test:rpc-contract`.
+- Load-bearing internal RPC chains are captured in
+  `verify/load_bearing_rpc_chain_verify.sql`.
+- New active migrations are checked by `scripts/check-backend-repo-health.mjs`;
+  it requires rollback/verify companions and blocks function-body mutation
+  patches in migrations after the 2026-08-18 repair floor.
 - The OT answer-submit outage from the 2026-08-18 cleanup is fixed in
   `migrations/20260820123333_restore_ot_submit_chain.sql` and verified by its
   companion file in `verify/`.

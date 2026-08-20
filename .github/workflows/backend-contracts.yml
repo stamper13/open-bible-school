@@ -1,0 +1,30 @@
+name: Backend contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - knowledge-map-star-hierarchy
+
+jobs:
+  backend-contracts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check shell scripts
+        run: bash -n scripts/*.sh
+
+      - name: Check frontend RPC contract
+        run: node scripts/check-frontend-rpc-contract.mjs
+
+      - name: Check backend repo health
+        run: node scripts/check-backend-repo-health.mjs
+
+      - name: Run frontend unit tests
+        run: npm --prefix web run test:unit

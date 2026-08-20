@@ -4,13 +4,13 @@ Last updated: 2026-08-20.
 
 ## Current Rating
 
-Backend: **5/10**.
+Backend: **6.5/10**.
 
-The live product behavior is recoverable and the urgent frontend RPC contract is
-now repaired, but the schema history is still too hard to reason about quickly.
-The backend is a Supabase/Postgres application: most behavior lives in SQL
-functions, views, triggers, RLS policies, and migration files rather than an app
-server.
+The live product behavior is recoverable, the urgent frontend RPC contract is
+repaired, and new repo gates now protect the riskiest edges. The schema history
+is still too hard to reason about quickly. The backend is a Supabase/Postgres
+application: most behavior lives in SQL functions, views, triggers, RLS
+policies, and migration files rather than an app server.
 
 ## What A Senior Developer Will Notice First
 
@@ -25,6 +25,10 @@ server.
   grants and an auth/authorization check.
 - The frontend/backend RPC contract now has a generated verifier:
   `supabase/verify/frontend_rpc_contract_verify.sql`.
+- Load-bearing indirect RPC chains now have an explicit verifier:
+  `supabase/verify/load_bearing_rpc_chain_verify.sql`.
+- Repo health gates now fail on new production migrations that lack rollback or
+  verify companions, or that reintroduce function-body mutation patches.
 
 ## Path To 8/10
 
@@ -38,6 +42,19 @@ server.
    verification SQL, explicit grants, and pre/postconditions.
 6. Replace mutation-style function patches with complete function definitions
    for all new work.
+
+## Local Gates
+
+Run these before opening a backend PR:
+
+```bash
+npm --prefix web run test:rpc-contract
+npm --prefix web run test:backend-repo
+npm --prefix web run test:unit
+```
+
+The GitHub workflow in `.github/workflows/backend-contracts.yml` runs the same
+contract and unit gates on pull requests.
 
 ## Working Rule
 
