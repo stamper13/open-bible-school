@@ -16,6 +16,7 @@ Supabase applies every SQL file in that directory when migrations are pushed.
 - `verify/`: read-only or transaction-rolled-back verification scripts
 - `manual/`: one-time data recomputations that intentionally persist changes
 - `diagnostics/`: read-only investigation queries
+- `baseline/`: ignored local schema dumps used during migration reconciliation
 
 ## Current backend shape
 
@@ -32,7 +33,9 @@ domain model:
   and string-replacing the body. Treat those files as history, not as the
   preferred pattern for new work.
 - The current frontend RPC contract is captured in
-  `verify/frontend_rpc_contract_verify.sql`.
+  `verify/frontend_rpc_contract_verify.sql`. Regenerate/check it with
+  `node scripts/check-frontend-rpc-contract.mjs --write` or
+  `npm --prefix web run test:rpc-contract`.
 - The OT answer-submit outage from the 2026-08-18 cleanup is fixed in
   `migrations/20260820123333_restore_ot_submit_chain.sql` and verified by its
   companion file in `verify/`.
@@ -40,6 +43,9 @@ domain model:
 For new work, prefer complete `create or replace function` definitions with
 preconditions, postconditions, explicit grants, and a companion rollback/verify
 file. Avoid mutation-style function patches unless there is no safer option.
+
+The baseline capture helper is `scripts/capture-supabase-schema-baseline.sh`.
+See `docs/backend-organization-roadmap.md` for the cleanup order.
 
 ## Applying a change
 

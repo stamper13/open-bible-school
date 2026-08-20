@@ -164,6 +164,9 @@ grep -rhoE '\.from\(\s*["\x27][a-zA-Z0-9_]+["\x27]' app lib components scripts t
 
 For the live RPC existence contract, run
 `supabase/verify/frontend_rpc_contract_verify.sql` against the target database.
+Regenerate/check that file with
+`node scripts/check-frontend-rpc-contract.mjs --write` or
+`npm --prefix web run test:rpc-contract`.
 
 Then cross-reference that list against `pg_proc`/`pg_tables` in Supabase
 (via the dashboard SQL editor or MCP). Anything in the database but not in
