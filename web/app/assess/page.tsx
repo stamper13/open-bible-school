@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { beginPendingTransfer, clearPendingTransfer, newFlowId } from "@/lib/auth/anonymousTransfer";
-import { authCallbackUrl } from "@/lib/auth/redirect";
-import BlackHoleEvent from "./BlackHoleEvent";
 import {
   EVIDENCE_VISUAL_STRENGTH,
   IDK_CHOICE_ID,
-  NEBULA_STAGE_NAMES,
   NT_PILOT_ENABLED,
   NT_PILOT_TARGET,
   NT_SECTION_LABELS,
@@ -22,15 +18,12 @@ import {
   HEBREW_BIBLE_DIVISION_NOTE,
   clearAssessmentBrowserStorage,
   getSectionSortInteraction,
-  hashString,
   isHebrewBibleTraditionSensitiveMiss,
   normalizeNtSection,
   ntScopeFromKey,
   parseInitialAssessmentRoute,
   prepareChoicesForDisplay,
-  skyDiscoveryMilestone,
 } from "./assessmentHelpers";
-import { BIBLE_SKY_FACTS } from "./skyFacts";
 import type {
   AssessmentMode,
   BibleSkyFact,
@@ -38,7 +31,6 @@ import type {
   NtAssessmentQuestionRow,
   NtAssessmentStartRow,
   NtAssessmentStatusRow,
-  NtBookMetadata,
   NtPilotQuestion,
   NtScopeOption,
   OtAssessmentRequest,
@@ -49,23 +41,18 @@ import type {
   QuestionPrefetch,
   RpcErrorLike,
   SectionSortKey,
-  SectionSortLabel,
   SectionSortSubmitResult,
 } from "./types";
 import {
-  type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import {
-  arrayMove,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
-import { nebulaStageIndex } from "@/lib/skyStreak";
-import Starfield, { type StarfieldHandle } from "@/components/Starfield";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import type { StarfieldHandle } from "@/components/Starfield";
 import { ASSESS_PAGE_STYLES } from "./assessStyles";
+import { AssessmentAtmosphere } from "./AssessmentAtmosphere";
 import {
   AssessmentErrorScreen,
   BibleFactModal,
@@ -87,7 +74,11 @@ import {
 } from "./questionPrefetch";
 import { answerSubmissionErrorText, rpcErrorCodeText, rpcErrorMessageText } from "./rpcErrors";
 import { deriveAssessmentDisplayState } from "./assessmentDisplayState";
+import { useAssessmentAuthActions } from "./useAssessmentAuthActions";
 import { useAssessmentSession } from "./useAssessmentSession";
+import { useDashboardTransition } from "./useDashboardTransition";
+import { useNtBookMetadata } from "./useNtBookMetadata";
+import { useSectionSortQuestionInteraction, useSequenceQuestionInteraction } from "./useQuestionInteractions";
 import { useQuestionReport } from "./useQuestionReport";
 import { useStartupWaitLevel } from "./useStartupWaitLevel";
 
@@ -131,15 +122,11 @@ export default function AssessPage() {
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [isDashboardTransitioning, setIsDashboardTransitioning] = useState(false);
   const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
-  const [ntBooks, setNtBooks] = useState<NtBookMetadata[]>([]);
   const [ntScope, setNtScope] = useState<NtScopeOption>({ kind: "all", value: "ALL", label: "All New Testament", description: "Adaptive questions across all 27 New Testament books." });
   const [ntTargetCount, setNtTargetCount] = useState(NT_PILOT_TARGET);
   const [ntRequestedScopeKey, setNtRequestedScopeKey] = useState("NT");
   const [ntRequestedTargetCount, setNtRequestedTargetCount] = useState(NT_PILOT_TARGET);
-  const [ntMetadataLoaded, setNtMetadataLoaded] = useState(false);
-  const [ntError, setNtError] = useState("");
   const [debugErrorMsg, setDebugErrorMsg] = useState("");
   const [activeBibleFact, setActiveBibleFact] = useState<BibleSkyFact | null>(null);
   const [dismissedSkyDiscoveries, setDismissedSkyDiscoveries] = useState<Set<number>>(() => new Set());
@@ -180,11 +167,35 @@ export default function AssessPage() {
     submitQuestionReport,
   } = useQuestionReport();
   const startupWaitLevel = useStartupWaitLevel(phase, assessmentMode);
+  const {
+    ntBooks,
+    ntError,
+    ntMetadataLoaded,
+    setNtError,
+  } = useNtBookMetadata({
+    assessmentMode,
+    modeReady,
+  });
   const sequenceSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const starfieldRef = useRef<StarfieldHandle>(null);
+  const {
+    isDashboardTransitioning,
+    transitionToDashboard,
+  } = useDashboardTransition(starfieldRef);
+  const {
+    handleGoogleSignIn,
+    handleMagicLink,
+    handleSignOut,
+  } = useAssessmentAuthActions({
+    email,
+    setErrorMsg,
+    setSaved,
+    setSaving,
+    userId,
+  });
   // Lifetime evidence responses drive the nebula; the in-session answered
   // counter resets each session, so the nebula uses whichever is larger.
   const nebulaAnswered = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
@@ -340,56 +351,6 @@ export default function AssessPage() {
   }, [handleOtQuestionResult]);
 
   // ---------------------------------------------------------------------------
-  // NT book metadata loading, and the effects that trigger it / drive the
-  // slow-startup indicator
-  // ---------------------------------------------------------------------------
-  const loadNtMetadata = useCallback(async () => {
-    if (!NT_PILOT_ENABLED) return;
-    setNtMetadataLoaded(false);
-    const { data, error } = await supabase
-      .from("scripture_books")
-      .select("book_code,canon_order,name,nt_division")
-      .eq("testament", "NT")
-      .order("canon_order", { ascending: true });
-
-    if (error) {
-      setNtError(error.message);
-      setNtMetadataLoaded(true);
-      return;
-    }
-
-    const rows = (data ?? [])
-      .map(row => {
-        const ntDivision = typeof row.nt_division === "string" ? normalizeNtSection(row.nt_division) : null;
-        if (
-          typeof row.book_code === "string" &&
-          typeof row.canon_order === "number" &&
-          typeof row.name === "string" &&
-          ntDivision
-        ) {
-          return {
-            book_code: row.book_code,
-            canon_order: row.canon_order,
-            name: row.name,
-            nt_division: ntDivision,
-          };
-        }
-        return null;
-      })
-      .filter((row): row is NtBookMetadata => {
-        return row !== null;
-      })
-      .sort((a, b) => a.canon_order - b.canon_order);
-    setNtBooks(rows);
-    setNtMetadataLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!modeReady || assessmentMode !== "NT") return;
-    void loadNtMetadata();
-  }, [assessmentMode, loadNtMetadata, modeReady]);
-
-  // ---------------------------------------------------------------------------
   // NT question loading & prefetch, and starting the NT pilot
   // ---------------------------------------------------------------------------
   const applyNtQuestionRow = useCallback((aid: string, scope: NtScopeOption, row: NtAssessmentQuestionRow) => {
@@ -454,7 +415,7 @@ export default function AssessPage() {
     setPhase("question");
     starfieldRef.current?.shiftSky();
     return true;
-  }, [finishQuestionLoad]);
+  }, [finishQuestionLoad, setNtError]);
 
   const handleNtQuestionResult = useCallback((
     aid: string,
@@ -480,7 +441,7 @@ export default function AssessPage() {
       return;
     }
     applyNtQuestionRow(aid, scope, row);
-  }, [applyNtQuestionRow, finishQuestionLoad]);
+  }, [applyNtQuestionRow, finishQuestionLoad, setNtError]);
 
   const prefetchNtQuestion = useCallback((aid: string, afterAnsweredCount: number) => {
     startQuestionPrefetch<NtAssessmentQuestionRow>(ntQuestionPrefetchRef, NT_NEXT_QUESTION_RPC, aid, afterAnsweredCount);
@@ -548,7 +509,7 @@ export default function AssessPage() {
       setErrorMsg(message);
       setPhase("error");
     }
-  }, [ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, ntRequestedTargetCount, ntScope]);
+  }, [ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, ntRequestedTargetCount, ntScope, setNtError, setUserId]);
 
   // ---------------------------------------------------------------------------
   // Resume or start the NT assessment on mount (once mode + book metadata are
@@ -607,7 +568,7 @@ export default function AssessPage() {
     }
 
     void resumeNtAssessment();
-  }, [assessmentMode, ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, modeReady, ntBooks, ntMetadataLoaded, ntRequestedScopeKey, ntRequestedTargetCount, startNtPilot]);
+  }, [assessmentMode, ensureAssessmentSession, loadNtQuestion, loadScoreEvidence, modeReady, ntBooks, ntMetadataLoaded, ntRequestedScopeKey, ntRequestedTargetCount, setNtError, setUserId, startNtPilot]);
 
   // ---------------------------------------------------------------------------
   // Resume or start the OT assessment on mount
@@ -917,76 +878,30 @@ export default function AssessPage() {
     setPhase("feedback");
   }, [attemptId, userId, question, phase, isQuestionInteractionLocked, sequenceOrder, answeredCount, correctCount, failAnswerSubmission, isChangedRetryRejection, loadScoreEvidence, otTargetCount, prefetchOtQuestion]);
 
-  // ---------------------------------------------------------------------------
-  // Sequence-question interaction (drag-to-order events)
-  // ---------------------------------------------------------------------------
-  const moveSequenceItem = useCallback((itemId: string, direction: -1 | 1) => {
-    if (phase !== "question" || isQuestionInteractionLocked()) return;
-    setSequenceOrder(current => {
-      const currentIndex = current.findIndex(item => item.id === itemId);
-      const nextIndex = currentIndex + direction;
-      if (currentIndex < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
-      return arrayMove(current, currentIndex, nextIndex);
-    });
-  }, [isQuestionInteractionLocked, phase]);
+  const {
+    handleSequenceDragEnd,
+    moveSequenceItem,
+    submitSequenceOrder,
+  } = useSequenceQuestionInteraction({
+    isQuestionInteractionLocked,
+    phase,
+    sequenceOrder,
+    setSequenceOrder,
+    submitAnswer,
+  });
 
-  const handleSequenceDragEnd = useCallback((event: DragEndEvent) => {
-    if (phase !== "question" || isQuestionInteractionLocked()) return;
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setSequenceOrder(current => {
-      const oldIndex = current.findIndex(item => item.id === active.id);
-      const newIndex = current.findIndex(item => item.id === over.id);
-      if (oldIndex < 0 || newIndex < 0) return current;
-      return arrayMove(current, oldIndex, newIndex);
-    });
-  }, [isQuestionInteractionLocked, phase]);
-
-  const submitSequenceOrder = useCallback(() => {
-    if (sequenceOrder.length === 0 || phase !== "question" || isQuestionInteractionLocked()) return;
-    void submitAnswer(`__ORDER__:${JSON.stringify(sequenceOrder.map(item => item.id))}`);
-  }, [isQuestionInteractionLocked, phase, sequenceOrder, submitAnswer]);
-
-  // ---------------------------------------------------------------------------
-  // Section-sort-question interaction (drag books into their canon section)
-  // ---------------------------------------------------------------------------
-  const sectionSortInteraction = useMemo(
-    () => getSectionSortInteraction(question),
-    [question],
-  );
-
-  const sectionSortLabelsByZone = useMemo(() => {
-    const byZone = new Map<SectionSortKey | "UNASSIGNED", SectionSortLabel[]>();
-    byZone.set("UNASSIGNED", []);
-    if (!sectionSortInteraction) return byZone;
-    for (const zone of sectionSortInteraction.dropZones) byZone.set(zone.id, []);
-
-    for (const label of sectionSortInteraction.dragLabels) {
-      const assignedZone = sectionSortAssignments[label.id] ?? "UNASSIGNED";
-      byZone.get(assignedZone)?.push(label);
-    }
-    return byZone;
-  }, [sectionSortAssignments, sectionSortInteraction]);
-
-  const sectionSortReadyToSubmit = Boolean(
-    sectionSortInteraction
-    && sectionSortInteraction.dragLabels.length > 0
-    && sectionSortInteraction.dragLabels.every(label => sectionSortAssignments[label.id]),
-  );
-
-  const handleSectionSortDragEnd = useCallback((event: DragEndEvent) => {
-    if (phase !== "question" || isQuestionInteractionLocked()) return;
-    const { active, over } = event;
-    if (!over || !sectionSortInteraction) return;
-    const zoneId = String(over.id) as SectionSortKey;
-    if (!sectionSortInteraction.dropZones.some(zone => zone.id === zoneId)) return;
-    if (!sectionSortInteraction.dragLabels.some(label => label.id === String(active.id))) return;
-
-    setSectionSortAssignments(current => ({
-      ...current,
-      [String(active.id)]: zoneId,
-    }));
-  }, [isQuestionInteractionLocked, phase, sectionSortInteraction]);
+  const {
+    handleSectionSortDragEnd,
+    sectionSortInteraction,
+    sectionSortLabelsByZone,
+    sectionSortReadyToSubmit,
+  } = useSectionSortQuestionInteraction({
+    isQuestionInteractionLocked,
+    phase,
+    question,
+    sectionSortAssignments,
+    setSectionSortAssignments,
+  });
 
   // ---------------------------------------------------------------------------
   // NT answer submission
@@ -1225,7 +1140,6 @@ export default function AssessPage() {
     displayNavSubLabel,
     displayProgressEnd,
     displayProgressPct,
-    isInitialPhase,
     isSectionSortQuestion,
     isSequenceQuestion,
     isSkipped,
@@ -1254,129 +1168,29 @@ export default function AssessPage() {
     sectionSortInteraction,
     selectedChoice,
   });
-  const skyDiscovery = skyDiscoveryMilestone(answeredCount);
-  const showSkyDiscovery = Boolean(
-    skyDiscovery
-    && !dismissedSkyDiscoveries.has(skyDiscovery)
-    && (phase === "question" || phase === "feedback")
-    && assessmentMode !== "select",
-  );
-
-  // ---------------------------------------------------------------------------
-  // Auth: sign in / sign out
-  // ---------------------------------------------------------------------------
-  const handleSignOut = useCallback(async () => {
-    // Never leave a pending capability behind for the next person on this
-    // browser — it would move this visitor's guest progress into their account.
-    clearPendingTransfer(localStorage);
-    await supabase.auth.signOut();
-    window.location.href = "/";
-  }, []);
-
-  const handleGoogleSignIn = async () => {
-    setSaving(true);
-    // Mint the transfer capability while still signed in as the guest — holding
-    // that session is what proves ownership of the progress. The record goes to
-    // localStorage and never into the redirect URL; putting a UUID in the URL
-    // let a crafted callback link claim another visitor's progress. Starting a
-    // flow replaces any earlier record, so an abandoned one cannot be completed.
-    // The flow id is a random, non-secret correlator, NOT a credential: it only
-    // proves this callback is the completion of this flow. The capability
-    // itself stays in localStorage and never enters the URL.
-    const flowId = newFlowId();
-    if (userId) await beginPendingTransfer(supabase, localStorage, userId, flowId);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: authCallbackUrl({ flow: flowId }),
-      },
-    });
-    if (error) { console.error("OAuth sign-in failed:", error); setSaving(false); setErrorMsg(error.message); }
-  };
-
-  const handleMagicLink = async () => {
-    if (!email) return;
-    setSaving(true);
-    // Same capability, minted before the link is sent. A magic link is often
-    // opened in a different tab or window, which is why the record lives in
-    // localStorage (shared same-origin) rather than sessionStorage.
-    const flowId = newFlowId();
-    if (userId) await beginPendingTransfer(supabase, localStorage, userId, flowId);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      // Route through the callback so guest progress is actually claimed. This
-      // previously landed on "/", which performs no transfer at all, so
-      // magic-link users silently lost their guest progress. The flow id rides
-      // along so the callback can prove it completes THIS request.
-      options: { emailRedirectTo: authCallbackUrl({ flow: flowId }) },
-    });
-    setSaving(false);
-    if (error) { console.error("Magic link request failed:", error); setErrorMsg(error.message); return; }
-    setSaved(true);
-  };
-
-  // ---------------------------------------------------------------------------
-  // Transition to dashboard (writes the starfield handoff keys the home
-  // page's <Starfield variant="home"> reads on arrival)
-  // ---------------------------------------------------------------------------
-  const transitionToDashboard = () => {
-    if (isDashboardTransitioning) return;
-    setIsDashboardTransitioning(true);
-    sessionStorage.setItem("obs_dashboard_arriving", "1");
-    sessionStorage.setItem("obs_dashboard_sky_rotation", "90");
-    window.setTimeout(() => {
-      const handoff = starfieldRef.current?.getHandoffState();
-      if (handoff) {
-        sessionStorage.setItem("obs_dashboard_sky_frame", String(handoff.frame));
-        sessionStorage.setItem("obs_dashboard_sky_offset", JSON.stringify(handoff.offset));
-      }
-      window.location.href = "/";
-    }, 2350);
-  };
 
   return (
     <>
       <style>{ASSESS_PAGE_STYLES}</style>
 
-      <Starfield
-        ref={starfieldRef}
-        variant="assess"
-        nebulaAnswered={nebulaAnswered}
+      <AssessmentAtmosphere
+        assessmentMode={assessmentMode}
+        answeredCount={answeredCount}
+        attemptId={attemptId}
+        dismissedSkyDiscoveries={dismissedSkyDiscoveries}
         evidenceStrength={evidenceStrength}
+        isCorrect={isCorrect}
         isDashboardTransitioning={isDashboardTransitioning}
+        nebulaAnswered={nebulaAnswered}
+        nebulaCount={nebulaCount}
+        phase={phase}
+        questionId={question?.out_generated_question_id ?? null}
+        scoreEvidence={scoreEvidence}
+        setActiveBibleFact={setActiveBibleFact}
+        setDismissedSkyDiscoveries={setDismissedSkyDiscoveries}
+        starfieldRef={starfieldRef}
+        userId={userId}
       />
-      <BlackHoleEvent answeredCount={answeredCount} userId={userId} />
-      {answeredCount > 0 && !isDashboardTransitioning && (
-        <div className="confidence-nebula-label" aria-hidden="true">
-          <span>Evidence</span>
-          <strong>{scoreEvidence?.evidence_level ?? "Gathering"}</strong>
-          <small>
-            {scoreEvidence ? `${scoreEvidence.n_responses} responses` : "Updating estimate"}
-            {nebulaCount > 0 ? ` · ${NEBULA_STAGE_NAMES[nebulaStageIndex(nebulaCount)]}` : ""}
-          </small>
-        </div>
-      )}
-      {isDashboardTransitioning && <div className="dashboard-warp" aria-hidden="true" />}
-      {assessmentMode === "NT" && phase === "feedback" && isCorrect && (
-        <div key={`${answeredCount}-${question?.out_generated_question_id || "correct"}`} className="cosmic-burst" aria-hidden="true">
-          <span className="firework firework-one"><i className="spark spark-a" /><i className="spark spark-b" /><i className="spark spark-c" /><i className="spark spark-d" /><i className="spark spark-e" /><i className="spark spark-f" /></span>
-          <span className="firework firework-two"><i className="spark spark-a" /><i className="spark spark-b" /><i className="spark spark-c" /><i className="spark spark-d" /><i className="spark spark-e" /><i className="spark spark-f" /></span>
-          <span className="firework firework-three"><i className="spark spark-a" /><i className="spark spark-b" /><i className="spark spark-c" /><i className="spark spark-d" /><i className="spark spark-e" /><i className="spark spark-f" /></span>
-        </div>
-      )}
-      {showSkyDiscovery && skyDiscovery && (
-        <button
-          className="sky-discovery"
-          type="button"
-          aria-label="Open a Bible fact"
-          title="Open a Bible fact"
-          onClick={() => {
-            const factIndex = hashString(`${attemptId ?? "assessment"}:${skyDiscovery}`) % BIBLE_SKY_FACTS.length;
-            setActiveBibleFact(BIBLE_SKY_FACTS[factIndex]);
-            setDismissedSkyDiscoveries(current => new Set(current).add(skyDiscovery));
-          }}
-        />
-      )}
 
       {/* Nav */}
       <AssessNavBar

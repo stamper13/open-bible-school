@@ -1,0 +1,145 @@
+export const ASSESS_OVERLAY_STYLES = `        /* ============================================================
+           Google sign-in & magic-link sign-in
+           ============================================================ */
+        .google-btn {
+          display: flex; align-items: center; justify-content: center; gap: 10px;
+          width: 100%; padding: 12px 20px; border-radius: 12px;
+          background: #fff; color: #1f2937; font-size: 14px; font-weight: 600;
+          border: 1.5px solid rgba(27,36,66,.12); cursor: pointer; font-family: inherit;
+          box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: box-shadow .14s, transform .12s;
+          margin-bottom: 12px;
+        }
+        .google-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); transform: translateY(-1px); }
+        .google-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+        .divider-or { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+        .divider-or::before, .divider-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+        .divider-or span { font-size: 12px; color: var(--muted); }
+        .magic-row { display: flex; gap: 8px; }
+        .magic-input {
+          flex: 1; padding: 11px 14px; border-radius: 10px;
+          border: 1.5px solid var(--border); font-size: 14px; font-family: inherit;
+          outline: none; transition: border-color .13s;
+        }
+        .magic-input:focus { border-color: var(--accent-line); }
+        .magic-btn {
+          padding: 11px 18px; border-radius: 10px;
+          background: var(--navy); color: #fff; font-size: 13.5px; font-weight: 600;
+          border: none; cursor: pointer; font-family: inherit; white-space: nowrap;
+          transition: background .13s;
+        }
+        .magic-btn:hover { background: #253566; }
+        .save-success { font-size: 13.5px; color: var(--correct); font-weight: 600; text-align: center; padding: 12px; }
+        .skip-link { display: block; text-align: center; margin-top: 12px; font-size: 13px; color: var(--muted); cursor: pointer; }
+        .skip-link:hover { color: var(--navy); }
+
+        /* Center card (loading/error/complete) */
+        /* ============================================================
+           Generic center-card / button / spinner primitives
+           ============================================================ */
+        .center-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; }
+        .big-num { font-family: var(--font-crimson), Georgia, serif; font-size: 72px; font-weight: 700; color: var(--navy); line-height: 1; }
+        .card-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; color: var(--navy); }
+        .card-sub { font-size: 15px; color: var(--muted); line-height: 1.6; max-width: 400px; }
+        .btn-primary {
+          display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px;
+          background: var(--navy); color: #fff; font-size: 15px; font-weight: 600;
+          text-decoration: none; border: none; cursor: pointer;
+          box-shadow: 0 10px 28px rgba(27,36,66,.35); transition: background .15s, transform .13s;
+        }
+        .btn-primary:hover { background: #253566; transform: translateY(-2px); }
+        .btn-secondary {
+          font-size: 14px; color: var(--muted); text-decoration: none;
+          padding: 10px 20px; border-radius: 999px;
+          border: 1px solid var(--border); background: rgba(255,255,255,.5);
+          transition: color .14s, background .14s;
+        }
+        .btn-secondary:hover { color: var(--navy); background: rgba(255,255,255,.8); }
+        .spinner {
+          width: 40px; height: 40px; border-radius: 50%;
+          border: 3px solid rgba(27,36,66,.1); border-top-color: var(--accent);
+          animation: spin .8s linear infinite; margin: 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* ============================================================
+           Between-question loader (orbit spinner)
+           ============================================================ */
+        .orbit-loader {
+          position: relative; width: 96px; height: 96px; margin: 0 auto 2px;
+          border-radius: 50%;
+          background:
+            radial-gradient(circle at 50% 50%, rgba(255,246,201,.96) 0 9px, rgba(212,160,23,.96) 10px 21px, transparent 22px),
+            radial-gradient(circle at 50% 50%, rgba(10,163,163,.08), transparent 62%);
+          box-shadow: 0 18px 42px rgba(27,36,66,.16), inset 0 0 34px rgba(10,163,163,.08);
+          isolation: isolate;
+        }
+        .orbit-loader::before,
+        .orbit-loader::after {
+          content: ""; position: absolute; border-radius: 50%;
+          pointer-events: none;
+        }
+        .orbit-loader::before {
+          inset: 18px; border: 1px dashed rgba(10,163,163,.42);
+          transform: rotate(-16deg) scaleX(1.36);
+        }
+        .orbit-loader::after {
+          width: 14px; height: 14px; left: 50%; top: 50%;
+          margin: -7px 0 0 -7px;
+          background: radial-gradient(circle at 35% 30%, #dbfffb, #0aa3a3 68%, #076d6d);
+          box-shadow: 0 0 18px rgba(10,163,163,.58);
+          animation: orbitLoaderTravel 1.45s linear infinite;
+          transform-origin: 7px 7px;
+        }
+        .orbit-loader-star {
+          position: absolute; left: 50%; top: 50%; z-index: 1;
+          width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+          background:
+            radial-gradient(circle at 38% 32%, #fffdf0 0 8px, #f4c73b 9px 25px, #b27608 100%);
+          box-shadow: 0 0 26px rgba(212,160,23,.62), 0 0 52px rgba(212,160,23,.22);
+        }
+        .orbit-loader-spark {
+          position: absolute; border-radius: 50%; background: rgba(255,255,255,.82);
+          box-shadow: 0 0 10px rgba(255,255,255,.72);
+        }
+        .orbit-loader-spark.one { width: 3px; height: 3px; left: 18px; top: 30px; animation: orbitSpark 1.8s ease-in-out infinite; }
+        .orbit-loader-spark.two { width: 2px; height: 2px; right: 20px; bottom: 28px; animation: orbitSpark 2.1s ease-in-out .4s infinite; }
+        .orbit-loader-spark.three { width: 2px; height: 2px; right: 28px; top: 19px; animation: orbitSpark 1.6s ease-in-out .7s infinite; }
+        @keyframes orbitLoaderTravel {
+          from { transform: rotate(0deg) translateX(42px) rotate(0deg); }
+          to { transform: rotate(360deg) translateX(42px) rotate(-360deg); }
+        }
+        @keyframes orbitSpark {
+          0%, 100% { opacity: .25; transform: scale(.72); }
+          50% { opacity: 1; transform: scale(1.18); }
+        }
+        .between-question-loader {
+          align-items: center; text-align: center;
+          /* Transparent dark glass instead of the near-opaque card
+             background — this loader sits over the starfield only for a
+             moment between questions, so let it show through rather than
+             blotting it out with a solid card. .card's own 20px
+             backdrop-filter blur was smearing the stars into an indistinct
+             haze even at low alpha, so this drops the blur way down and
+             lightens the tint further to actually read as glass. */
+          background:
+            radial-gradient(circle at 50% 22%, rgba(212,160,23,.14), transparent 34%),
+            radial-gradient(circle at 82% 70%, rgba(10,163,163,.12), transparent 34%),
+            rgba(11,15,30,.16);
+          border-color: rgba(255,255,255,.16);
+          backdrop-filter: blur(3px);
+          box-shadow: 0 20px 50px rgba(0,0,0,.28);
+        }
+        .between-question-loader .startup-title { color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.5); }
+        .between-question-loader .startup-note { color: rgba(255,255,255,.72); text-shadow: 0 2px 10px rgba(0,0,0,.4); }
+        .startup-status {
+          display: grid; gap: 7px; max-width: 440px;
+        }
+        .startup-title {
+          font-size: 15px; font-weight: 750; color: var(--navy);
+        }
+        .startup-note {
+          font-size: 13px; line-height: 1.55; color: var(--muted);
+        }
+        .startup-actions {
+          display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 4px;
+        }
+`;

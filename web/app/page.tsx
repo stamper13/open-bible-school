@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } fr
 import { useRouter } from "next/navigation";
 import SiteFooter from "@/components/SiteFooter";
 import { supabase } from "@/lib/supabase/client";
-import { beginPendingTransfer, clearPendingTransfer, newFlowId } from "@/lib/auth/anonymousTransfer";
-import { authCallbackUrl } from "@/lib/auth/redirect";
 import { BLI_LEVELS, levelForScore, toDisplayScore } from "@/lib/bli";
 import {
   EMPTY_EXPLORE_TREE,
@@ -22,6 +20,10 @@ import Starfield from "@/components/Starfield";
 import { useNavMenus } from "./useNavMenus";
 import { useScoreTooltips } from "./useScoreTooltips";
 import { useConeSlosh } from "./useConeSlosh";
+import { useDomainConstellation } from "./useDomainConstellation";
+import { useHomeAccountActions } from "./useHomeAccountActions";
+import { useProgressChart } from "./useProgressChart";
+import { useProgressHistory } from "./useProgressHistory";
 import { HOME_PAGE_STYLES } from "./homeStyles";
 import {
   DeleteAccountModal,
@@ -86,7 +88,6 @@ import {
   type BackendRecommendation,
   type BliEvidence,
   type BliSectionFollowup,
-  type ProgressPoint,
   type NtPilotSummary,
 } from "./homeTypes";
 import {
@@ -117,10 +118,6 @@ export default function HomePage() {
     OT: EMPTY_EXPLORE_TREE,
     NT: EMPTY_EXPLORE_TREE,
   });
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState("");
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   // Account controls collapse behind the email; a click opens the menu.
   const {
     accountMenuOpen,
@@ -167,10 +164,6 @@ export default function HomePage() {
   const [ntBliEvidence, setNtBliEvidence] = useState<BliEvidence | null>(null);
   const [combinedBliEvidence, setCombinedBliEvidence] = useState<BliEvidence | null>(null);
   const progressTestament = suiteTestament;
-  const [progressHistory, setProgressHistory] = useState<ProgressPoint[]>([]);
-  const [activeProgressAttemptId, setActiveProgressAttemptId] = useState<string | null>(null);
-  const [progressLoading, setProgressLoading] = useState(false);
-  const [progressError, setProgressError] = useState<string | null>(null);
   const [scopeDetailTarget, setScopeDetailTarget] = useState<ScopeDetailTarget | null>(null);
   // These score details stay behind icon triggers so the BLI card can lead,
   // then expand inline only when the learner asks for that layer.
@@ -183,7 +176,6 @@ export default function HomePage() {
   const [ntPilotSummary, setNtPilotSummary] = useState<NtPilotSummary | null>(null);
   const [testamentScores, setTestamentScores] = useState<BliContractScores | null>(null);
   const [pendingRetestHref, setPendingRetestHref] = useState<string | null>(null);
-  const progressBackfillAttemptedRef = useRef<string | null>(null);
   const scopeRequestRef = useRef(0);
   // Guards ONE in-flight explicit recommendation interaction so a double-click
   // or a concurrent handler cannot start a second logical event. It is not a
@@ -191,6 +183,33 @@ export default function HomePage() {
   // partial unique index is what makes recording exactly-once.
   const recommendationInteractionRef = useRef<string | null>(null);
   const { coneRef, handleConePointerEnter, handleConePointerMove, handleConePointerLeave } = useConeSlosh();
+  const {
+    activeProgressAttemptId,
+    progressError,
+    progressHistory,
+    progressLoading,
+    setActiveProgressAttemptId,
+  } = useProgressHistory(dashboardUserId, progressTestament);
+  const {
+    deleteBusy,
+    deleteConfirm,
+    deleteError,
+    deleteOpen,
+    handleDeleteAccount,
+    handleDeleteAccountRequest,
+    handleSignIn,
+    handleSignOut,
+    setDeleteConfirm,
+    setDeleteOpen,
+  } = useHomeAccountActions({
+    setAccountMenuOpen,
+    setAssessmentData,
+    setBackendRecommendation,
+    setScopeScores,
+    setSectionScores,
+    setTestamentScores,
+    setUserEmail,
+  });
   // ---------------------------------------------------------------------------
   // Derived display values: current BLI score, level, and knowledge-cone fill
   // ---------------------------------------------------------------------------
@@ -374,85 +393,14 @@ export default function HomePage() {
     const former = scopeScores.sections.find(score => score.label === "Former Prophets");
     return hasBaselineEvidence(torah) && hasBaselineEvidence(former);
   }, [scopeScores.sections]);
-  const chronologicalProgress = useMemo(
-    () => [...progressHistory].reverse(),
-    [progressHistory],
-  );
-  const progressBounds = useMemo(() => {
-    const scores = chronologicalProgress.map(p => Math.max(0, Math.min(800, p.display_bli)));
-    if (scores.length === 0) return { lo: 0, hi: 800 };
-    const dataLo = Math.min(...scores);
-    const dataHi = Math.max(...scores);
-    const span = Math.max(dataHi - dataLo, 90);
-    const pad = span * 0.28;
-    const lo = Math.max(0, Math.floor((dataLo - pad) / 10) * 10);
-    const hi = Math.min(800, Math.ceil((dataHi + pad) / 10) * 10);
-    return { lo, hi: hi > lo ? hi : lo + 100 };
-  }, [chronologicalProgress]);
-  const plottedProgress = useMemo(() => {
-    const lastIndex = chronologicalProgress.length - 1;
-    const { lo, hi } = progressBounds;
-    const range = Math.max(hi - lo, 1);
-    return chronologicalProgress.map((point, index) => {
-      const score = Math.max(0, Math.min(800, point.display_bli));
-      return {
-        point,
-        x: lastIndex <= 0 ? 50 : 3 + (index / lastIndex) * 94,
-        y: 92 - ((score - lo) / range) * 84,
-      };
-    });
-  }, [chronologicalProgress, progressBounds]);
-  const progressAxisLabels = useMemo(() => {
-    const { lo, hi } = progressBounds;
-    return [hi, Math.round((hi + lo) / 2), lo];
-  }, [progressBounds]);
-  const progressXAxisLabels = useMemo(() => {
-    const n = plottedProgress.length;
-    if (n === 0) return [];
-    const times = plottedProgress.map(p => new Date(p.point.captured_at).getTime());
-    const spanDays = (times[n - 1] - times[0]) / 86400000;
-    if (n === 1) {
-      return [{
-        x: plottedProgress[0].x,
-        text: new Date(times[0]).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }),
-      }];
-    }
-
-    // Granularity follows the span: hours within a single day, days for weeks and
-    // months, month+year once the record stretches past a year.
-    const fmt = (t: number) => {
-      const d = new Date(t);
-      if (spanDays < 1) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-      if (spanDays < 3) return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric" });
-      if (spanDays < 400) return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
-    };
-
-    // Denser records earn more ticks; sparse ones label every point.
-    const target = n <= 5 ? n : spanDays < 3 ? 4 : n <= 12 ? 4 : n <= 30 ? 5 : 6;
-    const idxs = Array.from(
-      new Set(Array.from({ length: target }, (_, k) => Math.round((k * (n - 1)) / Math.max(target - 1, 1)))),
-    ).sort((a, b) => a - b);
-
-    const out: Array<{ x: number; text: string }> = [];
-    idxs.forEach((i, k) => {
-      const text = fmt(times[i]);
-      // Drop a tick whose text repeats the previous one, unless it's the final tick.
-      if (k > 0 && k < idxs.length - 1 && out.length > 0 && out[out.length - 1].text === text) return;
-      out.push({ x: plottedProgress[i].x, text });
-    });
-    if (out.length > 1 && out[out.length - 1].text === out[out.length - 2].text) out.splice(out.length - 2, 1);
-    return out;
-  }, [plottedProgress]);
-  const progressPath = plottedProgress
-    .map((entry, index) => `${index === 0 ? "M" : "L"} ${entry.x.toFixed(2)} ${entry.y.toFixed(2)}`)
-    .join(" ");
-  const progressAreaPath = plottedProgress.length > 0
-    ? `${progressPath} L ${plottedProgress[plottedProgress.length - 1].x.toFixed(2)} 100 L ${plottedProgress[0].x.toFixed(2)} 100 Z`
-    : "";
-  const activeProgressPoint = progressHistory.find(point => point.attempt_id === activeProgressAttemptId)
-    ?? progressHistory[0]
-    ?? null;
+  const {
+    activeProgressPoint,
+    plottedProgress,
+    progressAreaPath,
+    progressAxisLabels,
+    progressPath,
+    progressXAxisLabels,
+  } = useProgressChart(progressHistory, activeProgressAttemptId);
   // ---------------------------------------------------------------------------
   // Coverage-map mode & assessment-completion status
   // ---------------------------------------------------------------------------
@@ -681,86 +629,6 @@ export default function HomePage() {
   };
 
   // ---------------------------------------------------------------------------
-  // Auth: sign in / sign out / delete account
-  // ---------------------------------------------------------------------------
-  const handleSignIn = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    // Mint the transfer capability while the guest session is still active.
-    // The token proves control of that session; it lives in localStorage and
-    // is never placed in the redirect URL. Passing the guest id as an "anon"
-    // query parameter let a crafted callback link claim another visitor's
-    // progress, and leaked the id through Referer headers and browser history.
-    const anonId = isAnonymousSession(session) ? session?.user?.id : null;
-    // Random, non-secret correlator so the callback can prove it completes THIS
-    // flow. The capability never leaves localStorage.
-    const flowId = newFlowId();
-    if (anonId) {
-      await beginPendingTransfer(supabase, localStorage, anonId, flowId);
-    } else {
-      // Not a guest session: make sure no earlier record survives into a
-      // sign-in that has nothing to transfer.
-      clearPendingTransfer(localStorage);
-    }
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: authCallbackUrl({ flow: flowId }) },
-    });
-  };
-
-  const handleSignOut = async () => {
-    setAccountMenuOpen(false);
-    await supabase.auth.signOut();
-    clearAssessmentBrowserStorage();
-    setUserEmail(null);
-    setAssessmentData(null);
-    setTestamentScores(null);
-    setSectionScores({});
-    setScopeScores(buildScopeScores([], []));
-    setBackendRecommendation(null);
-  };
-
-  const handleDeleteAccountRequest = () => {
-    setAccountMenuOpen(false);
-    setDeleteConfirm("");
-    setDeleteError(null);
-    setDeleteOpen(true);
-  };
-
-  const handleDeleteAccount = async () => {
-    setDeleteBusy(true);
-    setDeleteError(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        setDeleteError("Your session has expired. Sign in again and retry.");
-        return;
-      }
-
-      const response = await fetch("/api/account/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ confirmEmail: deleteConfirm.trim() }),
-      });
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        setDeleteError(payload?.error ?? "The account could not be deleted. Please try again.");
-        return;
-      }
-
-      // The account is gone; drop every trace of it from this browser too.
-      await supabase.auth.signOut();
-      clearAssessmentBrowserStorage();
-      window.location.href = "/";
-    } catch {
-      setDeleteError("The account could not be deleted. Please check your connection and try again.");
-    } finally {
-      setDeleteBusy(false);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
   // Dashboard bootstrap: session, canonical BLI scores, and recommendation
   // data, all loaded together once a user id is known
   // ---------------------------------------------------------------------------
@@ -922,87 +790,12 @@ export default function HomePage() {
     return () => { cancelled = true; };
   }, [dashboardUserId]);
 
-  useEffect(() => {
-    if (!dashboardUserId) {
-      setProgressHistory([]);
-      setActiveProgressAttemptId(null);
-      setProgressLoading(false);
-      setProgressError(null);
-      return;
-    }
-
-    let cancelled = false;
-    const loadHistory = async () => {
-      setProgressLoading(true);
-      setProgressError(null);
-      setActiveProgressAttemptId(null);
-
-      const requestHistory = () => supabase.rpc("obs_get_progress_history", {
-        p_user_id: dashboardUserId,
-        p_testament: progressTestament,
-        p_limit: 50,
-      });
-
-      let { data, error } = await requestHistory();
-      if (!error && (data ?? []).length === 0 && progressBackfillAttemptedRef.current !== dashboardUserId) {
-        progressBackfillAttemptedRef.current = dashboardUserId;
-        const { error: backfillError } = await supabase.rpc("obs_backfill_assessment_snapshots", {
-          p_user_id: dashboardUserId,
-        });
-        if (!backfillError) {
-          ({ data, error } = await requestHistory());
-        } else {
-          error = backfillError;
-        }
-      }
-
-      if (cancelled) return;
-      if (error) {
-        setProgressHistory([]);
-        console.error("Progress history load failed:", error);
-        setProgressError("Progress history could not be loaded just now. This is usually a temporary connection problem.");
-        setProgressLoading(false);
-        return;
-      }
-
-      const rows = ((data ?? []) as ProgressPoint[]).map(row => ({
-        ...row,
-        raw_bli: Number(row.raw_bli),
-        display_bli: Number(row.display_bli),
-        questions_answered: Number(row.questions_answered),
-        correct_answers: Number(row.correct_answers),
-        idk_answers: Number(row.idk_answers),
-        theta: row.theta === null ? null : Number(row.theta),
-        theta_se: row.theta_se === null ? null : Number(row.theta_se),
-        n_responses: Number(row.n_responses),
-        score_change: Number(row.score_change),
-      }));
-      setProgressHistory(rows);
-      setActiveProgressAttemptId(rows[0]?.attempt_id ?? null);
-      setProgressLoading(false);
-    };
-
-    void loadHistory();
-    return () => {
-      cancelled = true;
-    };
-  }, [dashboardUserId, progressTestament]);
-
-  // The domain-constellation overlay (a few sky stars fly into a polygon
-  // shaped by skill scores) activates only on the Skills breakdown tab.
-  const constellation = useMemo(() => {
-    if (activeBreakdownTab !== "domains") {
-      return { active: false, points: [] as { angle: number; pct: number }[] };
-    }
-    const domains = scopeScores.domains.filter(score => score.testament === profileTestament);
-    const points = domains.map((score, index) => {
-      const isLockedConnection = score.key.endsWith(":scripture_connections") && !scriptureConnectionsUnlocked;
-      const pct = isLockedConnection || score.rawScore === null || score.answered === 0 ? 0 : Math.max(0, Math.min(100, score.rawScore));
-      const angle = -Math.PI / 2 + (index / Math.max(domains.length, 1)) * Math.PI * 2;
-      return { angle, pct };
-    });
-    return { active: true, points };
-  }, [activeBreakdownTab, profileTestament, scopeScores.domains, scriptureConnectionsUnlocked]);
+  const constellation = useDomainConstellation({
+    activeBreakdownTab,
+    profileTestament,
+    scopeScores: scopeScores.domains,
+    scriptureConnectionsUnlocked,
+  });
 
   return (
     <>
@@ -1077,7 +870,6 @@ export default function HomePage() {
         {!userEmail && visibleAssessmentData && (
           <SaveResultsCard handleSignIn={handleSignIn} />
         )}
-
 
         <ScoreStrip
           suiteTestament={suiteTestament}

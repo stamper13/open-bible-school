@@ -292,7 +292,10 @@ test("an unrecognised server error is treated as retryable, never as spent", () 
 // Source guards. These fail the build if the URL-borne account id returns.
 // ---------------------------------------------------------------------------
 
-const SOURCES = ["app/auth/callback/page.tsx", "app/assess/page.tsx", "app/page.tsx"] as const;
+const ASSESS_AUTH_SOURCE = "app/assess/useAssessmentAuthActions.ts";
+const HOME_AUTH_SOURCE = "app/useHomeAccountActions.ts";
+const SOURCES = ["app/auth/callback/page.tsx", "app/assess/page.tsx", ASSESS_AUTH_SOURCE, "app/page.tsx", HOME_AUTH_SOURCE] as const;
+const SIGN_IN_SOURCES = [ASSESS_AUTH_SOURCE, HOME_AUTH_SOURCE] as const;
 const source = (rel: string) => readFileSync(new URL(`../../${rel}`, import.meta.url), "utf8");
 
 test("SECURITY: no sign-in redirect carries an account id in the URL", () => {
@@ -319,13 +322,13 @@ test("the callback claims through the capability helper", () => {
 });
 
 test("both sign-in entry points start a pending transfer before redirecting", () => {
-  for (const rel of ["app/assess/page.tsx", "app/page.tsx"] as const) {
+  for (const rel of SIGN_IN_SOURCES) {
     assert.match(source(rel), /beginPendingTransfer\s*\(/, `${rel} does not start a pending transfer`);
   }
 });
 
 test("every sign-out / cleanup path clears the pending capability", () => {
-  for (const rel of ["app/assess/page.tsx", "app/page.tsx"] as const) {
+  for (const rel of SIGN_IN_SOURCES) {
     assert.match(source(rel), /clearPendingTransfer\s*\(/, `${rel} never clears the pending capability`);
   }
 });
@@ -334,7 +337,7 @@ test("magic links land on the callback, where the claim happens", () => {
   // The redirect target is built by authCallbackUrl() rather than concatenated
   // inline, so this asserts the call site. That the helper actually produces a
   // /auth/callback URL is covered by the authCallbackUrl tests below.
-  assert.match(source("app/assess/page.tsx"), /emailRedirectTo:\s*authCallbackUrl\(/,
+  assert.match(source(ASSESS_AUTH_SOURCE), /emailRedirectTo:\s*authCallbackUrl\(/,
     "magic links must land on /auth/callback, otherwise guest progress is never claimed");
 });
 
@@ -365,7 +368,7 @@ test("SECURITY: redirects carry only the flow correlator, never the capability",
   // The call sites must hand the helper only the correlator. This stays a
   // source check because it is about what the app *chooses* to pass, which
   // no unit-level call of the helper can observe.
-  for (const rel of ["app/assess/page.tsx", "app/page.tsx"] as const) {
+  for (const rel of SIGN_IN_SOURCES) {
     const text = source(rel);
     assert.match(text, /authCallbackUrl\(\s*\{\s*flow:/,
       `${rel} does not pass a flow correlator to the callback`);
