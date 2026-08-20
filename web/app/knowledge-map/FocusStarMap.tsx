@@ -4,26 +4,20 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   STATE_LABELS,
-  bookPassage,
-  chapterRangeLabel,
   focusLeafKicker,
   focusModeCopy,
   focusNodeDomId,
   passageReference,
   readableUnitLabel,
   rereadHref,
-  rereadUrl,
   sectionHue,
   starTone,
   type ExploreBook,
   type ExploreSection,
   type ExploreTree,
   type FocusPath,
-  type FocusPathRow,
   type FocusState,
-  type StarTone,
 } from "@/lib/focusPath";
-import { sectionEvidence } from "@/lib/bliEvidence";
 import { FOCUS_STAR_MAP_STYLES } from "./focusStarMapStyles";
 import {
   VIEW_W,
@@ -41,29 +35,22 @@ import {
   BOOK_PERIOD_MS,
   MOON_PERIOD_MS,
   STATE_ORDER,
-  SECTION_RAIL_ORDER,
   deg,
   NO_BOOKS,
   sectionHueFor,
   sectionRailRank,
   defaultBook,
   moonFromLeaf,
-  moonFromUnit,
   stateOpacity,
   evidenceStatusLabel,
   linkedNodeId,
-  OT_CHAPTERS,
-  gapMoon,
   moonsForBook,
   hashSeed,
-  mix,
-  jitter,
   Orb,
   OrbitArrows,
   type MoonDatum,
   type LinkedNodeKind,
   type LinkedNode,
-  type OrbKind,
 } from "./focusStarMapParts";
 
 /**

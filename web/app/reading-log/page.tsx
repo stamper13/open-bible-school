@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import BrandLogo from "@/components/BrandLogo";
 import SiteFooter from "@/components/SiteFooter";
+import SiteNav from "@/components/SiteNav";
 import { BIBLE_BOOKS, chapterCountForBook } from "@/lib/bibleTaxonomy";
 import {
   loadReadingLog,
@@ -55,7 +54,6 @@ export default function ReadingLogPage() {
   const [source, setSource] = useState<"remote" | "local" | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +93,7 @@ export default function ReadingLogPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, []);
 
   const groups = useMemo(() => groupByDay(entries), [entries]);
   const bookCount = useMemo(() => new Set(entries.map(e => e.bookCode)).size, [entries]);
@@ -116,26 +114,9 @@ export default function ReadingLogPage() {
             linear-gradient(180deg,#070b16 0%,#0a1122 50%,#060a16 100%);
         }
         button, a { font: inherit; }
-        .nav {
-          position: sticky; top: 0; z-index: 20;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 13px 32px;
-          background: rgba(8,13,29,.86);
-          border-bottom: 1px solid rgba(255,255,255,.10);
-          backdrop-filter: blur(16px);
-        }
-        .nav-brand {
-          color: #fff; text-decoration: none;
-          font-family: var(--font-crimson), Georgia, serif;
-          font-size: 18px; font-weight: 700;
-        }
-        .nav-links { display: flex; align-items: center; gap: 7px; }
-        .nav-link {
-          color: rgba(255,255,255,.67); text-decoration: none;
-          padding: 8px 12px; border-radius: 6px;
-          font-size: 12px; font-weight: 800;
-        }
-        .nav-link:hover, .nav-link.active { color: #fff; background: rgba(255,255,255,.09); }
+        /* .nav/.nav-brand/.nav-links/.nav-link now come from
+           components/SiteNav.tsx + the .oba-site-nav--block rules in
+           app/globals.css. */
 
         .page { width: min(760px, calc(100% - 48px)); margin: 0 auto; padding: 40px 0 80px; }
         .eyebrow {
@@ -207,21 +188,15 @@ export default function ReadingLogPage() {
         .retry-btn:hover { background: rgba(255,255,255,.16); }
 
         @media (max-width: 640px) {
-          .nav { padding: 12px 16px; }
-          .nav-link:not(.active) { display: none; }
           .page { width: min(100% - 22px, 620px); padding-top: 26px; }
         }
       `}</style>
 
-      <nav className="nav">
-        <BrandLogo className="nav-brand" />
-        <div className="nav-links">
-          <Link className="nav-link" href="/">Dashboard</Link>
-          <Link className="nav-link" href="/knowledge-map">Knowledge Map</Link>
-          <Link className="nav-link" href="/assess">Assess</Link>
-          <Link className="nav-link active" href="/reading-log">Reading Log</Link>
-        </div>
-      </nav>
+      <SiteNav
+        links={["dashboard", "knowledge-map", "assess", "reading-log", "about", "bli", "credential"]}
+        active="reading-log"
+        variant="block"
+      />
 
       <main className="page">
         <p className="eyebrow">What you&rsquo;ve read</p>

@@ -1,4 +1,14 @@
-@import "tailwindcss";
+/* No Tailwind: every page ships its own hand-written CSS (see the
+ * app/*Styles.ts files and each page's own <style> tag), and none of them
+ * use Tailwind utility classes — @import "tailwindcss" and the @theme
+ * block it enabled (--color-background/--color-foreground/--font-sans/
+ * --font-mono) were dead weight, referenced nowhere in the app. This file
+ * now carries its own small reset in their place, since most pages define
+ * their own box-sizing/margin reset locally but a few (terms, privacy,
+ * auth/callback) relied on Tailwind's Preflight for it. */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
 
 :root {
   --background: #ffffff;
@@ -18,13 +28,6 @@
   --muted: #566070;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -33,6 +36,7 @@
 }
 
 body {
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
@@ -148,6 +152,172 @@ body {
   pointer-events: none;
   background: linear-gradient(90deg, transparent, rgba(245, 200, 66, 0.58), rgba(10, 163, 163, 0.24), transparent);
   opacity: 0.72;
+}
+
+/* Shared with components/SiteNav.tsx (about/credential/bli/knowledge-map/
+ * reading-log pages — the home and assess pages have their own distinct,
+ * signed-in-aware nav and are not part of this).
+ *
+ * Previously each of those 5 pages hand-rolled its own <nav className="nav">
+ * markup, and the base .nav/.nav-brand/.nav-links/.nav-link/.nav-btn rules
+ * were byte-for-byte copy-pasted 3x (about/credential/bli) and 2x
+ * (knowledge-map/reading-log), with the narrow-viewport breakpoint that
+ * hides the links drifting to three different values (600px/640px/680px)
+ * for no reason. Consolidated into the two variants that actually exist
+ * ("pill" links for about/credential/bli, "block" links with an .active
+ * state for knowledge-map/reading-log) and standardized on 640px, the
+ * convention used elsewhere in the app (see .oba-beta-banner above).
+ *
+ * Scoped under .oba-site-nav (not bare .nav-link/.nav-btn/etc.) so this
+ * can't bleed into home/assess's own .nav-link/.nav-btn, which are
+ * differently styled and signed-in-aware. The outer element keeps the
+ * plain "nav" class too, so it still picks up the gold accent rule above.
+ */
+.oba-site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 32px;
+  background: rgba(11, 15, 30, .85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+.oba-site-nav .nav-brand {
+  font-family: var(--font-crimson), Georgia, serif;
+  font-weight: 600;
+  font-size: 18px;
+  color: #fff;
+  text-decoration: none;
+  letter-spacing: .01em;
+}
+.oba-site-nav .nav-links { display: flex; align-items: center; gap: 6px; }
+.oba-site-nav .nav-link {
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .6);
+  text-decoration: none;
+  transition: color .14s, background .14s;
+}
+.oba-site-nav .nav-link:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+.oba-site-nav .nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, .92);
+  color: var(--navy);
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+  transition: background .15s, transform .13s;
+}
+.oba-site-nav .nav-btn:hover { background: #fff; transform: translateY(-1px); }
+.oba-site-nav .nav-link:focus-visible,
+.oba-site-nav .nav-btn:focus-visible,
+.oba-site-nav .nav-brand:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, .65);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.oba-site-nav .nav-right { display: flex; align-items: center; gap: 10px; }
+
+/* "block" variant: knowledge-map, reading-log */
+.oba-site-nav--block {
+  background: rgba(8, 13, 29, .86);
+  border-bottom-color: rgba(255, 255, 255, .10);
+  backdrop-filter: blur(16px);
+}
+.oba-site-nav--block .nav-brand {
+  font-family: var(--font-crimson), Georgia, serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: #fff;
+  text-decoration: none;
+  letter-spacing: normal;
+}
+.oba-site-nav--block .nav-links { gap: 7px; }
+.oba-site-nav--block .nav-link {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, .67);
+}
+.oba-site-nav--block .nav-link:hover,
+.oba-site-nav--block .nav-link.active {
+  color: #fff;
+  background: rgba(255, 255, 255, .09);
+}
+
+/* Mobile hamburger + slide-down panel (bli only, for now). */
+.oba-site-nav .mobile-nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .14);
+  cursor: pointer;
+}
+.oba-site-nav .mobile-nav-toggle-bar { width: 16px; height: 2px; margin: 0 auto; background: #fff; border-radius: 2px; }
+.oba-site-nav .mobile-nav-toggle:focus-visible { outline: 2px solid rgba(255, 255, 255, .65); outline-offset: 2px; }
+.oba-site-mobile-nav-panel {
+  position: sticky;
+  top: 60px;
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 15, 30, .97);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  padding: 6px 16px 14px;
+}
+.oba-site-mobile-nav-panel .mobile-nav-link {
+  padding: 12px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .82);
+  text-decoration: none;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+}
+.oba-site-mobile-nav-panel .mobile-nav-link:first-child { border-top: none; }
+.oba-site-mobile-nav-panel .mobile-nav-link:hover,
+.oba-site-mobile-nav-panel .mobile-nav-link:focus-visible { color: #fff; }
+.oba-site-mobile-nav-panel .mobile-nav-cta {
+  margin-top: 6px;
+  margin-bottom: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .94);
+  color: var(--navy);
+  font-weight: 700;
+  text-align: center;
+}
+.oba-site-mobile-nav-panel .mobile-nav-cta:hover,
+.oba-site-mobile-nav-panel .mobile-nav-cta:focus-visible { color: var(--navy); background: #fff; }
+
+@media (max-width: 640px) {
+  .oba-site-nav { padding: 13px 16px; }
+  .oba-site-nav .nav-links .nav-link { display: none; }
+  .oba-site-nav--block { padding: 12px 16px; }
+  .oba-site-nav--block .nav-link:not(.active) { display: none; }
+  /* bli: the CTA moves into the mobile menu itself at this width — logo +
+     hamburger only, so the wordmark never has to fight a second pill. */
+  .oba-site-nav .nav-right .nav-btn { display: none; }
+  .oba-site-nav .mobile-nav-toggle { display: flex; }
 }
 
 .oba-site-footer-copy {
@@ -294,3 +464,57 @@ body {
     padding-top: 42px;
   }
 }
+
+/* ============================================================================
+   Editorial page chrome — the long-form marketing/explainer pages.
+   Shared by app/about, app/bli (full set) and app/credential (.hero-eyebrow).
+
+   These rules were byte-identical copies in aboutStyles.ts and bliStyles.ts.
+   Pages that want a different look still win by redefining the class in their
+   own <style> block, which renders after this sheet: app/assess and
+   app/knowledge-map both do exactly that for .btn-primary/.btn-secondary.
+
+   Two declarations had drifted out of bliStyles.ts and are restored here, so
+   the /bli buttons now match /about: the box-shadow leg of the .btn-* base
+   transition, and backdrop-filter on .btn-secondary.
+   ============================================================================ */
+
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--accent-dim); border: 1px solid var(--accent-line);
+  border-radius: 999px; padding: 5px 14px;
+  font-size: 12px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: #6fe0e0; margin-bottom: 20px;
+}
+.hero-eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.hero-heading em { font-style: italic; color: #4fd6d6; }
+
+.section-label { font-size: 11px; font-weight: 700; letter-spacing: .10em; text-transform: uppercase; color: #4fd6d6; margin-bottom: 12px; }
+.section-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; line-height: 1.2; color: #fff; margin-bottom: 16px; }
+.section-body { font-size: 15.5px; line-height: 1.80; color: rgba(255,255,255,.66); }
+.section-body p + p { margin-top: 14px; }
+.section-body strong { color: #fff; font-weight: 650; }
+
+.cta-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 48px; }
+.btn-primary, .btn-secondary {
+  display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px;
+  font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer;
+  transition: transform .13s, background .15s, box-shadow .15s;
+}
+.btn-primary { background: rgba(255,255,255,.93); color: var(--navy); border: none; box-shadow: 0 10px 28px rgba(0,0,0,.3); }
+.btn-primary:hover { background: #fff; transform: translateY(-2px); }
+.btn-secondary { background: rgba(255,255,255,.06); color: #fff; border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(8px); }
+.btn-secondary:hover { background: rgba(255,255,255,.12); transform: translateY(-2px); }
+
+.rail {
+  position: fixed; right: 22px; top: 50%; transform: translateY(-50%);
+  z-index: 30; display: flex; flex-direction: column; gap: 11px;
+}
+.rail-dot {
+  width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.35); background: transparent;
+  transition: background .2s, transform .2s, border-color .2s;
+}
+.rail-dot:hover { background: rgba(255,255,255,.55); }
+.rail-dot.on { background: var(--accent); border-color: var(--accent); transform: scale(1.4); }
+.rail-dot:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }

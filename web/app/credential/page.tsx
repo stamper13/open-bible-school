@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import BrandLogo from "@/components/BrandLogo";
 import SiteFooter from "@/components/SiteFooter";
 import BetaBanner from "@/components/BetaBanner";
+import SiteNav from "@/components/SiteNav";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { CREDENTIAL_PAGE_STYLES } from "./credentialStyles";
 
@@ -313,17 +312,10 @@ export default function CredentialPage() {
         Nothing on this page exists yet. These are future goals, not features you can use.
       </BetaBanner>
 
-      <nav className="nav">
-        <BrandLogo className="nav-brand" />
-        <div className="nav-links">
-          <Link className="nav-link" href="/">Dashboard</Link>
-          <Link className="nav-link" href="/assess">Assess</Link>
-          <Link className="nav-link" href="/knowledge-map">Knowledge Map</Link>
-          <Link className="nav-link" href="/about">About</Link>
-          <Link className="nav-link" href="/bli">How BLI Works</Link>
-        </div>
-        <Link className="nav-btn" href="/assess">Start Assessment</Link>
-      </nav>
+      <SiteNav
+        links={["dashboard", "assess", "knowledge-map", "about", "bli", "reading-log"]}
+        cta={{ href: "/assess", label: "Start Assessment" }}
+      />
 
       <main className="page">
         <header className="hero">

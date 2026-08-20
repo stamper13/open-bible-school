@@ -6,7 +6,6 @@ import {
   bookPassage,
   focusNodeDomId,
   readableUnitLabel,
-  sectionHue,
   starTone,
   type ExploreBook,
   type ExploreSection,
@@ -14,8 +13,7 @@ import {
   type ExploreUnit,
   type FocusState,
 } from "@/lib/focusPath";
-import { sectionEvidence } from "@/lib/bliEvidence";
-import { GALAXY_ERAS, SECTION_CHRONO, bookChrono, formatYear, yearToPos } from "./chronology";
+import { GALAXY_ERAS, SECTION_CHRONO, formatYear } from "./chronology";
 import { MAP_OVERVIEW_STYLES } from "./mapOverviewStyles";
 import {
   VIEW_W,
@@ -27,19 +25,13 @@ import {
   FIELD_L,
   FIELD_R,
   LANE_ORDER,
-  LANE_COUNT,
-  LANE_WIDTH,
   laneCenterX,
-  SUB_COL_OFFSET,
-  BOOK_MIN_GAP,
-  posToY,
   yForYear,
   HUB_R,
   BOOK_R,
   UNIT_R,
   HUB_Y,
   FILTERS,
-  LABEL_MIN_GAP,
   layoutLane,
   sectionHueFor,
   evidenceStatusLabel,

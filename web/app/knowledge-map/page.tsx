@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import BrandLogo from "@/components/BrandLogo";
 import SiteFooter from "@/components/SiteFooter";
+import SiteNav from "@/components/SiteNav";
 import { useEffect, useRef, useState } from "react";
 import {
   EMPTY_EXPLORE_TREE,
@@ -157,17 +157,11 @@ export default function KnowledgeMapPage() {
 
       <Starfield variant="knowledgeMap" motionPaused={motionPaused} />
 
-      <nav className="nav">
-        <BrandLogo className="nav-brand" />
-        <div className="nav-links">
-          <Link className="nav-link" href="/">Dashboard</Link>
-          <Link className="nav-link active" href="/knowledge-map">Knowledge Map</Link>
-          <Link className="nav-link" href="/assess">Assess</Link>
-          <Link className="nav-link" href="/about">About</Link>
-          <Link className="nav-link" href="/bli">How BLI Works</Link>
-          <Link className="nav-link" href="/credential">Future Ideas</Link>
-        </div>
-      </nav>
+      <SiteNav
+        links={["dashboard", "knowledge-map", "assess", "about", "bli", "credential", "reading-log"]}
+        active="knowledge-map"
+        variant="block"
+      />
 
       <FocusTransition
         token={transition?.token ?? null}

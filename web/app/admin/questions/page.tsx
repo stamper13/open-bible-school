@@ -5,24 +5,19 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { authCallbackUrl } from "@/lib/auth/redirect";
 import { BIBLE_BOOK_CODES } from "@/lib/bibleTaxonomy";
-import { ADMIN_QUESTIONS_STYLES_1, ADMIN_QUESTIONS_STYLES_2 } from "./adminQuestionsStyles";
+import { ADMIN_QUESTIONS_STYLES_1 } from "./adminQuestionsStyles";
 import {
   REVIEW_STATUSES,
   DIMENSIONS,
   EMPTY_AUDIT,
-  stringValue,
-  numberValue,
-  optionalNumberValue,
   normalizeQualityItem,
   formatUnknown,
   QuestionBankAudit,
-  AuditTable,
   ConsoleState,
   type RawRow,
   type ReviewStatus,
   type QualityItem,
   type AuditData,
-  type AuditColumn,
 } from "./adminQuestionsParts";
 
 

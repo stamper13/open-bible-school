@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import BrandLogo from "@/components/BrandLogo";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import SiteFooter from "@/components/SiteFooter";
 import BetaBanner from "@/components/BetaBanner";
+import SiteNav from "@/components/SiteNav";
 import { BLI_LEVELS, levelForScore } from "@/lib/bli";
 import { ABOUT_PAGE_STYLES } from "./aboutStyles";
 
@@ -356,17 +356,10 @@ export default function AboutPage() {
         Open Bible Assessment is in active development. Questions and resources are being refined — feedback on accuracy and wording is welcome.
       </BetaBanner>
 
-      <nav className="nav">
-        <BrandLogo className="nav-brand" />
-        <div className="nav-links">
-          <Link className="nav-link" href="/">Dashboard</Link>
-          <Link className="nav-link" href="/assess">Assess</Link>
-          <Link className="nav-link" href="/knowledge-map">Knowledge Map</Link>
-          <Link className="nav-link" href="/bli">How BLI Works</Link>
-          <Link className="nav-link" href="/credential">Future Ideas</Link>
-        </div>
-        <Link className="nav-btn" href="/assess">Start Assessment</Link>
-      </nav>
+      <SiteNav
+        links={["dashboard", "assess", "knowledge-map", "bli", "credential", "reading-log"]}
+        cta={{ href: "/assess", label: "Start Assessment" }}
+      />
 
       <main className="page" ref={pageRef}>
         <header className="hero">

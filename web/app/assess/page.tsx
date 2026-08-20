@@ -6,10 +6,7 @@ import { beginPendingTransfer, clearPendingTransfer, newFlowId } from "@/lib/aut
 import { authCallbackUrl } from "@/lib/auth/redirect";
 import BlackHoleEvent from "./BlackHoleEvent";
 import {
-  ANON_SESSION_ACTIVE_KEY,
-  ANON_USER_ID_KEY,
   EVIDENCE_VISUAL_STRENGTH,
-  IDK_CHOICE,
   IDK_CHOICE_ID,
   NEBULA_STAGE_NAMES,
   NT_PILOT_ENABLED,
@@ -26,21 +23,17 @@ import {
   clearAssessmentBrowserStorage,
   getSectionSortInteraction,
   hashString,
-  isBroadSectionLevelQuestion,
   isHebrewBibleTraditionSensitiveMiss,
-  isOrderResponseQuestion,
   normalizeNtSection,
   ntScopeFromKey,
+  parseInitialAssessmentRoute,
   prepareChoicesForDisplay,
-  promptAsksForBookAnswer,
-  promptAsksForSectionAnswer,
   skyDiscoveryMilestone,
 } from "./assessmentHelpers";
 import { BIBLE_SKY_FACTS } from "./skyFacts";
 import type {
   AssessmentMode,
   BibleSkyFact,
-  BliEvidence,
   Choice,
   NtAssessmentQuestionRow,
   NtAssessmentStartRow,
@@ -54,12 +47,10 @@ import type {
   Phase,
   Question,
   QuestionPrefetch,
-  ReportCategory,
   RpcErrorLike,
   SectionSortKey,
   SectionSortLabel,
   SectionSortSubmitResult,
-  Testament,
 } from "./types";
 import {
   type DragEndEvent,
@@ -87,21 +78,23 @@ import {
   ReportQuestionModal,
 } from "./assessScreens";
 import { FeedbackPanel, AssessNavBar, QuestionHead, QuestionInteraction } from "./assessCore";
+import {
+  fetchNextQuestion,
+  isStatementTimeoutError,
+  startQuestionPrefetch,
+  takePrefetchedQuestion,
+  type QuestionRpcResult,
+} from "./questionPrefetch";
+import { answerSubmissionErrorText, rpcErrorCodeText, rpcErrorMessageText } from "./rpcErrors";
+import { deriveAssessmentDisplayState } from "./assessmentDisplayState";
+import { useAssessmentSession } from "./useAssessmentSession";
+import { useQuestionReport } from "./useQuestionReport";
+import { useStartupWaitLevel } from "./useStartupWaitLevel";
 
-function rpcErrorMessageText(err: RpcErrorLike) {
-  return typeof err?.message === "string" && err.message.trim()
-    ? err.message
-    : "Answer submission failed without a detailed error message";
-}
-
-function rpcErrorCodeText(err: RpcErrorLike) {
-  return typeof err?.code === "string" && err.code.trim() ? err.code : null;
-}
-
-function isStatementTimeoutError(err: RpcErrorLike) {
-  return rpcErrorCodeText(err) === "57014"
-    || /statement timeout/i.test(rpcErrorMessageText(err));
-}
+// The two testaments' "next question" RPCs. Same contract, different question
+// bank; everything downstream of the call is shared.
+const OT_NEXT_QUESTION_RPC = "obs_get_next_ot_assessment_question";
+const NT_NEXT_QUESTION_RPC = "obs_get_next_nt_assessment_question";
 
 export default function AssessPage() {
   // ---------------------------------------------------------------------------
@@ -111,7 +104,6 @@ export default function AssessPage() {
   const [modeReady, setModeReady] = useState(false);
   const [phase, setPhase] = useState<Phase>("starting");
   const [attemptId, setAttemptId] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [question, setQuestion] = useState<Question | null>(null);
   const [sequenceOrder, setSequenceOrder] = useState<Choice[]>([]);
   const [sectionSortAssignments, setSectionSortAssignments] = useState<Record<string, SectionSortKey | null>>({});
@@ -139,15 +131,8 @@ export default function AssessPage() {
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
   const [isDashboardTransitioning, setIsDashboardTransitioning] = useState(false);
   const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportCategory, setReportCategory] = useState<ReportCategory>("wrong_answer");
-  const [reportText, setReportText] = useState("");
-  const [reportStatus, setReportStatus] = useState<"idle" | "sent">("idle");
-  const [reportError, setReportError] = useState("");
-  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [ntBooks, setNtBooks] = useState<NtBookMetadata[]>([]);
   const [ntScope, setNtScope] = useState<NtScopeOption>({ kind: "all", value: "ALL", label: "All New Testament", description: "Adaptive questions across all 27 New Testament books." });
   const [ntTargetCount, setNtTargetCount] = useState(NT_PILOT_TARGET);
@@ -156,8 +141,6 @@ export default function AssessPage() {
   const [ntMetadataLoaded, setNtMetadataLoaded] = useState(false);
   const [ntError, setNtError] = useState("");
   const [debugErrorMsg, setDebugErrorMsg] = useState("");
-  const [startupWaitLevel, setStartupWaitLevel] = useState<0 | 1 | 2>(0);
-  const [scoreEvidence, setScoreEvidence] = useState<BliEvidence | null>(null);
   const [activeBibleFact, setActiveBibleFact] = useState<BibleSkyFact | null>(null);
   const [dismissedSkyDiscoveries, setDismissedSkyDiscoveries] = useState<Set<number>>(() => new Set());
   const [otRequest, setOtRequest] = useState<OtAssessmentRequest>({
@@ -173,6 +156,30 @@ export default function AssessPage() {
   });
   const [otAssessment, setOtAssessment] = useState<OtAssessmentStartRow | null>(null);
   const [otTargetCount, setOtTargetCount] = useState(TOTAL_INITIAL);
+  const {
+    ensureAssessmentSession,
+    isSignedIn,
+    loadScoreEvidence,
+    scoreEvidence,
+    setUserId,
+    userId,
+  } = useAssessmentSession();
+  const {
+    isSubmittingReport,
+    openQuestionReport,
+    reportCategory,
+    reportError,
+    reportStatus,
+    reportText,
+    resetQuestionReport,
+    setReportCategory,
+    setReportError,
+    setReportText,
+    setShowReportModal,
+    showReportModal,
+    submitQuestionReport,
+  } = useQuestionReport();
+  const startupWaitLevel = useStartupWaitLevel(phase, assessmentMode);
   const sequenceSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -188,56 +195,24 @@ export default function AssessPage() {
   // OT focus/scope/target request) — runs once on mount.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const parsePositiveInteger = (value: string | null) => {
-      if (!value || !/^\d+$/.test(value)) return null;
-      const parsed = Number(value);
-      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-    };
-    if (params.get("choose") === "1") {
-      setAssessmentMode("select");
-      setPhase("starting");
-    } else if (params.get("testament") === "NT") {
-      setAssessmentMode(NT_PILOT_ENABLED ? "NT" : "select");
-      setNtRequestedScopeKey(params.get("scope")?.trim().toUpperCase() || "NT");
-      setNtRequestedTargetCount(
-        Math.min(50, Math.max(5, parsePositiveInteger(params.get("target")) ?? NT_PILOT_TARGET))
+    const route = parseInitialAssessmentRoute(window.location.search, TOTAL_INITIAL, NT_PILOT_TARGET);
+    if (route.sanitizedSearch !== null) {
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${route.sanitizedSearch ? `?${route.sanitizedSearch}` : ""}${window.location.hash}`,
       );
-      setPhase("starting");
-    } else {
-      const requestedTarget = parsePositiveInteger(params.get("target"));
-      const isFocused = params.get("mode") === "focus";
-      const isScopeTest = params.get("mode") === "scope";
-      const forceNew = params.get("fresh") === "1";
-      if (forceNew) {
-        params.delete("fresh");
-        const nextSearch = params.toString();
-        window.history.replaceState(
-          null,
-          "",
-          `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`,
-        );
-      }
-      setOtRequest({
-        unitKey: isFocused ? params.get("unit") : null,
-        scopeKey: isScopeTest ? params.get("scope")?.toUpperCase() ?? null : null,
-        bookCode: isFocused ? params.get("book")?.toUpperCase() ?? null : null,
-        startChapter: isFocused ? parsePositiveInteger(params.get("start")) : null,
-        endChapter: isFocused ? parsePositiveInteger(params.get("end")) : null,
-        label: isFocused || isScopeTest ? params.get("label") : null,
-        dimensionKey: isFocused ? params.get("dimension") : null,
-        targetQuestionCount: Math.min(50, Math.max(1, requestedTarget ?? TOTAL_INITIAL)),
-        forceNew,
-      });
-      setAssessmentMode("OT");
-      setPhase("starting");
     }
+    setAssessmentMode(route.assessmentMode === "NT" && !NT_PILOT_ENABLED ? "select" : route.assessmentMode);
+    setPhase(route.phase);
+    setNtRequestedScopeKey(route.ntRequestedScopeKey);
+    setNtRequestedTargetCount(route.ntRequestedTargetCount);
+    setOtRequest(route.otRequest);
     setModeReady(true);
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Question-load lifecycle helpers (locking, begin/finish) & shared
-  // score-evidence loading
+  // Question-load lifecycle helpers (locking, begin/finish)
   // ---------------------------------------------------------------------------
   const isQuestionInteractionLocked = useCallback(() => (
     isLoadingQuestionRef.current
@@ -274,23 +249,6 @@ export default function AssessPage() {
     setIsSubmittingAnswer(false);
   }, []);
 
-  const loadScoreEvidence = useCallback(async (uid: string, scope: Testament) => {
-    const { data, error } = await supabase.rpc("obs_get_bli_uncertainty", {
-      p_user_id: uid,
-      p_scope: scope,
-    });
-    if (error) return;
-    let evidence = ((data ?? [])[0] as BliEvidence | undefined) ?? null;
-    if (!evidence && scope === "OT") {
-      const { data: bibleData, error: bibleError } = await supabase.rpc("obs_get_bli_uncertainty", {
-        p_user_id: uid,
-        p_scope: "BIBLE",
-      });
-      if (!bibleError) evidence = ((bibleData ?? [])[0] as BliEvidence | undefined) ?? null;
-    }
-    setScoreEvidence(evidence);
-  }, []);
-
   // ---------------------------------------------------------------------------
   // OT question loading & prefetch
   // ---------------------------------------------------------------------------
@@ -320,14 +278,11 @@ export default function AssessPage() {
     setRetryNotice(pendingQuestionNoticeRef.current);
     pendingQuestionNoticeRef.current = "";
     setShowReportModal(false);
-    setReportCategory("wrong_answer");
-    setReportText("");
-    setReportStatus("idle");
-    setReportError("");
+    resetQuestionReport();
     finishQuestionLoad(row.out_generated_question_id);
     setPhase("question");
     starfieldRef.current?.shiftSky();
-  }, [finishQuestionLoad]);
+  }, [finishQuestionLoad, resetQuestionReport, setShowReportModal]);
 
   const handleOtQuestionResult = useCallback(async (
     aid: string,
@@ -359,70 +314,29 @@ export default function AssessPage() {
   }, [applyOtQuestionRow, finishQuestionLoad]);
 
   const prefetchOtQuestion = useCallback((aid: string, afterAnsweredCount: number) => {
-    const existing = otQuestionPrefetchRef.current;
-    if (
-      existing
-      && existing.attemptId === aid
-      && existing.afterAnsweredCount === afterAnsweredCount
-    ) return;
-
-    const prefetch: QuestionPrefetch<Question> = {
-      attemptId: aid,
-      afterAnsweredCount,
-      settled: false,
-      data: null,
-      error: null,
-      promise: Promise.resolve(),
-    };
-    prefetch.promise = (async () => {
-      try {
-        const { data, error } = await supabase.rpc("obs_get_next_ot_assessment_question", {
-          p_attempt_id: aid,
-        });
-        prefetch.data = (data ?? null) as Question[] | null;
-        prefetch.error = error;
-      } catch (error: unknown) {
-        prefetch.error = error instanceof Error ? { message: error.message } : { message: "Question prefetch failed" };
-      } finally {
-        prefetch.settled = true;
-      }
-    })();
-    otQuestionPrefetchRef.current = prefetch;
+    startQuestionPrefetch<Question>(otQuestionPrefetchRef, OT_NEXT_QUESTION_RPC, aid, afterAnsweredCount);
   }, []);
 
   const consumePrefetchedOtQuestion = useCallback(async (aid: string, afterAnsweredCount: number) => {
-    const prefetch = otQuestionPrefetchRef.current;
-    if (
-      !prefetch
-      || prefetch.attemptId !== aid
-      || prefetch.afterAnsweredCount !== afterAnsweredCount
-    ) {
-      return false;
-    }
-
-    await prefetch.promise;
-    if (otQuestionPrefetchRef.current !== prefetch) return false;
-    otQuestionPrefetchRef.current = null;
-    if (isStatementTimeoutError(prefetch.error)) return false;
-    await handleOtQuestionResult(aid, prefetch.data, prefetch.error);
+    const result = await takePrefetchedQuestion<Question>(otQuestionPrefetchRef, aid, afterAnsweredCount);
+    if (!result) return false;
+    // A timed-out prefetch is not worth surfacing: fall through to loadQuestion,
+    // which retries before giving up.
+    if (isStatementTimeoutError(result.error)) return false;
+    await handleOtQuestionResult(aid, result.data, result.error);
     return true;
   }, [handleOtQuestionResult]);
 
   const loadQuestion = useCallback(async (aid: string) => {
     setDebugErrorMsg("");
     setIsLoadingNextQuestion(true);
-    let lastData: Question[] | null = null;
-    let lastError: RpcErrorLike = null;
+    let last: QuestionRpcResult<Question> = { data: null, error: null };
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const { data, error } = await supabase.rpc("obs_get_next_ot_assessment_question", {
-        p_attempt_id: aid,
-      });
-      lastData = (data ?? null) as Question[] | null;
-      lastError = error;
-      if (!isStatementTimeoutError(error)) break;
+      last = await fetchNextQuestion<Question>(OT_NEXT_QUESTION_RPC, aid);
+      if (!isStatementTimeoutError(last.error)) break;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    await handleOtQuestionResult(aid, lastData, lastError);
+    await handleOtQuestionResult(aid, last.data, last.error);
   }, [handleOtQuestionResult]);
 
   // ---------------------------------------------------------------------------
@@ -474,58 +388,6 @@ export default function AssessPage() {
     if (!modeReady || assessmentMode !== "NT") return;
     void loadNtMetadata();
   }, [assessmentMode, loadNtMetadata, modeReady]);
-
-  useEffect(() => {
-    if (phase !== "starting" || assessmentMode === "select") {
-      setStartupWaitLevel(0);
-      return;
-    }
-
-    setStartupWaitLevel(0);
-    const slowTimer = window.setTimeout(() => setStartupWaitLevel(1), 3200);
-    const verySlowTimer = window.setTimeout(() => setStartupWaitLevel(2), 8000);
-    return () => {
-      window.clearTimeout(slowTimer);
-      window.clearTimeout(verySlowTimer);
-    };
-  }, [assessmentMode, phase]);
-
-  // ---------------------------------------------------------------------------
-  // Assessment session bootstrap: reuse or create an anonymous/signed-in
-  // session and its user id
-  // ---------------------------------------------------------------------------
-  const ensureAssessmentSession = useCallback(async () => {
-    let { data: { session } } = await supabase.auth.getSession();
-    if (session?.user && !session.user.email) {
-      const belongsToThisBrowserSession =
-        sessionStorage.getItem(ANON_SESSION_ACTIVE_KEY) === "1";
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (
-        !belongsToThisBrowserSession ||
-        userError ||
-        userData.user?.id !== session.user.id
-      ) {
-        await supabase.auth.signOut();
-        clearAssessmentBrowserStorage();
-        session = null;
-      }
-    }
-    if (!session) {
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) throw error;
-      session = data.session;
-    }
-    const uid = session?.user?.id;
-    if (!uid) throw new Error("No user ID");
-    setUserId(uid);
-    setIsSignedIn(Boolean(session?.user?.email));
-    if (!session?.user.email) {
-      sessionStorage.setItem(ANON_SESSION_ACTIVE_KEY, "1");
-      sessionStorage.setItem(ANON_USER_ID_KEY, uid);
-      localStorage.setItem(ANON_USER_ID_KEY, uid);
-    }
-    return uid;
-  }, []);
 
   // ---------------------------------------------------------------------------
   // NT question loading & prefetch, and starting the NT pilot
@@ -621,35 +483,7 @@ export default function AssessPage() {
   }, [applyNtQuestionRow, finishQuestionLoad]);
 
   const prefetchNtQuestion = useCallback((aid: string, afterAnsweredCount: number) => {
-    const existing = ntQuestionPrefetchRef.current;
-    if (
-      existing
-      && existing.attemptId === aid
-      && existing.afterAnsweredCount === afterAnsweredCount
-    ) return;
-
-    const prefetch: QuestionPrefetch<NtAssessmentQuestionRow> = {
-      attemptId: aid,
-      afterAnsweredCount,
-      settled: false,
-      data: null,
-      error: null,
-      promise: Promise.resolve(),
-    };
-    prefetch.promise = (async () => {
-      try {
-        const { data, error } = await supabase.rpc("obs_get_next_nt_assessment_question", {
-          p_attempt_id: aid,
-        });
-        prefetch.data = (data ?? null) as NtAssessmentQuestionRow[] | null;
-        prefetch.error = error;
-      } catch (error: unknown) {
-        prefetch.error = error instanceof Error ? { message: error.message } : { message: "Question prefetch failed" };
-      } finally {
-        prefetch.settled = true;
-      }
-    })();
-    ntQuestionPrefetchRef.current = prefetch;
+    startQuestionPrefetch<NtAssessmentQuestionRow>(ntQuestionPrefetchRef, NT_NEXT_QUESTION_RPC, aid, afterAnsweredCount);
   }, []);
 
   const consumePrefetchedNtQuestion = useCallback(async (
@@ -657,28 +491,18 @@ export default function AssessPage() {
     scope: NtScopeOption,
     afterAnsweredCount: number,
   ) => {
-    const prefetch = ntQuestionPrefetchRef.current;
-    if (
-      !prefetch
-      || prefetch.attemptId !== aid
-      || prefetch.afterAnsweredCount !== afterAnsweredCount
-    ) {
-      return false;
-    }
-
-    await prefetch.promise;
-    if (ntQuestionPrefetchRef.current !== prefetch) return false;
-    ntQuestionPrefetchRef.current = null;
-    handleNtQuestionResult(aid, scope, prefetch.data, prefetch.error);
+    const result = await takePrefetchedQuestion<NtAssessmentQuestionRow>(
+      ntQuestionPrefetchRef, aid, afterAnsweredCount,
+    );
+    if (!result) return false;
+    handleNtQuestionResult(aid, scope, result.data, result.error);
     return true;
   }, [handleNtQuestionResult]);
 
   const loadNtQuestion = useCallback(async (aid: string, scope: NtScopeOption) => {
     setIsLoadingNextQuestion(true);
-    const { data, error } = await supabase.rpc("obs_get_next_nt_assessment_question", {
-      p_attempt_id: aid,
-    });
-    handleNtQuestionResult(aid, scope, (data ?? null) as NtAssessmentQuestionRow[] | null, error);
+    const { data, error } = await fetchNextQuestion<NtAssessmentQuestionRow>(NT_NEXT_QUESTION_RPC, aid);
+    handleNtQuestionResult(aid, scope, data, error);
   }, [handleNtQuestionResult]);
 
   const startNtPilot = useCallback(async (
@@ -860,18 +684,8 @@ export default function AssessPage() {
   // result, but a *changed* retry is rejected as already answered. That is not
   // a failure the user needs to see as an error — their first answer stands, so
   // recover by moving on rather than dead-ending the assessment.
-  const rpcErrorMessage = useCallback((err: RpcErrorLike) => (
-    typeof err?.message === "string" && err.message.trim()
-      ? err.message
-      : "Answer submission failed without a detailed error message"
-  ), []);
-
-  const rpcErrorCode = useCallback((err: RpcErrorLike) => (
-    typeof err?.code === "string" && err.code.trim() ? err.code : null
-  ), []);
-
   const isChangedRetryRejection = useCallback((err: RpcErrorLike) =>
-    Boolean(err && /already answered/i.test(rpcErrorMessage(err))), [rpcErrorMessage]);
+    Boolean(err && /already answered/i.test(answerSubmissionErrorText(err))), []);
 
   const logQuestionMisfire = useCallback(async ({
     submittedQuestionId,
@@ -885,12 +699,12 @@ export default function AssessPage() {
     if (!attemptId || !userId) return;
 
     const errorMessage = error
-      ? rpcErrorMessage(error)
+      ? answerSubmissionErrorText(error)
       : "No result returned from answer submission";
     const prompt = typeof context.prompt === "string" ? context.prompt : question?.prompt ?? null;
     const feedbackText = [
       "Answer submission failed without advancing the assessment.",
-      `Error code: ${rpcErrorCode(error) ?? "unknown"}`,
+      `Error code: ${rpcErrorCodeText(error) ?? "unknown"}`,
       `Error message: ${errorMessage}`,
       `Context: ${JSON.stringify(context)}`,
     ].join("\n").slice(0, 2000);
@@ -911,7 +725,7 @@ export default function AssessPage() {
     if (reportError) {
       console.warn("Could not log failed answer submission:", reportError);
     }
-  }, [attemptId, question?.prompt, rpcErrorCode, rpcErrorMessage, userId]);
+  }, [attemptId, question?.prompt, userId]);
 
   const failAnswerSubmission = useCallback(async ({
     submittedQuestionId,
@@ -923,8 +737,8 @@ export default function AssessPage() {
     context: Record<string, unknown>;
   }) => {
     console.warn("Answer submission failed:", {
-      code: rpcErrorCode(error),
-      message: error ? rpcErrorMessage(error) : "No result returned from answer submission",
+      code: rpcErrorCodeText(error),
+      message: error ? answerSubmissionErrorText(error) : "No result returned from answer submission",
       context,
     });
 
@@ -936,8 +750,8 @@ export default function AssessPage() {
     const { data: skippedData, error: skipError } = await supabase.rpc("obs_skip_broken_assessment_question", {
       p_attempt_id: attemptId,
       p_generated_question_id: submittedQuestionId,
-      p_error_code: rpcErrorCode(error),
-      p_error_message: error ? rpcErrorMessage(error) : "No result returned from answer submission",
+      p_error_code: rpcErrorCodeText(error),
+      p_error_message: error ? answerSubmissionErrorText(error) : "No result returned from answer submission",
       p_context: skipContext,
     });
 
@@ -947,7 +761,7 @@ export default function AssessPage() {
       await logQuestionMisfire({ submittedQuestionId, error: error ?? skipError, context });
       isSubmittingAnswerRef.current = false;
       setIsSubmittingAnswer(false);
-      setDebugErrorMsg(`${rpcErrorCode(skipError) ? `${rpcErrorCode(skipError)}: ` : ""}${rpcErrorMessage(skipError)}`);
+      setDebugErrorMsg(`${rpcErrorCodeText(skipError) ? `${rpcErrorCodeText(skipError)}: ` : ""}${answerSubmissionErrorText(skipError)}`);
       setErrorMsg("We could not record or skip that question. This is usually a temporary connection problem.");
       setPhase("error");
       return;
@@ -1002,8 +816,6 @@ export default function AssessPage() {
     otAssessment,
     otRequest,
     otTargetCount,
-    rpcErrorCode,
-    rpcErrorMessage,
     userId,
   ]);
 
@@ -1046,7 +858,7 @@ export default function AssessPage() {
         setPhase("feedback");
         return;
       }
-      if (rpcErrorMessage(error).includes("assessment_answers_user_id_fkey")) {
+      if (rpcErrorMessageText(error).includes("assessment_answers_user_id_fkey")) {
         isSubmittingAnswerRef.current = false;
         setIsSubmittingAnswer(false);
         await supabase.auth.signOut();
@@ -1103,7 +915,7 @@ export default function AssessPage() {
     isSubmittingAnswerRef.current = false;
     setIsSubmittingAnswer(false);
     setPhase("feedback");
-  }, [attemptId, userId, question, phase, isQuestionInteractionLocked, sequenceOrder, answeredCount, correctCount, failAnswerSubmission, isChangedRetryRejection, loadScoreEvidence, otTargetCount, prefetchOtQuestion, rpcErrorMessage]);
+  }, [attemptId, userId, question, phase, isQuestionInteractionLocked, sequenceOrder, answeredCount, correctCount, failAnswerSubmission, isChangedRetryRejection, loadScoreEvidence, otTargetCount, prefetchOtQuestion]);
 
   // ---------------------------------------------------------------------------
   // Sequence-question interaction (drag-to-order events)
@@ -1359,44 +1171,6 @@ export default function AssessPage() {
   ]);
 
   // ---------------------------------------------------------------------------
-  // Report-a-problem submission
-  // ---------------------------------------------------------------------------
-  const submitQuestionReport = useCallback(async () => {
-    if (!question || !userId) return;
-    const trimmedFeedback = reportText.trim();
-    if (reportCategory === "other" && !trimmedFeedback) {
-      setReportError("Add a short note so we know what to review.");
-      return;
-    }
-
-    setIsSubmittingReport(true);
-    setReportError("");
-    const reportSelectedChoiceId = selectedChoice
-      && (selectedChoice === IDK_CHOICE_ID || question.choices.some(choice => choice.id === selectedChoice))
-      ? selectedChoice
-      : null;
-    const { error } = await supabase
-      .from("question_reports")
-      .insert({
-        generated_question_id: question.out_generated_question_id,
-        attempt_id: attemptId,
-        user_id: userId,
-        report_category: reportCategory,
-        feedback_text: trimmedFeedback || null,
-        selected_choice_id: reportSelectedChoiceId,
-        correct_choice_id: correctChoiceId,
-        question_prompt: question.prompt,
-      });
-
-    setIsSubmittingReport(false);
-    if (error) {
-      setReportError(error.message);
-      return;
-    }
-    setReportStatus("sent");
-  }, [attemptId, correctChoiceId, question, reportCategory, reportText, selectedChoice, userId]);
-
-  // ---------------------------------------------------------------------------
   // Advance to the next question
   // ---------------------------------------------------------------------------
   const nextQuestion = useCallback(async () => {
@@ -1444,71 +1218,42 @@ export default function AssessPage() {
   // ---------------------------------------------------------------------------
   // Answer-choice display + nav phase/progress derived values
   // ---------------------------------------------------------------------------
-  const choiceLabel = (id: string) => {
-    if (!selectedChoice) return "";
-    if (assessmentMode === "OT") return id === selectedChoice ? "recorded" : "";
-    if (id === correctChoiceId) return "correct";
-    if (id === IDK_CHOICE_ID && selectedChoice === IDK_CHOICE_ID) return "skipped";
-    if (id === selectedChoice && !isCorrect) return "wrong";
-    return "";
-  };
-
-  const visibleChoices = question
-    ? [...question.choices, IDK_CHOICE]
-    : [];
-  const isSectionSortQuestion = question !== null
-    && sectionSortInteraction !== null;
-  const isSequenceQuestion = assessmentMode === "OT"
-    && question !== null
-    && !isSectionSortQuestion
-    && isOrderResponseQuestion(question);
-  const concealsBookAnswer = question ? promptAsksForBookAnswer(question) : false;
-  const concealsSectionAnswer = assessmentMode === "OT" && question ? promptAsksForSectionAnswer(question) : false;
-  const usesSectionLevelLabel = assessmentMode === "OT" && question ? isBroadSectionLevelQuestion(question) : false;
-  const showsLocationLabels = !concealsSectionAnswer && !usesSectionLevelLabel;
-  const showsBookLabel = !concealsBookAnswer && !usesSectionLevelLabel;
-  const isSkipped = selectedChoice === IDK_CHOICE_ID;
-  const nebulaCount = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
-  const accuracy = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
-  const ntProgressEnd = assessmentMode === "NT" ? Math.max(ntTargetCount, 1) : Math.max(otTargetCount, 1);
-  const ntProgressPct = assessmentMode === "NT"
-    ? Math.min(100, Math.max(0, (answeredCount / ntProgressEnd) * 100))
-    : 0;
-  const isInitialPhase = answeredCount < otTargetCount;
-  const isScopeOtAssessment = Boolean(otRequest.scopeKey);
-  const isTargetedOtAssessment = otAssessment?.assessment_kind === "ot_focused" || isScopeOtAssessment;
-  const showsTargetedOtLabel = assessmentMode === "OT" && isTargetedOtAssessment && !concealsBookAnswer && !usesSectionLevelLabel;
-  const nextMilestone = answeredCount < otTargetCount ? otTargetCount : Math.ceil((answeredCount + 1) / 10) * 10;
-  const progressStart = isInitialPhase ? 0 : nextMilestone - 10;
-  const progressEnd = isInitialPhase ? otTargetCount : nextMilestone;
-  const progressPct = Math.min(100, Math.max(0, ((answeredCount - progressStart) / Math.max(1, progressEnd - progressStart)) * 100));
-  const hasBrowserSavedProgress = !isSignedIn && answeredCount > 0;
-  const navPhaseLabel = isInitialPhase
-    ? (isTargetedOtAssessment
-      ? isScopeOtAssessment
-        ? otAssessment?.book_code ? "Book Test" : "Section Test"
-        : "Focused Retest"
-      : isSignedIn ? "BLI Baseline" : hasBrowserSavedProgress ? "Saved Baseline" : "Initial Assessment")
-    : (isSignedIn ? "BLI Refinement" : "Browser-Saved Practice");
-  const navSubLabel = isInitialPhase
-    ? (isTargetedOtAssessment
-      ? `${otAssessment?.label ?? otRequest.label ?? "Targeted assessment"} · ${answeredCount} of ${otTargetCount}`
-      : hasBrowserSavedProgress
-        ? `${answeredCount} of ${otTargetCount} answered in this browser`
-        // scoreEvidence is lifetime evidence for this account/testament, not
-        // just this attempt — if it already exists, this account already has
-        // a BLI (however early), even if this particular attempt just
-        // started (e.g. a retake), so don't call the next one "first".
-        : scoreEvidence
-          ? `${Math.max(0, otTargetCount - answeredCount)} questions until your BLI updates`
-          : `${Math.max(0, otTargetCount - answeredCount)} questions until first BLI snapshot`)
-    : (isSignedIn ? "Your BLI refines after every answer" : "Sign in to preserve your BLI across devices");
-  const displayNavPhaseLabel = assessmentMode === "NT" ? "New Testament Assessment" : navPhaseLabel;
-  const displayNavSubLabel = assessmentMode === "NT"
-    ? `${ntScope.label} · separate NT BLI`
-    : navSubLabel;
-  const displayProgressPct = assessmentMode === "NT" ? ntProgressPct : progressPct;
-  const displayProgressEnd = assessmentMode === "NT" ? ntProgressEnd : progressEnd;
+  const {
+    accuracy,
+    choiceLabel,
+    displayNavPhaseLabel,
+    displayNavSubLabel,
+    displayProgressEnd,
+    displayProgressPct,
+    isInitialPhase,
+    isSectionSortQuestion,
+    isSequenceQuestion,
+    isSkipped,
+    isScopeOtAssessment,
+    isTargetedOtAssessment,
+    nebulaCount,
+    nextMilestone,
+    showsBookLabel,
+    showsLocationLabels,
+    showsTargetedOtLabel,
+    visibleChoices,
+  } = deriveAssessmentDisplayState({
+    assessmentMode,
+    answeredCount,
+    correctChoiceId,
+    correctCount,
+    isCorrect,
+    isSignedIn,
+    ntScope,
+    ntTargetCount,
+    otAssessment,
+    otRequest,
+    otTargetCount,
+    question,
+    scoreEvidence,
+    sectionSortInteraction,
+    selectedChoice,
+  });
   const skyDiscovery = skyDiscoveryMilestone(answeredCount);
   const showSkyDiscovery = Boolean(
     skyDiscovery
@@ -1702,11 +1447,7 @@ export default function AssessPage() {
               showsTargetedOtLabel={showsTargetedOtLabel}
               otAssessment={otAssessment}
               otRequest={otRequest}
-              onReportRequest={() => {
-                setReportStatus("idle");
-                setReportError("");
-                setShowReportModal(true);
-              }}
+              onReportRequest={openQuestionReport}
             />
 
             <p className="card-prompt">{sectionSortInteraction?.prompt ?? question.prompt}</p>
@@ -1796,7 +1537,13 @@ export default function AssessPage() {
           reportText={reportText}
           setReportText={setReportText}
           reportError={reportError}
-          submitQuestionReport={submitQuestionReport}
+          submitQuestionReport={() => submitQuestionReport({
+            attemptId,
+            correctChoiceId,
+            question,
+            selectedChoice,
+            userId,
+          })}
           isSubmittingReport={isSubmittingReport}
         />
       )}

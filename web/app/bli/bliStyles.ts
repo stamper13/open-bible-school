@@ -17,83 +17,21 @@ export const BLI_PAGE_STYLES = `
         canvas.stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 
         /* .beta-banner/.beta-badge now come from components/BetaBanner.tsx
-           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css */
-        .nav {
-          position: sticky; top: 0; z-index: 20;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 13px 32px; background: rgba(11,15,30,.85);
-          backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.08);
-        }
-        .nav-brand {
-          font-family: var(--font-crimson), Georgia, serif; font-weight: 600; font-size: 18px;
-          color: #fff; text-decoration: none; letter-spacing: .01em;
-        }
-        .nav-links { display: flex; align-items: center; gap: 6px; }
-        .nav-link {
-          padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500;
-          color: rgba(255,255,255,.6); text-decoration: none; transition: color .14s, background .14s;
-        }
-        .nav-link:hover { color: #fff; background: rgba(255,255,255,.08); }
-        .nav-btn {
-          display: flex; align-items: center; gap: 7px; padding: 8px 18px; border-radius: 999px;
-          font-size: 13px; font-weight: 600; background: rgba(255,255,255,.92); color: var(--navy);
-          text-decoration: none; border: none; cursor: pointer;
-          box-shadow: 0 4px 14px rgba(0,0,0,.3); transition: background .15s, transform .13s;
-        }
-        .nav-btn:hover { background: #fff; transform: translateY(-1px); }
-        .nav-link:focus-visible, .nav-btn:focus-visible, .nav-brand:focus-visible {
-          outline: 2px solid rgba(255,255,255,.65); outline-offset: 3px; border-radius: 6px;
-        }
-        .nav-right { display: flex; align-items: center; gap: 10px; }
-        .mobile-nav-toggle {
-          display: none; flex-direction: column; justify-content: center; gap: 4px;
-          width: 34px; height: 34px; padding: 0; border-radius: 8px;
-          background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); cursor: pointer;
-        }
-        .mobile-nav-toggle-bar { width: 16px; height: 2px; margin: 0 auto; background: #fff; border-radius: 2px; }
-        .mobile-nav-toggle:focus-visible { outline: 2px solid rgba(255,255,255,.65); outline-offset: 2px; }
-        .mobile-nav-panel {
-          position: sticky; top: 60px; z-index: 19;
-          display: flex; flex-direction: column;
-          background: rgba(11,15,30,.97); backdrop-filter: blur(12px);
-          border-bottom: 1px solid rgba(255,255,255,.08);
-          padding: 6px 16px 14px;
-        }
-        .mobile-nav-link {
-          padding: 12px 6px; font-size: 14px; font-weight: 600; color: rgba(255,255,255,.82);
-          text-decoration: none; border-top: 1px solid rgba(255,255,255,.06);
-        }
-        .mobile-nav-link:first-child { border-top: none; }
-        .mobile-nav-link:hover, .mobile-nav-link:focus-visible { color: #fff; }
-        .mobile-nav-cta {
-          margin-top: 6px; margin-bottom: 4px; padding: 12px 14px; border-radius: 12px;
-          background: rgba(255,255,255,.94); color: var(--navy); font-weight: 700; text-align: center;
-        }
-        .mobile-nav-cta:hover, .mobile-nav-cta:focus-visible { color: var(--navy); background: #fff; }
+           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css.
+           .nav/.nav-brand/.nav-links/.nav-link/.nav-btn/.mobile-nav-* now
+           come from components/SiteNav.tsx + the .oba-site-nav rules in
+           app/globals.css. */
 
         .page { position: relative; z-index: 1; max-width: 920px; margin: 0 auto; padding: 60px 24px 96px; }
         .hero { margin-bottom: 56px; }
-        .hero-eyebrow {
-          display: inline-flex; align-items: center; gap: 7px;
-          background: var(--accent-dim); border: 1px solid var(--accent-line);
-          border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 700;
-          letter-spacing: .06em; text-transform: uppercase; color: #6fe0e0; margin-bottom: 20px;
-        }
-        .hero-eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
         .hero-heading {
           font-family: var(--font-crimson), Georgia, serif;
           font-size: clamp(32px, 5vw, 48px); font-weight: 600; line-height: 1.12;
           color: #fff; margin-bottom: 20px;
         }
-        .hero-heading em { font-style: italic; color: #4fd6d6; }
         .hero-lead { font-size: 16.5px; line-height: 1.75; color: rgba(255,255,255,.64); max-width: 690px; }
 
         .section { margin-bottom: 58px; scroll-margin-top: 84px; }
-        .section-label { font-size: 11px; font-weight: 700; letter-spacing: .10em; text-transform: uppercase; color: #4fd6d6; margin-bottom: 12px; }
-        .section-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; line-height: 1.2; color: #fff; margin-bottom: 16px; }
-        .section-body { font-size: 15.5px; line-height: 1.80; color: rgba(255,255,255,.66); }
-        .section-body p + p { margin-top: 14px; }
-        .section-body strong { color: #fff; font-weight: 650; }
         .rule { border: none; border-top: 1px solid rgba(255,255,255,.09); margin: 56px 0; }
 
         .flow {
@@ -303,30 +241,8 @@ export const BLI_PAGE_STYLES = `
         .level-range { font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; }
         .level-desc { font-size: 13px; line-height: 1.5; color: rgba(255,255,255,.55); }
 
-        .cta-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 48px; }
-        .btn-primary, .btn-secondary {
-          display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px;
-          font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer;
-          transition: transform .13s, background .15s;
-        }
-        .btn-primary { background: rgba(255,255,255,.93); color: var(--navy); border: none; box-shadow: 0 10px 28px rgba(0,0,0,.3); }
-        .btn-primary:hover { background: #fff; transform: translateY(-2px); }
-        .btn-secondary { background: rgba(255,255,255,.06); color: #fff; border: 1px solid rgba(255,255,255,.16); }
-        .btn-secondary:hover { background: rgba(255,255,255,.12); transform: translateY(-2px); }
         .btn-primary:focus-visible, .btn-secondary:focus-visible { outline: 2px solid rgba(255,255,255,.7); outline-offset: 3px; }
 
-        .rail {
-          position: fixed; right: 22px; top: 50%; transform: translateY(-50%);
-          z-index: 30; display: flex; flex-direction: column; gap: 11px;
-        }
-        .rail-dot {
-          width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
-          border: 1px solid rgba(255,255,255,.35); background: transparent;
-          transition: background .2s, transform .2s, border-color .2s;
-        }
-        .rail-dot:hover { background: rgba(255,255,255,.55); }
-        .rail-dot.on { background: var(--accent); border-color: var(--accent); transform: scale(1.4); }
-        .rail-dot:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
         /* Below the width where the vertical rail has clear margin outside the
            920px content column, it becomes a floating horizontal pill anchored
            to the bottom of the viewport instead of just disappearing — tablet
@@ -371,13 +287,6 @@ export const BLI_PAGE_STYLES = `
           }
         }
         @media (max-width: 680px) {
-          .nav { padding: 13px 16px; }
-          .nav-links .nav-link { display: none; }
-          /* The header CTA moves into the mobile menu itself at this width —
-             logo + hamburger only, so the wordmark never has to fight a
-             second pill for space. */
-          .nav-right .nav-btn { display: none; }
-          .mobile-nav-toggle { display: flex; }
           .page { padding: 40px 16px 72px; }
           .mechanic-grid { grid-template-columns: 1fr; }
           .flow { grid-template-columns: 1fr; }

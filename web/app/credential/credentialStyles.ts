@@ -15,46 +15,13 @@ export const CREDENTIAL_PAGE_STYLES = `
         canvas.stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 
         /* .beta-banner/.beta-badge now come from components/BetaBanner.tsx
-           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css */
-
-        .nav {
-          position: sticky; top: 0; z-index: 20;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 13px 32px; background: rgba(11,15,30,.85);
-          backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.08);
-        }
-        .nav-brand {
-          font-family: var(--font-crimson), Georgia, serif;
-          font-weight: 600; font-size: 18px;
-          color: #fff; text-decoration: none; letter-spacing: .01em;
-        }
-        .nav-links { display: flex; align-items: center; gap: 6px; }
-        .nav-link {
-          padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500;
-          color: rgba(255,255,255,.6); text-decoration: none; transition: color .14s, background .14s;
-        }
-        .nav-link:hover { color: #fff; background: rgba(255,255,255,.08); }
-        .nav-btn {
-          display: flex; align-items: center; gap: 7px; padding: 8px 18px; border-radius: 999px;
-          font-size: 13px; font-weight: 600; background: rgba(255,255,255,.92); color: var(--navy);
-          text-decoration: none; border: none; cursor: pointer;
-          box-shadow: 0 4px 14px rgba(0,0,0,.3); transition: background .15s, transform .13s;
-        }
-        .nav-btn:hover { background: #fff; transform: translateY(-1px); }
-        .nav-link:focus-visible, .nav-btn:focus-visible, .nav-brand:focus-visible {
-          outline: 2px solid rgba(255,255,255,.65); outline-offset: 3px; border-radius: 6px;
-        }
+           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css.
+           .nav/.nav-brand/.nav-links/.nav-link/.nav-btn now come from
+           components/SiteNav.tsx + the .oba-site-nav rules in app/globals.css. */
 
         .page { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 56px 24px 96px; }
 
         .hero { margin-bottom: 52px; max-width: 640px; }
-        .hero-eyebrow {
-          display: inline-flex; align-items: center; gap: 7px;
-          background: var(--accent-dim); border: 1px solid var(--accent-line);
-          border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 700;
-          letter-spacing: .06em; text-transform: uppercase; color: #6fe0e0; margin-bottom: 20px;
-        }
-        .hero-eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
         .hero-heading {
           font-family: var(--font-crimson), Georgia, serif;
           font-size: clamp(28px, 4.5vw, 44px); font-weight: 600; line-height: 1.14;
@@ -320,8 +287,6 @@ export const CREDENTIAL_PAGE_STYLES = `
         }
 
         @media (max-width: 640px) {
-          .nav { padding: 13px 16px; }
-          .nav-links .nav-link { display: none; }
           .page { padding: 36px 16px 72px; }
           .module-card { min-height: 380px; padding: 28px 20px 26px; }
           .module-desc { max-width: 100%; }

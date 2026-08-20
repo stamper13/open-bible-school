@@ -31,26 +31,9 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
         .km-starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
         .page { position: relative; z-index: 1; }
         .focus-transition { position: fixed; inset: 0; z-index: 15; pointer-events: none; }
-        .nav {
-          position: sticky; top: 0; z-index: 20;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 13px 32px;
-          background: rgba(8,13,29,.86);
-          border-bottom: 1px solid rgba(255,255,255,.10);
-          backdrop-filter: blur(16px);
-        }
-        .nav-brand {
-          color: #fff; text-decoration: none;
-          font-family: var(--font-crimson), Georgia, serif;
-          font-size: 18px; font-weight: 700;
-        }
-        .nav-links { display: flex; align-items: center; gap: 7px; }
-        .nav-link {
-          color: rgba(255,255,255,.67); text-decoration: none;
-          padding: 8px 12px; border-radius: 6px;
-          font-size: 12px; font-weight: 800;
-        }
-        .nav-link:hover, .nav-link.active { color: #fff; background: rgba(255,255,255,.09); }
+        /* .nav/.nav-brand/.nav-links/.nav-link now come from
+           components/SiteNav.tsx + the .oba-site-nav--block rules in
+           app/globals.css. */
         .page { width: min(1560px, calc(100% - 48px)); margin: 0 auto; padding: 26px 0 70px; }
         .page-head {
           display: flex; align-items: center; justify-content: space-between;
@@ -206,8 +189,6 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
         .retry-btn:hover { background: rgba(255,255,255,.16); }
         .retry-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
         @media (max-width: 760px) {
-          .nav { padding: 12px 16px; }
-          .nav-link:not(.active) { display: none; }
           .page { width: min(100% - 22px,620px); padding-top: 24px; }
           .page-head { grid-template-columns: 1fr; align-items: start; margin-bottom: 18px; }
           .summary { width: 100%; min-width: 0; }

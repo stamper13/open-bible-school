@@ -11,6 +11,7 @@ import {
 } from "./constants";
 import type {
   Choice,
+  InitialAssessmentRoute,
   NtBookMetadata,
   NtScopeOption,
   NtSectionKey,
@@ -40,6 +41,76 @@ const SECTION_SORT_PROMPT_NT =
 const TRADITION_SENSITIVE_OT_BOOKS = new Set(["Ruth", "Lamentations", "Daniel", "1 Chronicles", "2 Chronicles", "Ezra", "Nehemiah"]);
 export const HEBREW_BIBLE_DIVISION_NOTE =
   "OBA uses the Hebrew Bible/Tanakh divisions for Old Testament structure. That means Ruth, Lamentations, Daniel, Chronicles, Ezra, and Nehemiah are treated as Writings, even though many English Bible tables place some of them near historical books or major prophets.";
+
+const parsePositiveInteger = (value: string | null) => {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+export function parseInitialAssessmentRoute(search: string, defaultOtTarget: number, defaultNtTarget: number): InitialAssessmentRoute {
+  const params = new URLSearchParams(search);
+  const requestedTarget = parsePositiveInteger(params.get("target"));
+  const ntRequestedTargetCount = Math.min(50, Math.max(5, requestedTarget ?? defaultNtTarget));
+
+  const defaultOtRequest = {
+    unitKey: null,
+    scopeKey: null,
+    bookCode: null,
+    startChapter: null,
+    endChapter: null,
+    label: null,
+    dimensionKey: null,
+    targetQuestionCount: defaultOtTarget,
+    forceNew: false,
+  };
+
+  if (params.get("choose") === "1") {
+    return {
+      assessmentMode: "select",
+      phase: "starting",
+      ntRequestedScopeKey: "NT",
+      ntRequestedTargetCount,
+      otRequest: defaultOtRequest,
+      sanitizedSearch: null,
+    };
+  }
+
+  if (params.get("testament") === "NT") {
+    return {
+      assessmentMode: "NT",
+      phase: "starting",
+      ntRequestedScopeKey: params.get("scope")?.trim().toUpperCase() || "NT",
+      ntRequestedTargetCount,
+      otRequest: defaultOtRequest,
+      sanitizedSearch: null,
+    };
+  }
+
+  const isFocused = params.get("mode") === "focus";
+  const isScopeTest = params.get("mode") === "scope";
+  const forceNew = params.get("fresh") === "1";
+  if (forceNew) params.delete("fresh");
+
+  return {
+    assessmentMode: "OT",
+    phase: "starting",
+    ntRequestedScopeKey: "NT",
+    ntRequestedTargetCount,
+    otRequest: {
+      unitKey: isFocused ? params.get("unit") : null,
+      scopeKey: isScopeTest ? params.get("scope")?.toUpperCase() ?? null : null,
+      bookCode: isFocused ? params.get("book")?.toUpperCase() ?? null : null,
+      startChapter: isFocused ? parsePositiveInteger(params.get("start")) : null,
+      endChapter: isFocused ? parsePositiveInteger(params.get("end")) : null,
+      label: isFocused || isScopeTest ? params.get("label") : null,
+      dimensionKey: isFocused ? params.get("dimension") : null,
+      targetQuestionCount: Math.min(50, Math.max(1, requestedTarget ?? defaultOtTarget)),
+      forceNew,
+    },
+    sanitizedSearch: forceNew ? params.toString() : null,
+  };
+}
 
 export function shuffleForDisplay<T>(items: T[]): T[] {
   const shuffled = [...items];

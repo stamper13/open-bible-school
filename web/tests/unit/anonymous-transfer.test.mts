@@ -12,6 +12,7 @@ import {
   type TokenStorage,
   type TransferRpcClient,
 } from "../../lib/auth/anonymousTransfer.ts";
+import { authCallbackUrl } from "../../lib/auth/redirect.ts";
 
 const GUEST = "11111111-1111-4111-8111-111111111111";
 const OTHER_GUEST = "22222222-2222-4222-8222-222222222222";
@@ -330,18 +331,43 @@ test("every sign-out / cleanup path clears the pending capability", () => {
 });
 
 test("magic links land on the callback, where the claim happens", () => {
-  const match = source("app/assess/page.tsx")
-    .match(/emailRedirectTo:\s*window\.location\.origin\s*\+\s*(["'`])([^"'`]*)\1/);
-  assert.ok(match, "could not find the magic-link redirect");
-  assert.match(match![2], /^\/auth\/callback(\?|$)/,
+  // The redirect target is built by authCallbackUrl() rather than concatenated
+  // inline, so this asserts the call site. That the helper actually produces a
+  // /auth/callback URL is covered by the authCallbackUrl tests below.
+  assert.match(source("app/assess/page.tsx"), /emailRedirectTo:\s*authCallbackUrl\(/,
     "magic links must land on /auth/callback, otherwise guest progress is never claimed");
 });
 
 test("SECURITY: redirects carry only the flow correlator, never the capability", () => {
+  // This asserts the actual URL the helper builds, not the shape of the call
+  // site. An earlier version of this test grepped for an inline
+  // `"?flow=" + flowId` concatenation; when that was refactored into
+  // authCallbackUrl({ flow }) the assertion broke while the code stayed
+  // correct. Testing the output means a future refactor of *how* the URL is
+  // assembled cannot make this pass or fail spuriously — only a real change
+  // to what ends up in the URL can.
+  const FLOW = "flow-correlator-abc";
+  const TOKEN = "capability-token-that-must-never-be-in-a-url";
+
+  const url = new URL(authCallbackUrl({ flow: FLOW }));
+  assert.equal(url.pathname, "/auth/callback",
+    "the redirect must land on the callback route");
+  assert.equal(url.searchParams.get("flow"), FLOW,
+    "the flow correlator must reach the callback, or guest progress is never claimed");
+  assert.equal(url.toString().includes(TOKEN), false,
+    "a capability token must never appear in a redirect URL");
+
+  // A null/absent correlator must not degrade into a literal "null" param.
+  const bare = new URL(authCallbackUrl({ flow: undefined }));
+  assert.equal(bare.searchParams.has("flow"), false,
+    "an absent correlator must be omitted, never serialised as a string");
+
+  // The call sites must hand the helper only the correlator. This stays a
+  // source check because it is about what the app *chooses* to pass, which
+  // no unit-level call of the helper can observe.
   for (const rel of ["app/assess/page.tsx", "app/page.tsx"] as const) {
     const text = source(rel);
-    // The flow id is expected in the URL; the token must never be.
-    assert.match(text, /\?flow=["']?\s*\+\s*flowId/,
+    assert.match(text, /authCallbackUrl\(\s*\{\s*flow:/,
       `${rel} does not pass a flow correlator to the callback`);
     assert.equal(/(redirectTo|emailRedirectTo)[^;]*\b(token|record\.token)\b/.test(text), false,
       `${rel} appears to put the capability token in a redirect URL`);

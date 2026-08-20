@@ -37,4 +37,6 @@ Production is deployed through Vercel:
 npx vercel --prod
 ```
 
-See `COLLABORATING.md` for the repository-sharing and environment setup notes.
+See `COLLABORATING.md` for the repository-sharing and environment setup
+notes, and `SCHEMA.md` for the Supabase data model — what's live, what's
+legacy, and how to tell the difference.

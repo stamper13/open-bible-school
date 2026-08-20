@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import BrandLogo from "@/components/BrandLogo";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import SiteFooter from "@/components/SiteFooter";
 import BetaBanner from "@/components/BetaBanner";
+import SiteNav from "@/components/SiteNav";
 import { supabase } from "@/lib/supabase/client";
 import { BLI_LEVELS, levelForScore } from "@/lib/bli";
 import ScoringLab from "./ScoringLab";
@@ -95,7 +95,6 @@ export default function BliMechanicsPage() {
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [panelCount, setPanelCount] = useState(0);
   const [activePanel, setActivePanel] = useState(0);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLElement>(null);
   const panelsRef = useRef<HTMLElement[]>([]);
@@ -136,24 +135,6 @@ export default function BliMechanicsPage() {
     panels.forEach(panel => observer.observe(panel));
     return () => observer.disconnect();
   }, []);
-
-  // Mobile menu: Escape closes it, and it never survives a viewport resize
-  // past the breakpoint where the inline nav-links reappear.
-  useEffect(() => {
-    if (!mobileNavOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileNavOpen(false);
-    };
-    const onResize = () => {
-      if (window.innerWidth > 680) setMobileNavOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", onResize);
-    };
-  }, [mobileNavOpen]);
 
   // Deep links (the dashboard's level-badge "Learn more") land on a URL
   // hash. A same-route Next.js navigation doesn't reliably keep the
@@ -252,42 +233,12 @@ export default function BliMechanicsPage() {
         The scoring model and question bank are being refined as the assessment grows.
       </BetaBanner>
 
-      <nav className="nav">
-        <BrandLogo className="nav-brand" />
-        <div className="nav-links">
-          <Link className="nav-link" href="/">Dashboard</Link>
-          <Link className="nav-link" href="/assess">Assess</Link>
-          <Link className="nav-link" href="/knowledge-map">Knowledge Map</Link>
-          <Link className="nav-link" href="/about">About</Link>
-          <Link className="nav-link" href="/credential">Future Ideas</Link>
-        </div>
-        <div className="nav-right">
-          <Link className="nav-btn" href="/assess">Start Assessment</Link>
-          <button
-            type="button"
-            className="mobile-nav-toggle"
-            aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileNavOpen}
-            aria-controls="bli-mobile-nav"
-            onClick={() => setMobileNavOpen(open => !open)}
-          >
-            <span className="mobile-nav-toggle-bar" />
-            <span className="mobile-nav-toggle-bar" />
-            <span className="mobile-nav-toggle-bar" />
-          </button>
-        </div>
-      </nav>
-
-      {mobileNavOpen && (
-        <div className="mobile-nav-panel" id="bli-mobile-nav" role="menu" aria-label="Site">
-          <Link className="mobile-nav-link mobile-nav-cta" role="menuitem" href="/assess" onClick={() => setMobileNavOpen(false)}>Start Assessment</Link>
-          <Link className="mobile-nav-link" role="menuitem" href="/" onClick={() => setMobileNavOpen(false)}>Dashboard</Link>
-          <Link className="mobile-nav-link" role="menuitem" href="/assess" onClick={() => setMobileNavOpen(false)}>Assess</Link>
-          <Link className="mobile-nav-link" role="menuitem" href="/knowledge-map" onClick={() => setMobileNavOpen(false)}>Knowledge Map</Link>
-          <Link className="mobile-nav-link" role="menuitem" href="/about" onClick={() => setMobileNavOpen(false)}>About</Link>
-          <Link className="mobile-nav-link" role="menuitem" href="/credential" onClick={() => setMobileNavOpen(false)}>Future Ideas</Link>
-        </div>
-      )}
+      <SiteNav
+        links={["dashboard", "assess", "knowledge-map", "about", "credential", "reading-log"]}
+        cta={{ href: "/assess", label: "Start Assessment" }}
+        mobileMenu
+        mobileMenuId="bli-mobile-nav"
+      />
 
       <main className="page" ref={pageRef}>
         <header className="hero">

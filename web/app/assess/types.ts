@@ -83,6 +83,14 @@ export type OtAssessmentRequest = {
   targetQuestionCount: number;
   forceNew: boolean;
 };
+export type InitialAssessmentRoute = {
+  assessmentMode: AssessmentMode;
+  phase: Phase;
+  ntRequestedScopeKey: string;
+  ntRequestedTargetCount: number;
+  otRequest: OtAssessmentRequest;
+  sanitizedSearch: string | null;
+};
 export type OtAssessmentStartRow = {
   attempt_id: string;
   user_id: string;

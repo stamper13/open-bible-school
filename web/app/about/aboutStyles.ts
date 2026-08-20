@@ -17,55 +17,17 @@ export const ABOUT_PAGE_STYLES = `
         canvas.stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 
         /* .beta-banner/.beta-badge now come from components/BetaBanner.tsx
-           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css */
-        .nav {
-          position: sticky; top: 0; z-index: 20;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 13px 32px; background: rgba(11,15,30,.85);
-          backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.08);
-        }
-        .nav-brand {
-          font-family: var(--font-crimson), Georgia, serif;
-          font-weight: 600; font-size: 18px;
-          color: #fff; text-decoration: none; letter-spacing: .01em;
-        }
-        .nav-links { display: flex; align-items: center; gap: 6px; }
-        .nav-link {
-          padding: 7px 14px; border-radius: 999px;
-          font-size: 13px; font-weight: 500; color: rgba(255,255,255,.6);
-          text-decoration: none; transition: color .14s, background .14s;
-        }
-        .nav-link:hover { color: #fff; background: rgba(255,255,255,.08); }
-        .nav-btn {
-          display: flex; align-items: center; gap: 7px;
-          padding: 8px 18px; border-radius: 999px;
-          font-size: 13px; font-weight: 600;
-          background: rgba(255,255,255,.92); color: var(--navy);
-          text-decoration: none; border: none; cursor: pointer;
-          box-shadow: 0 4px 14px rgba(0,0,0,.3);
-          transition: background .15s, transform .13s;
-        }
-        .nav-btn:hover { background: #fff; transform: translateY(-1px); }
-        .nav-link:focus-visible, .nav-btn:focus-visible, .nav-brand:focus-visible {
-          outline: 2px solid rgba(255,255,255,.65); outline-offset: 3px; border-radius: 6px;
-        }
+           + the .oba-beta-banner/.oba-beta-badge rules in app/globals.css.
+           .nav/.nav-brand/.nav-links/.nav-link/.nav-btn now come from
+           components/SiteNav.tsx + the .oba-site-nav rules in app/globals.css. */
 
         .page { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: 64px 24px 96px; }
         .hero { padding-top: 56px; margin-bottom: 16px; }
-        .hero-eyebrow {
-          display: inline-flex; align-items: center; gap: 7px;
-          background: var(--accent-dim); border: 1px solid var(--accent-line);
-          border-radius: 999px; padding: 5px 14px;
-          font-size: 12px; font-weight: 700; letter-spacing: .06em;
-          text-transform: uppercase; color: #6fe0e0; margin-bottom: 20px;
-        }
-        .hero-eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
         .hero-heading {
           font-family: var(--font-crimson), Georgia, serif;
           font-size: clamp(32px, 5vw, 50px); font-weight: 600; line-height: 1.12;
           color: #fff; letter-spacing: .005em; margin-bottom: 20px;
         }
-        .hero-heading em { font-style: italic; color: #4fd6d6; }
         .hero-lead { font-size: 17px; line-height: 1.75; color: rgba(255,255,255,.64); max-width: 580px; }
 
         .pull-quote { border-left: 3px solid var(--accent); margin: 28px 0 0; padding: 4px 0 4px 24px; }
@@ -74,11 +36,6 @@ export const ABOUT_PAGE_STYLES = `
           font-size: 21px; font-style: italic; line-height: 1.55; color: rgba(255,255,255,.88); font-weight: 500;
         }
         .section { margin-bottom: 60px; }
-        .section-label { font-size: 11px; font-weight: 700; letter-spacing: .10em; text-transform: uppercase; color: #4fd6d6; margin-bottom: 12px; }
-        .section-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; line-height: 1.2; color: #fff; margin-bottom: 16px; }
-        .section-body { font-size: 15.5px; line-height: 1.80; color: rgba(255,255,255,.66); }
-        .section-body p + p { margin-top: 14px; }
-        .section-body strong { color: #fff; font-weight: 650; }
         .inline-link { color: #4fd6d6; font-weight: 650; text-decoration: none; border-bottom: 1px solid rgba(10,163,163,.45); }
         .inline-link:hover { color: #7fe9e9; border-bottom-color: #7fe9e9; }
         .rule { border: none; border-top: 1px solid rgba(255,255,255,.09); margin: 60px 0; }
@@ -406,16 +363,6 @@ export const ABOUT_PAGE_STYLES = `
         }
         .donate-btn:hover { background: #089090; transform: translateY(-1px); }
 
-        .cta-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 48px; }
-        .btn-primary, .btn-secondary {
-          display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px;
-          font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer;
-          transition: transform .13s, background .15s, box-shadow .15s;
-        }
-        .btn-primary { background: rgba(255,255,255,.93); color: var(--navy); border: none; box-shadow: 0 10px 28px rgba(0,0,0,.3); }
-        .btn-primary:hover { background: #fff; transform: translateY(-2px); }
-        .btn-secondary { background: rgba(255,255,255,.06); color: #fff; border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(8px); }
-        .btn-secondary:hover { background: rgba(255,255,255,.12); transform: translateY(-2px); }
         .donate-btn:focus-visible, .btn-primary:focus-visible, .btn-secondary:focus-visible, .inline-link:focus-visible {
           outline: 2px solid rgba(255,255,255,.7); outline-offset: 3px;
         }
@@ -439,18 +386,6 @@ export const ABOUT_PAGE_STYLES = `
         .is-enhanced .panel.is-active { opacity: 1; transform: none; }
         .panel > .rule { display: none; }
 
-        .rail {
-          position: fixed; right: 22px; top: 50%; transform: translateY(-50%);
-          z-index: 30; display: flex; flex-direction: column; gap: 11px;
-        }
-        .rail-dot {
-          width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
-          border: 1px solid rgba(255,255,255,.35); background: transparent;
-          transition: background .2s, transform .2s, border-color .2s;
-        }
-        .rail-dot:hover { background: rgba(255,255,255,.55); }
-        .rail-dot.on { background: var(--accent); border-color: var(--accent); transform: scale(1.4); }
-        .rail-dot:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 
         @media (max-width: 900px) { .rail { display: none; } }
 
@@ -466,8 +401,6 @@ export const ABOUT_PAGE_STYLES = `
           .panel { padding: 52px 0; }
         }
         @media (max-width: 600px) {
-          .nav { padding: 13px 16px; }
-          .nav-links .nav-link { display: none; }
           .page { padding: 0 16px; }
           .hero { padding-top: 40px; }
           .donate-block { padding: 28px 22px; }
