@@ -4,7 +4,7 @@ Last updated: 2026-08-20.
 
 ## Current Rating
 
-Backend: **6.5/10**.
+Backend: **6.75/10**.
 
 The live product behavior is recoverable, the urgent frontend RPC contract is
 repaired, and new repo gates now protect the riskiest edges. The schema history

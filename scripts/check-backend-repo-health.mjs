@@ -9,6 +9,12 @@ const rollbackDir = path.join(repoRoot, "supabase/rollback");
 const verifyDir = path.join(repoRoot, "supabase/verify");
 
 const activeMigrationFloor = "20260818180000";
+const activeHygieneExemptions = new Map([
+  [
+    "20260818180000_restore_obs_start_or_resume_ot_assessment.sql",
+    "manual SQL-editor hotfix mirrored into repo before the reviewed transaction-wrapper pattern was adopted",
+  ],
+]);
 const sqlFilePattern = /^(\d{8}|\d{14})_(.+)\.sql$/;
 const badMutationPatterns = [
   /\bexecute\s+replace\s*\(/i,
@@ -28,7 +34,13 @@ const rollbackFiles = new Set(listSqlFiles(rollbackDir));
 const verifyFiles = new Set(listSqlFiles(verifyDir));
 const failures = [];
 const warnings = [];
+const warningCounts = new Map();
 const versions = new Map();
+
+const warn = (category, message) => {
+  warnings.push({ category, message });
+  warningCounts.set(category, (warningCounts.get(category) ?? 0) + 1);
+};
 
 for (const file of migrationFiles) {
   const match = file.match(sqlFilePattern);
@@ -41,7 +53,7 @@ for (const file of migrationFiles) {
   versions.set(version, [...(versions.get(version) ?? []), file]);
 
   if (version.length !== 14) {
-    warnings.push(`Legacy short migration version: ${file}`);
+    warn("legacy-short-version", `Legacy short migration version: ${file}`);
     continue;
   }
 
@@ -65,12 +77,18 @@ for (const file of migrationFiles) {
     failures.push(`Active migration uses function-body mutation pattern: ${file}`);
   }
 
-  if (!/\bset\s+local\s+lock_timeout\b/i.test(sql)) {
-    warnings.push(`Active migration does not set lock_timeout: ${file}`);
+  const hygieneExemption = activeHygieneExemptions.get(file);
+
+  if (!hygieneExemption && !/\bset\s+local\s+lock_timeout\b/i.test(sql)) {
+    warn("active-missing-lock-timeout", `Active migration does not set lock_timeout: ${file}`);
   }
 
-  if (!/\bcommit\s*;/i.test(sql)) {
-    warnings.push(`Active migration is not explicitly transaction-wrapped: ${file}`);
+  if (!hygieneExemption && !/\bcommit\s*;/i.test(sql)) {
+    warn("active-missing-transaction", `Active migration is not explicitly transaction-wrapped: ${file}`);
+  }
+
+  if (hygieneExemption) {
+    warn("active-hygiene-exempt", `${file}: ${hygieneExemption}`);
   }
 }
 
@@ -107,7 +125,7 @@ if (failures.length > 0) {
   if (warnings.length > 0) {
     console.error("\nWarnings:");
     for (const warning of warnings.slice(0, 20)) {
-      console.error(`  - ${warning}`);
+      console.error(`  - [${warning.category}] ${warning.message}`);
     }
     if (warnings.length > 20) {
       console.error(`  - ... ${warnings.length - 20} more warnings`);
@@ -120,3 +138,6 @@ console.log("PASS: backend repo health gates are satisfied.");
 console.log(`Active migration floor: ${activeMigrationFloor}`);
 console.log(`Migrations scanned: ${migrationFiles.length}`);
 console.log(`Warnings: ${warnings.length}`);
+for (const [category, count] of [...warningCounts.entries()].sort()) {
+  console.log(`  ${category}: ${count}`);
+}
