@@ -12,8 +12,23 @@ if [[ -z "${SUPABASE_DB_URL:-}" ]]; then
   exit 1
 fi
 
-if ! command -v pg_dump >/dev/null 2>&1; then
+pg_dump_bin="${PG_DUMP_BIN:-}"
+
+if [[ -z "$pg_dump_bin" ]]; then
+  if command -v pg_dump >/dev/null 2>&1; then
+    pg_dump_bin="$(command -v pg_dump)"
+  elif [[ -x /opt/homebrew/opt/libpq/bin/pg_dump ]]; then
+    pg_dump_bin="/opt/homebrew/opt/libpq/bin/pg_dump"
+  elif [[ -x /usr/local/opt/libpq/bin/pg_dump ]]; then
+    pg_dump_bin="/usr/local/opt/libpq/bin/pg_dump"
+  fi
+fi
+
+if [[ -z "$pg_dump_bin" || ! -x "$pg_dump_bin" ]]; then
   echo "ERROR: pg_dump is not installed or not on PATH." >&2
+  echo "If installed via Homebrew libpq, run:" >&2
+  echo "  export PATH=\"/opt/homebrew/opt/libpq/bin:\$PATH\"" >&2
+  echo "or set PG_DUMP_BIN to the full pg_dump path." >&2
   exit 1
 fi
 
@@ -34,7 +49,7 @@ for schema in $schemas; do
   pg_dump_args+=(--schema "$schema")
 done
 
-pg_dump "${pg_dump_args[@]}"
+"$pg_dump_bin" "${pg_dump_args[@]}"
 
 if command -v shasum >/dev/null 2>&1; then
   shasum -a 256 "$output" > "$checksum"

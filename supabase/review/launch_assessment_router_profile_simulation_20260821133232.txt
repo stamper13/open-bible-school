@@ -1,0 +1,85 @@
+BEGIN
+SET
+SET
+CREATE TABLE
+INSERT 0 8
+DELETE 0
+DO
+SELECT 1491
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+GRANT
+INSERT 0 8
+INSERT 0 8
+DO
+RESET
+           profile_key           | testament | run_number | served | distinct_questions | scopes_seen | duplicate_similarity_items | weak_probe_count | strong_probe_count | observed_accuracy_pct | observed_idk_pct | launch_gate 
+---------------------------------+-----------+------------+--------+--------------------+-------------+----------------------------+------------------+--------------------+-----------------------+------------------+-------------
+ NT_ADVANCED_GOSPELS_ACTS_WEAK   | NT        |          1 |     12 |                 12 |           4 |                          0 |                3 |                  9 |                  75.0 |              8.3 | PASS
+ NT_BEGINNER                     | NT        |          1 |     12 |                 12 |           4 |                          0 |               12 |                  0 |                  25.0 |             25.0 | PASS
+ NT_GOSPELS_STRONG_EPISTLES_WEAK | NT        |          1 |     12 |                 12 |           4 |                          0 |                6 |                  3 |                  50.0 |              0.0 | PASS
+ NT_PAUL_STRONG_GOSPELS_WEAK     | NT        |          1 |     12 |                 12 |           4 |                          0 |                3 |                  3 |                  66.7 |              0.0 | PASS
+ OT_ADVANCED_GEOGRAPHY_WEAK      | OT        |          1 |     12 |                 12 |           4 |                          0 |                0 |                 12 |                  91.7 |              0.0 | PASS
+ OT_BEGINNER                     | OT        |          1 |     12 |                 12 |           4 |                          0 |               12 |                  0 |                  16.7 |             33.3 | PASS
+ OT_PROPHETS_STRONG_TORAH_WEAK   | OT        |          1 |     12 |                 12 |           4 |                          0 |                2 |                  6 |                  58.3 |             16.7 | PASS
+ OT_TORAH_STRONG_FORMER_WEAK     | OT        |          1 |     12 |                 12 |           4 |                          0 |                2 |                  2 |                  66.7 |              8.3 | PASS
+(8 rows)
+
+ testament | simulated_fresh_attempts | distinct_first_questions | first_question_scopes |          scope_list          
+-----------+--------------------------+--------------------------+-----------------------+------------------------------
+ NT        |                        4 |                        4 |                     3 | APOCALYPSE, GENERAL, PAULINE
+ OT        |                        4 |                        4 |                     2 | LATTER, WRITINGS
+(2 rows)
+
+           profile_key           | testament | run_number | ot_questions_answered | ot_display_bli | ot_accuracy_pct | nt_questions_answered | nt_display_bli | nt_accuracy_pct | combined_available 
+---------------------------------+-----------+------------+-----------------------+----------------+-----------------+-----------------------+----------------+-----------------+--------------------
+ NT_ADVANCED_GOSPELS_ACTS_WEAK   | NT        |          1 |                     0 |              0 |               0 |                    12 |            583 |            75.0 | f
+ NT_BEGINNER                     | NT        |          1 |                     0 |              0 |               0 |                    12 |             70 |            25.0 | f
+ NT_GOSPELS_STRONG_EPISTLES_WEAK | NT        |          1 |                     0 |              0 |               0 |                    12 |            294 |            50.0 | f
+ NT_PAUL_STRONG_GOSPELS_WEAK     | NT        |          1 |                     0 |              0 |               0 |                    12 |            455 |            66.7 | f
+ OT_ADVANCED_GEOGRAPHY_WEAK      | OT        |          1 |                    12 |            573 |            91.7 |                     0 |              0 |               0 | f
+ OT_BEGINNER                     | OT        |          1 |                    12 |              0 |            16.7 |                     0 |              0 |               0 | f
+ OT_PROPHETS_STRONG_TORAH_WEAK   | OT        |          1 |                    12 |            323 |            58.3 |                     0 |              0 |               0 | f
+ OT_TORAH_STRONG_FORMER_WEAK     | OT        |          1 |                    12 |            399 |            66.7 |                     0 |              0 |               0 | f
+(8 rows)
+
+           profile_key           | testament | run_number |  scope_key   | served | correct | idk 
+---------------------------------+-----------+------------+--------------+--------+---------+-----
+ NT_ADVANCED_GOSPELS_ACTS_WEAK   | NT        |          1 | APOCALYPSE   |      3 |       3 |   0
+ NT_ADVANCED_GOSPELS_ACTS_WEAK   | NT        |          1 | GENERAL      |      3 |       3 |   0
+ NT_ADVANCED_GOSPELS_ACTS_WEAK   | NT        |          1 | GOSPELS_ACTS |      3 |       0 |   1
+ NT_ADVANCED_GOSPELS_ACTS_WEAK   | NT        |          1 | PAULINE      |      3 |       3 |   0
+ NT_BEGINNER                     | NT        |          1 | APOCALYPSE   |      3 |       0 |   1
+ NT_BEGINNER                     | NT        |          1 | GENERAL      |      3 |       1 |   0
+ NT_BEGINNER                     | NT        |          1 | GOSPELS_ACTS |      3 |       1 |   1
+ NT_BEGINNER                     | NT        |          1 | PAULINE      |      3 |       1 |   1
+ NT_GOSPELS_STRONG_EPISTLES_WEAK | NT        |          1 | APOCALYPSE   |      3 |       1 |   0
+ NT_GOSPELS_STRONG_EPISTLES_WEAK | NT        |          1 | GENERAL      |      3 |       2 |   0
+ NT_GOSPELS_STRONG_EPISTLES_WEAK | NT        |          1 | GOSPELS_ACTS |      3 |       3 |   0
+ NT_GOSPELS_STRONG_EPISTLES_WEAK | NT        |          1 | PAULINE      |      3 |       0 |   0
+ NT_PAUL_STRONG_GOSPELS_WEAK     | NT        |          1 | APOCALYPSE   |      3 |       2 |   0
+ NT_PAUL_STRONG_GOSPELS_WEAK     | NT        |          1 | GENERAL      |      3 |       2 |   0
+ NT_PAUL_STRONG_GOSPELS_WEAK     | NT        |          1 | GOSPELS_ACTS |      3 |       1 |   0
+ NT_PAUL_STRONG_GOSPELS_WEAK     | NT        |          1 | PAULINE      |      3 |       3 |   0
+ OT_ADVANCED_GEOGRAPHY_WEAK      | OT        |          1 | LATTER       |      6 |       5 |   0
+ OT_ADVANCED_GEOGRAPHY_WEAK      | OT        |          1 | FORMER       |      2 |       2 |   0
+ OT_ADVANCED_GEOGRAPHY_WEAK      | OT        |          1 | TORAH        |      2 |       2 |   0
+ OT_ADVANCED_GEOGRAPHY_WEAK      | OT        |          1 | WRITINGS     |      2 |       2 |   0
+ OT_BEGINNER                     | OT        |          1 | LATTER       |      6 |       1 |   2
+ OT_BEGINNER                     | OT        |          1 | FORMER       |      2 |       0 |   0
+ OT_BEGINNER                     | OT        |          1 | TORAH        |      2 |       0 |   1
+ OT_BEGINNER                     | OT        |          1 | WRITINGS     |      2 |       1 |   1
+ OT_PROPHETS_STRONG_TORAH_WEAK   | OT        |          1 | LATTER       |      6 |       4 |   0
+ OT_PROPHETS_STRONG_TORAH_WEAK   | OT        |          1 | FORMER       |      2 |       1 |   0
+ OT_PROPHETS_STRONG_TORAH_WEAK   | OT        |          1 | TORAH        |      2 |       0 |   2
+ OT_PROPHETS_STRONG_TORAH_WEAK   | OT        |          1 | WRITINGS     |      2 |       2 |   0
+ OT_TORAH_STRONG_FORMER_WEAK     | OT        |          1 | LATTER       |      6 |       4 |   0
+ OT_TORAH_STRONG_FORMER_WEAK     | OT        |          1 | FORMER       |      2 |       1 |   1
+ OT_TORAH_STRONG_FORMER_WEAK     | OT        |          1 | TORAH        |      2 |       2 |   0
+ OT_TORAH_STRONG_FORMER_WEAK     | OT        |          1 | WRITINGS     |      2 |       1 |   0
+(32 rows)
+
+ROLLBACK

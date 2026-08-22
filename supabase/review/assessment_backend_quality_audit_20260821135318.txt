@@ -1,0 +1,256 @@
+Pager usage is off.
+Null display is "[null]".
+
+=== Assessment Backend Quality Audit: Overall Question Supply ===
+ testament | section_key  | active_questions | router_eligible_questions | explicit_stem_family_rows | books_with_router_questions | dimensions_with_router_questions | distinct_router_prompts | explicit_stem_family_pct 
+-----------+--------------+------------------+---------------------------+---------------------------+-----------------------------+----------------------------------+-------------------------+--------------------------
+ NT        | APOCALYPSE   |                9 |                         6 |                         0 |                           1 |                                4 |                       6 |                      0.0
+ NT        | GENERAL      |               75 |                        57 |                         0 |                           8 |                                4 |                      57 |                      0.0
+ NT        | GOSPELS_ACTS |               95 |                        95 |                         0 |                           5 |                                7 |                      95 |                      0.0
+ NT        | PAULINE      |              140 |                        96 |                         0 |                          13 |                                4 |                      96 |                      0.0
+ OT        | FORMER       |              246 |                       246 |                        41 |                           7 |                                7 |                     246 |                     16.7
+ OT        | LATTER       |              339 |                       339 |                        59 |                          17 |                                7 |                     339 |                     17.4
+ OT        | TORAH        |              363 |                       363 |                        67 |                           5 |                                7 |                     362 |                     18.5
+ OT        | WRITINGS     |              223 |                       215 |                        32 |                          10 |                                7 |                     215 |                     14.3
+ [null]    | [null]       |                1 |                         0 |                         1 |                           0 |                                0 |                       0 |                    100.0
+(9 rows)
+
+
+=== Step 3: NT Gospels/Acts Split Readiness ===
+ proposed_nt_bucket | active_questions | router_eligible_questions | books_with_router_questions | dimensions_with_router_questions | distinct_router_prompts | explicit_stem_family_rows | split_readiness_signal 
+--------------------+------------------+---------------------------+-----------------------------+----------------------------------+-------------------------+---------------------------+------------------------
+ GOSPELS            |               76 |                        76 |                           4 |                                7 |                      76 |                         0 | split_ready_supply
+ ACTS               |               19 |                        19 |                           1 |                                7 |                      19 |                         0 | split_ready_supply
+ PAULINE            |              140 |                        96 |                          13 |                                4 |                      96 |                         0 | review
+ GENERAL            |               75 |                        57 |                           8 |                                4 |                      57 |                         0 | review
+ APOCALYPSE         |                9 |                         6 |                           1 |                                4 |                       6 |                         0 | review
+(5 rows)
+
+
+=== Step 3: NT Book-Level Router Supply ===
+ book_code |    book_name    | proposed_nt_bucket | active_questions | router_eligible_questions | dimensions_with_router_questions | distinct_router_prompts | missing_stem_family_rows 
+-----------+-----------------+--------------------+------------------+---------------------------+----------------------------------+-------------------------+--------------------------
+ MAT       | Matthew         | GOSPELS            |               22 |                        22 |                                7 |                      22 |                       22
+ MRK       | Mark            | GOSPELS            |               17 |                        17 |                                7 |                      17 |                       17
+ LUK       | Luke            | GOSPELS            |               18 |                        18 |                                7 |                      18 |                       18
+ JHN       | John            | GOSPELS            |               19 |                        19 |                                7 |                      19 |                       19
+ ACT       | Acts            | ACTS               |               19 |                        19 |                                7 |                      19 |                       19
+ ROM       | Romans          | PAULINE            |               14 |                        11 |                                4 |                      11 |                       14
+ 1CO       | 1 Corinthians   | PAULINE            |               10 |                         6 |                                3 |                       6 |                       10
+ 2CO       | 2 Corinthians   | PAULINE            |               11 |                         7 |                                3 |                       7 |                       11
+ GAL       | Galatians       | PAULINE            |               13 |                        10 |                                4 |                      10 |                       13
+ EPH       | Ephesians       | PAULINE            |               10 |                         7 |                                3 |                       7 |                       10
+ PHP       | Philippians     | PAULINE            |               10 |                         7 |                                3 |                       7 |                       10
+ COL       | Colossians      | PAULINE            |               12 |                         8 |                                3 |                       8 |                       12
+ 1TH       | 1 Thessalonians | PAULINE            |               11 |                         7 |                                3 |                       7 |                       11
+ 2TH       | 2 Thessalonians | PAULINE            |               10 |                         7 |                                3 |                       7 |                       10
+ 1TI       | 1 Timothy       | PAULINE            |               10 |                         7 |                                3 |                       7 |                       10
+ 2TI       | 2 Timothy       | PAULINE            |               11 |                         7 |                                3 |                       7 |                       11
+ TIT       | Titus           | PAULINE            |               10 |                         7 |                                3 |                       7 |                       10
+ PHM       | Philemon        | PAULINE            |                8 |                         5 |                                3 |                       5 |                        8
+ HEB       | Hebrews         | GENERAL            |               12 |                        10 |                                4 |                      10 |                       12
+ JAS       | James           | GENERAL            |               10 |                         9 |                                4 |                       9 |                       10
+ 1PE       | 1 Peter         | GENERAL            |               10 |                         7 |                                3 |                       7 |                       10
+ 2PE       | 2 Peter         | GENERAL            |                9 |                         6 |                                3 |                       6 |                        9
+ 1JN       | 1 John          | GENERAL            |                9 |                         7 |                                3 |                       7 |                        9
+ 2JN       | 2 John          | GENERAL            |                9 |                         7 |                                3 |                       7 |                        9
+ 3JN       | 3 John          | GENERAL            |                8 |                         5 |                                3 |                       5 |                        8
+ JUD       | Jude            | GENERAL            |                8 |                         6 |                                3 |                       6 |                        8
+ REV       | Revelation      | APOCALYPSE         |                9 |                         6 |                                4 |                       6 |                        9
+(27 rows)
+
+
+=== Step 3: Recent NT Served Distribution ===
+ proposed_nt_bucket | book_code | answers_90d | accuracy_pct_90d | idk_pct_90d 
+--------------------+-----------+-------------+------------------+-------------
+ ACTS               | ACT       |           5 |             60.0 |         0.0
+ APOCALYPSE         | REV       |          10 |             20.0 |         0.0
+ GENERAL            | 1PE       |           4 |             50.0 |         0.0
+ GENERAL            | JUD       |           4 |             75.0 |         0.0
+ GENERAL            | 1JN       |           3 |             33.3 |        33.3
+ GENERAL            | JAS       |           2 |             50.0 |         0.0
+ GENERAL            | 2PE       |           1 |              0.0 |         0.0
+ GENERAL            | 3JN       |           1 |              0.0 |         0.0
+ GENERAL            | HEB       |           1 |              0.0 |         0.0
+ GOSPELS            | MAT       |          11 |             18.2 |         0.0
+ GOSPELS            | LUK       |          10 |             50.0 |         0.0
+ GOSPELS            | JHN       |           9 |             66.7 |         0.0
+ GOSPELS            | MRK       |           2 |             50.0 |         0.0
+ PAULINE            | 1TI       |           3 |            100.0 |         0.0
+ PAULINE            | EPH       |           3 |             33.3 |        33.3
+ PAULINE            | PHP       |           3 |            100.0 |         0.0
+ PAULINE            | PHM       |           2 |              0.0 |         0.0
+ PAULINE            | 1CO       |           1 |            100.0 |         0.0
+ PAULINE            | 1TH       |           1 |              0.0 |         0.0
+ PAULINE            | 2CO       |           1 |            100.0 |         0.0
+ PAULINE            | 2TH       |           1 |            100.0 |         0.0
+ PAULINE            | 2TI       |           1 |              0.0 |         0.0
+ PAULINE            | COL       |           1 |              0.0 |         0.0
+ PAULINE            | ROM       |           1 |            100.0 |         0.0
+ PAULINE            | TIT       |           1 |              0.0 |         0.0
+(25 rows)
+
+
+=== Step 4: Coverage Status Summary ===
+ testament | section_key  | coverage_status | coverage_cells | total_target_gap | router_eligible_questions | blocker_questions | warning_questions 
+-----------+--------------+-----------------+----------------+------------------+---------------------------+-------------------+-------------------
+ NT        | APOCALYPSE   | under_target    |              4 |                8 |                         6 |                 0 |                 6
+ NT        | GENERAL      | healthy         |              7 |                0 |                        15 |                 0 |                15
+ NT        | GENERAL      | under_target    |             19 |               28 |                        42 |                 0 |                42
+ NT        | GOSPELS_ACTS | healthy         |             15 |                0 |                        61 |                 0 |                61
+ NT        | GOSPELS_ACTS | under_target    |             20 |               31 |                        34 |                 0 |                34
+ NT        | PAULINE      | healthy         |             12 |                0 |                        25 |                 0 |                25
+ NT        | PAULINE      | under_target    |             29 |               39 |                        71 |                 0 |                71
+ OT        | FORMER       | empty           |              2 |                4 |                         0 |                 0 |                 0
+ OT        | FORMER       | healthy         |             34 |                0 |                       229 |                 0 |               229
+ OT        | FORMER       | under_target    |              9 |               10 |                        17 |                 0 |                17
+ OT        | LATTER       | healthy         |             80 |                0 |                       287 |                 0 |               287
+ OT        | LATTER       | under_target    |             25 |               35 |                        52 |                 0 |                52
+ OT        | TORAH        | healthy         |             29 |                0 |                       358 |                 0 |               331
+ OT        | TORAH        | under_target    |              4 |                5 |                         5 |                 0 |                 4
+ OT        | WRITINGS     | below_minimum   |              1 |                3 |                         1 |                 0 |                 1
+ OT        | WRITINGS     | empty           |              6 |               13 |                         0 |                 0 |                 0
+ OT        | WRITINGS     | healthy         |             33 |                0 |                       194 |                 0 |               194
+ OT        | WRITINGS     | under_target    |             13 |               16 |                        20 |                 0 |                20
+(18 rows)
+
+
+=== Step 4: Highest-Priority Coverage Gaps ===
+ testament | section_key  | book_code |    book_name    |     dimension_key     |    dimension_name     | priority | coverage_status | router_eligible_questions | minimum_active_questions | target_active_questions | target_gap | blocker_questions | warning_questions | distinct_events | distinct_prompts | distinct_stem_families 
+-----------+--------------+-----------+-----------------+-----------------------+-----------------------+----------+-----------------+---------------------------+--------------------------+-------------------------+------------+-------------------+-------------------+-----------------+------------------+------------------------
+ OT        | WRITINGS     | 1CH       | 1 Chronicles    | geography_nations     | Geography & Nations   | standard | empty           |                         0 |                        1 |                       3 |          3 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | FORMER       | 2SA       | 2 Samuel        | structure_cross_ref   | Structure & Cross Ref | standard | empty           |                         0 |                        1 |                       2 |          2 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | FORMER       | JDG       | Judges          | structure_cross_ref   | Structure & Cross Ref | standard | empty           |                         0 |                        1 |                       2 |          2 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | WRITINGS     | ECC       | Ecclesiastes    | structure_cross_ref   | Structure & Cross Ref | standard | empty           |                         0 |                        1 |                       2 |          2 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | WRITINGS     | JOB       | Job             | structure_cross_ref   | Structure & Cross Ref | standard | empty           |                         0 |                        1 |                       2 |          2 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | WRITINGS     | PRO       | Proverbs        | structure_cross_ref   | Structure & Cross Ref | standard | empty           |                         0 |                        1 |                       2 |          2 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | WRITINGS     | PSA       | Psalms          | structure_cross_ref   | Structure & Cross Ref | standard | empty           |                         0 |                        1 |                       2 |          2 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | WRITINGS     | SNG       | Song of Songs   | structure_cross_ref   | Structure & Cross Ref | standard | empty           |                         0 |                        1 |                       2 |          2 |                 0 |                 0 |               0 |                0 |                      0
+ OT        | WRITINGS     | 2CH       | 2 Chronicles    | characters_lineage    | Characters & Lineage  | standard | below_minimum   |                         1 |                        2 |                       4 |          3 |                 0 |                 1 |               1 |                1 |                      0
+ NT        | APOCALYPSE   | REV       | Revelation      | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       5 |          3 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | GENERAL      | 3JN       | 3 John          | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       5 |          3 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | GENERAL      | JUD       | Jude            | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       5 |          3 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | GOSPELS_ACTS | ACT       | Acts            | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       5 |          3 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | GOSPELS_ACTS | JHN       | John            | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       5 |          3 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | PAULINE      | 1CO       | 1 Corinthians   | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       5 |          3 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | PAULINE      | PHM       | Philemon        | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       5 |          3 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | APOCALYPSE   | REV       | Revelation      | events_timeline       | Events & Timeline     | critical | under_target    |                         2 |                        2 |                       4 |          2 |                 0 |                 2 |               0 |                2 |                      0
+ NT        | APOCALYPSE   | REV       | Revelation      | promise_prophecy      | Promise & Prophecy    | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ NT        | GENERAL      | 2JN       | 2 John          | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | GENERAL      | 2PE       | 2 Peter         | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | GENERAL      | 3JN       | 3 John          | promise_prophecy      | Promise & Prophecy    | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ NT        | GENERAL      | HEB       | Hebrews         | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | GENERAL      | JAS       | James           | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | GOSPELS_ACTS | ACT       | Acts            | characters_lineage    | Characters & Lineage  | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ NT        | GOSPELS_ACTS | LUK       | Luke            | characters_lineage    | Characters & Lineage  | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ NT        | GOSPELS_ACTS | LUK       | Luke            | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | GOSPELS_ACTS | MAT       | Matthew         | characters_lineage    | Characters & Lineage  | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ NT        | GOSPELS_ACTS | MAT       | Matthew         | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | GOSPELS_ACTS | MRK       | Mark            | characters_lineage    | Characters & Lineage  | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ NT        | GOSPELS_ACTS | MRK       | Mark            | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | PAULINE      | 1TI       | 1 Timothy       | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | PAULINE      | 2TH       | 2 Thessalonians | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | PAULINE      | EPH       | Ephesians       | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | PAULINE      | PHM       | Philemon        | promise_prophecy      | Promise & Prophecy    | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ NT        | PAULINE      | PHP       | Philippians     | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ NT        | PAULINE      | TIT       | Titus           | theological_reasoning | Theological Reasoning | critical | under_target    |                         3 |                        2 |                       5 |          2 |                 0 |                 3 |               0 |                3 |                      0
+ OT        | FORMER       | RUT       | Ruth            | events_timeline       | Events & Timeline     | critical | under_target    |                         3 |                        3 |                       5 |          2 |                 0 |                 3 |               3 |                3 |                      0
+ OT        | LATTER       | AMO       | Amos            | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       4 |          2 |                 0 |                 2 |               2 |                2 |                      0
+ OT        | LATTER       | HAB       | Habakkuk        | events_timeline       | Events & Timeline     | critical | under_target    |                         1 |                        1 |                       3 |          2 |                 0 |                 1 |               0 |                1 |                      0
+ OT        | LATTER       | HAG       | Haggai          | theological_reasoning | Theological Reasoning | critical | under_target    |                         2 |                        2 |                       4 |          2 |                 0 |                 2 |               1 |                2 |                      0
+(40 rows)
+
+
+=== Step 5: Router Hot-Path Function Inventory ===
+ schema_name |             function_name              |                                                                           arguments                                                                           | volatility |  security_mode   | review_flags 
+-------------+----------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------+------------+------------------+--------------
+ public      | get_next_assessment_question           | p_attempt_id uuid, p_user_id uuid                                                                                                                             | volatile   | security_definer | {}
+ public      | obs_get_bli_scores_v2                  | p_user_id uuid                                                                                                                                                | stable     | security_definer | {}
+ public      | obs_get_next_nt_assessment_question    | p_attempt_id uuid                                                                                                                                             | volatile   | security_definer | {}
+ public      | obs_get_next_ot_assessment_question    | p_attempt_id uuid                                                                                                                                             | volatile   | security_definer | {}
+ public      | obs_get_next_ot_baseline_question_fast | p_attempt_id uuid, p_user_id uuid                                                                                                                             | volatile   | security_definer | {}
+ public      | obs_start_nt_assessment                | p_section text, p_book_code text, p_target_question_count integer                                                                                             | volatile   | security_definer | {}
+ public      | obs_start_or_resume_ot_assessment_v2   | p_unit_key text, p_book_code text, p_start_chapter integer, p_end_chapter integer, p_target_question_count integer, p_force_new boolean, p_dimension_key text | volatile   | security_definer | {}
+ public      | obs_submit_nt_assessment_answer        | p_attempt_id uuid, p_generated_question_id uuid, p_selected_choice_id text                                                                                    | volatile   | security_definer | {}
+ public      | obs_submit_ot_assessment_response_v2   | p_attempt_id uuid, p_generated_question_id uuid, p_response text, p_selected_choice_text text, p_displayed_choices jsonb                                      | volatile   | security_definer | {}
+(9 rows)
+
+
+=== Step 5: Router Hot-Path Index Inventory ===
+ schemaname |            tablename             |                    indexname                     |                                                                                                                      indexdef                                                                                                                       
+------------+----------------------------------+--------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ public     | assessment_answers               | assessment_answers_attempt_idx                   | CREATE INDEX assessment_answers_attempt_idx ON public.assessment_answers USING btree (attempt_id)
+ public     | assessment_answers               | assessment_answers_attempt_question_ux           | CREATE UNIQUE INDEX assessment_answers_attempt_question_ux ON public.assessment_answers USING btree (attempt_id, question_id)
+ public     | assessment_answers               | assessment_answers_pkey                          | CREATE UNIQUE INDEX assessment_answers_pkey ON public.assessment_answers USING btree (id)
+ public     | assessment_answers               | assessment_answers_question_idx                  | CREATE INDEX assessment_answers_question_idx ON public.assessment_answers USING btree (question_id)
+ public     | assessment_answers               | assessment_answers_router_user_question_idx      | CREATE INDEX assessment_answers_router_user_question_idx ON public.assessment_answers USING btree (user_id, generated_question_id, answered_at DESC)
+ public     | assessment_answers               | assessment_answers_scoring_eligible_user_idx     | CREATE INDEX assessment_answers_scoring_eligible_user_idx ON public.assessment_answers USING btree (user_id, answered_at) WHERE scoring_eligible
+ public     | assessment_answers               | assessment_answers_user_idx                      | CREATE INDEX assessment_answers_user_idx ON public.assessment_answers USING btree (user_id)
+ public     | assessment_answers               | idx_assessment_answers_generated_question_id     | CREATE INDEX idx_assessment_answers_generated_question_id ON public.assessment_answers USING btree (generated_question_id)
+ public     | assessment_answers               | ux_assessment_answers_attempt_generated_question | CREATE UNIQUE INDEX ux_assessment_answers_attempt_generated_question ON public.assessment_answers USING btree (attempt_id, generated_question_id) WHERE (generated_question_id IS NOT NULL)
+ public     | assessment_attempts              | assessment_attempts_pkey                         | CREATE UNIQUE INDEX assessment_attempts_pkey ON public.assessment_attempts USING btree (id)
+ public     | assessment_attempts              | assessment_attempts_user_created_idx             | CREATE INDEX assessment_attempts_user_created_idx ON public.assessment_attempts USING btree (user_id, created_at DESC)
+ public     | assessment_attempts              | assessment_attempts_user_incomplete_scope_idx    | CREATE INDEX assessment_attempts_user_incomplete_scope_idx ON public.assessment_attempts USING btree (user_id, testament, scope_key, created_at DESC) WHERE (is_complete = false)
+ public     | assessment_attempts              | assessment_attempts_user_scope_created_idx       | CREATE INDEX assessment_attempts_user_scope_created_idx ON public.assessment_attempts USING btree (user_id, testament, scope_key, created_at DESC)
+ public     | assessment_attempts              | assessment_attempts_user_testament_idx           | CREATE INDEX assessment_attempts_user_testament_idx ON public.assessment_attempts USING btree (user_id, testament)
+ public     | obs_question_dimension_overrides | obs_question_dimension_overrides_dimension_idx   | CREATE INDEX obs_question_dimension_overrides_dimension_idx ON public.obs_question_dimension_overrides USING btree (dimension_key)
+ public     | obs_question_dimension_overrides | obs_question_dimension_overrides_pkey            | CREATE UNIQUE INDEX obs_question_dimension_overrides_pkey ON public.obs_question_dimension_overrides USING btree (generated_question_id)
+ public     | ot_generated_questions           | ot_generated_questions_event_id_idx              | CREATE INDEX ot_generated_questions_event_id_idx ON public.ot_generated_questions USING btree (event_id)
+ public     | ot_generated_questions           | ot_generated_questions_pkey                      | CREATE UNIQUE INDEX ot_generated_questions_pkey ON public.ot_generated_questions USING btree (id)
+ public     | ot_generated_questions           | ot_generated_questions_qt_dedupe_uidx            | CREATE UNIQUE INDEX ot_generated_questions_qt_dedupe_uidx ON public.ot_generated_questions USING btree (question_type, dedupe_key)
+ public     | ot_generated_questions           | ot_generated_questions_qtype_dedupe_ux           | CREATE UNIQUE INDEX ot_generated_questions_qtype_dedupe_ux ON public.ot_generated_questions USING btree (question_type, dedupe_key) WHERE ((event_id IS NULL) AND (dedupe_key IS NOT NULL))
+ public     | ot_generated_questions           | ot_generated_questions_question_type_idx         | CREATE INDEX ot_generated_questions_question_type_idx ON public.ot_generated_questions USING btree (question_type)
+ public     | ot_generated_questions           | ux_ot_generated_questions_dedupe_key_active      | CREATE UNIQUE INDEX ux_ot_generated_questions_dedupe_key_active ON public.ot_generated_questions USING btree (dedupe_key) WHERE ((dedupe_key IS NOT NULL) AND (dedupe_key !~~ 'quarantined|%'::text) AND (question_type !~~ 'quarantined_%'::text))
+ public     | question_reports                 | question_reports_generated_question_id_idx       | CREATE INDEX question_reports_generated_question_id_idx ON public.question_reports USING btree (generated_question_id)
+ public     | question_reports                 | question_reports_pkey                            | CREATE UNIQUE INDEX question_reports_pkey ON public.question_reports USING btree (id)
+ public     | question_reports                 | question_reports_status_created_at_idx           | CREATE INDEX question_reports_status_created_at_idx ON public.question_reports USING btree (status, created_at DESC)
+ public     | question_reports                 | question_reports_user_created_at_idx             | CREATE INDEX question_reports_user_created_at_idx ON public.question_reports USING btree (user_id, created_at DESC)
+ public     | user_abilities                   | user_abilities_pkey                              | CREATE UNIQUE INDEX user_abilities_pkey ON public.user_abilities USING btree (user_id, scope)
+ public     | user_abilities                   | user_abilities_scope_idx                         | CREATE INDEX user_abilities_scope_idx ON public.user_abilities USING btree (scope)
+(28 rows)
+
+
+=== Step 5: Router Table Activity Snapshot ===
+            table_name            | estimated_live_rows | seq_scan | idx_scan | n_tup_ins | n_tup_upd | n_tup_del | last_analyze |       last_autoanalyze        
+----------------------------------+---------------------+----------+----------+-----------+-----------+-----------+--------------+-------------------------------
+ assessment_answers               |                2445 |     3892 |  5222000 |      4901 |      3239 |      1185 | [null]       | 2026-08-16 21:47:12.700739+00
+ assessment_attempts              |                 721 |      132 |    78685 |       678 |      7765 |        70 | [null]       | 2026-08-21 13:06:42.785473+00
+ obs_question_dimension_overrides |                  12 |    13269 | 24468220 |        13 |        48 |         0 | [null]       | [null]
+ ot_generated_questions           |                1721 |  1630353 |  3154056 |       787 |       694 |        24 | [null]       | 2026-08-08 20:15:26.226411+00
+ question_reports                 |                  48 |      111 |      136 |        52 |        47 |         0 | [null]       | 2026-08-15 13:54:45.532611+00
+ user_abilities                   |                 288 |   241548 |  3402949 |       887 |      4649 |       259 | [null]       | 2026-08-21 13:35:44.328676+00
+(6 rows)
+
+
+=== Step 6: Real Attempt Count Consistency ===
+ testament | assessment_kind | attempts | answered_count_mismatches | correct_count_mismatches | actual_answers | actual_idk | scoring_excluded_answers 
+-----------+-----------------+----------+---------------------------+--------------------------+----------------+------------+--------------------------
+ NT        | nt_adaptive     |       29 |                         6 |                        4 |             82 |          2 |                        0
+ OT        | ot_adaptive     |      210 |                        12 |                       14 |           1877 |        604 |                       87
+ OT        | ot_focused      |       17 |                         6 |                       10 |            103 |          1 |                       46
+ OT        | UNKNOWN         |      462 |                        33 |                       30 |            383 |         17 |                        0
+(4 rows)
+
+
+=== Step 6: Real Answer Scoring Signal Shape ===
+ testament |     section      | scored_answers | learners | questions_seen | accuracy_pct | idk_pct | avg_irt_a | avg_irt_b 
+-----------+------------------+----------------+----------+----------------+--------------+---------+-----------+-----------
+ NT        | Apocalypse       |             10 |        4 |              4 |         20.0 |     0.0 |      1.00 |       0.2
+ NT        | General Epistles |             16 |        4 |             13 |         43.8 |     6.3 |      1.00 |       0.4
+ NT        | Gospels & Acts   |             37 |        4 |             25 |         45.9 |     0.0 |      1.00 |       0.1
+ NT        | Pauline Epistles |             19 |        4 |             16 |         57.9 |     5.3 |      1.00 |       0.3
+ OT        | Former Prophets  |            597 |       94 |            115 |         45.6 |    26.8 |      1.02 |      -0.5
+ OT        | Latter Prophets  |            510 |       73 |            131 |         40.8 |    31.2 |      1.02 |      -0.5
+ OT        | Torah            |            774 |      112 |            206 |         49.6 |    20.8 |      1.02 |      -0.4
+ OT        | Writings         |            482 |       81 |            101 |         46.1 |    29.5 |      1.02 |      -0.4
+(8 rows)
+
+
+=== Step 6: Calibration Items With Enough Evidence ===
+ difficulty_status | questions | max_calibration_answers | avg_abs_residual_percentage_points 
+-------------------+-----------+-------------------------+------------------------------------
+ high_mismatch     |         1 |                      21 |                               27.2
+ review            |         1 |                      12 |                               16.2
+ aligned           |        11 |                      29 |                                6.3
+(3 rows)
+

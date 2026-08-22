@@ -1,0 +1,5 @@
+-- No rollback.
+--
+-- This migration reconciles denormalized NT attempt summary counters from
+-- authoritative assessment_answers rows. Reversing it would intentionally
+-- restore stale summaries.

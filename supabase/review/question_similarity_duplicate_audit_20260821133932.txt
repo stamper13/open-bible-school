@@ -1,0 +1,121 @@
+Pager usage is off.
+Null display is "[null]".
+
+=== Question Duplicate Audit: Summary ===
+ testament | total_questions | explicit_stem_family_rows | missing_stem_family_rows | similarity_clusters | rows_in_similarity_clusters | missing_family_same_answer_clusters | rows_in_missing_family_same_answer_clusters 
+-----------+-----------------+---------------------------+--------------------------+---------------------+-----------------------------+-------------------------------------+---------------------------------------------
+ NT        |             319 |                         0 |                      319 |                   0 |                           0 |                                   0 |                                           0
+ OT        |            1171 |                       199 |                      972 |                   9 |                          18 |                                   5 |                                          10
+ [null]    |               1 |                         1 |                        0 |                   0 |                           0 |                                   0 |                                           0
+(3 rows)
+
+
+=== Highest-Priority Missing stem_family Clusters ===
+ testament | scope_key | book_code |   dimension_key    |       question_type       | cluster_size | question_families | granularities |                             sample_question_ids                             |                                                                       sample_prompts                                                                        
+-----------+-----------+-----------+--------------------+---------------------------+--------------+-------------------+---------------+-----------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ OT        | FORMER    | JDG       | characters_lineage | relationship_probe_mcq_v1 |            2 |                 0 |             0 | {0677d2c5-3839-484d-ae1f-9f03d26ed42e,906dd688-0a89-49ff-8bfc-b99a32c30081} | {"Which judge is remembered for a tragic vow involving his daughter?","Which judge is raised up during oppression connected with Ammon?"}
+ OT        | LATTER    | DAN       | characters_lineage | relationship_probe_mcq_v1 |            2 |                 0 |             0 | {3cd2a8e8-0cd6-4c79-92ec-4057e12523bc,f0610743-3a8e-4f52-9cdf-d7121ff8b882} | {"Which faithful exile is thrown into the lions' den?","Which exile refuses the king’s food in Daniel 1?"}
+ OT        | TORAH     | GEN       | characters_lineage | genesis_outline_v1_mcq    |            2 |                 0 |             0 | {a5734548-f565-440e-a7a5-684baa24d500,dca43d6c-b408-4c85-9c88-a4c93ea7d0e3} | {"At the end of Genesis 5, who is introduced as the hinge into the flood narrative?","In Genesis 6–9, who finds favor and is preserved through the flood?"}
+ OT        | TORAH     | GEN       | events_timeline    | chronology_order_mcq_v1   |            2 |                 0 |             0 | {dcda3742-0353-4a2a-99d0-b7e9882ad022,ecd24ea4-1d61-4ddc-9f26-a802c0ff27fe} | {"Which of these events took place after the birth of Isaac?","Which of these events in Abraham's life came last?"}
+ OT        | WRITINGS  | EST       | characters_lineage | relationship_probe_mcq_v1 |            2 |                 0 |             0 | {657da271-324a-4a96-8f79-8d52c1964302,a7db454e-6535-4354-bfdf-c0fc659777c4} | {"Who risks approaching the king to intercede for the Jews?","Which Jewish woman becomes queen of Persia in Esther?"}
+(5 rows)
+
+
+=== Existing Similarity Clusters With Multiple Rows ===
+ testament | scope_key | book_code |   dimension_key    |       question_type       | cluster_size | explicit_family_rows |                             sample_question_ids                             |                                                                       sample_prompts                                                                        
+-----------+-----------+-----------+--------------------+---------------------------+--------------+----------------------+-----------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ OT        | FORMER    | JDG       | characters_lineage | relationship_probe_mcq_v1 |            2 |                    0 | {0677d2c5-3839-484d-ae1f-9f03d26ed42e,906dd688-0a89-49ff-8bfc-b99a32c30081} | {"Which judge is remembered for a tragic vow involving his daughter?","Which judge is raised up during oppression connected with Ammon?"}
+ OT        | LATTER    | DAN       | characters_lineage | relationship_probe_mcq_v1 |            2 |                    0 | {3cd2a8e8-0cd6-4c79-92ec-4057e12523bc,f0610743-3a8e-4f52-9cdf-d7121ff8b882} | {"Which faithful exile is thrown into the lions' den?","Which exile refuses the king’s food in Daniel 1?"}
+ OT        | TORAH     | GEN       | events_timeline    | chronology_order_mcq_v1   |            2 |                    0 | {dcda3742-0353-4a2a-99d0-b7e9882ad022,ecd24ea4-1d61-4ddc-9f26-a802c0ff27fe} | {"Which of these events took place after the birth of Isaac?","Which of these events in Abraham's life came last?"}
+ OT        | TORAH     | GEN       | characters_lineage | genesis_outline_v1_mcq    |            2 |                    0 | {a5734548-f565-440e-a7a5-684baa24d500,dca43d6c-b408-4c85-9c88-a4c93ea7d0e3} | {"At the end of Genesis 5, who is introduced as the hinge into the flood narrative?","In Genesis 6–9, who finds favor and is preserved through the flood?"}
+ OT        | WRITINGS  | EST       | characters_lineage | relationship_probe_mcq_v1 |            2 |                    0 | {657da271-324a-4a96-8f79-8d52c1964302,a7db454e-6535-4354-bfdf-c0fc659777c4} | {"Who risks approaching the king to intercede for the Jews?","Which Jewish woman becomes queen of Persia in Esther?"}
+ OT        | TORAH     | GEN       | law_commands       | command_curated_mcq_v1    |            2 |                    2 | {00b2a46a-acfc-461a-abb2-b3ed8840413a,aba95fa9-4d31-4607-a0b6-eb02bf48214a} | {"What command did God give when he created humanity?","Which phrase best summarizes God's command to humanity at creation?"}
+ OT        | TORAH     | GEN       | events_timeline    | numeric_v1_mcq            |            2 |                    2 | {62278155-4684-46fa-8402-e984bcf5e274,86a2b9a7-99dd-489c-8dc4-7d345cdcf1e3} | {"How old was Noah one year after the flood?","How old was Noah at the time of the flood?"}
+ OT        | TORAH     | GEN       | law_commands       | command_curated_mcq_v1    |            2 |                    2 | {6a26e1f8-9529-4b93-a007-4cd945161ca0,ccc6e75a-265a-4826-8c07-d15dbd0a056c} | {"What command did God give Noah before the flood?","What command did God give before the flood?"}
+ OT        | TORAH     | GEN       | characters_lineage | genesis_outline_v1_mcq    |            2 |                    2 | {be63586b-e619-4d74-81d5-f979a4d5d223,f2d5635f-d68f-447d-b83b-a7cdd50f3694} | {"In Genesis 4, who murders his brother?","In Genesis 4, who is the one killed?"}
+(9 rows)
+
+
+=== Book/Scope Areas Most Missing Explicit stem_family ===
+ testament |  scope_key   | book_code |     dimension_key     | total_questions | missing_stem_family | missing_pct 
+-----------+--------------+-----------+-----------------------+-----------------+---------------------+-------------
+ OT        | TORAH        | GEN       | events_timeline       |              55 |                  47 |        85.5
+ OT        | TORAH        | EXO       | events_timeline       |              42 |                  39 |        92.9
+ OT        | TORAH        | GEN       | promise_prophecy      |              31 |                  31 |       100.0
+ OT        | TORAH        | GEN       | characters_lineage    |              26 |                  22 |        84.6
+ OT        | TORAH        | EXO       | theological_reasoning |              19 |                  19 |       100.0
+ OT        | WRITINGS     | PSA       | theological_reasoning |              19 |                  18 |        94.7
+ OT        | FORMER       | 2KI       | events_timeline       |              21 |                  17 |        81.0
+ OT        | TORAH        | LEV       | law_commands          |              24 |                  15 |        62.5
+ OT        | FORMER       | JDG       | characters_lineage    |              14 |                  14 |       100.0
+ OT        | WRITINGS     | ECC       | theological_reasoning |              15 |                  14 |        93.3
+ OT        | FORMER       | 1SA       | events_timeline       |              19 |                  14 |        73.7
+ OT        | TORAH        | GEN       | law_commands          |              20 |                  14 |        70.0
+ OT        | WRITINGS     | SNG       | theological_reasoning |              14 |                  13 |        92.9
+ OT        | FORMER       | 2SA       | events_timeline       |              14 |                  13 |        92.9
+ OT        | WRITINGS     | PRO       | theological_reasoning |              13 |                  12 |        92.3
+ OT        | FORMER       | 1SA       | characters_lineage    |              11 |                  11 |       100.0
+ OT        | TORAH        | DEU       | law_commands          |              12 |                  11 |        91.7
+ OT        | WRITINGS     | 2CH       | events_timeline       |              13 |                  11 |        84.6
+ OT        | FORMER       | 1KI       | events_timeline       |              14 |                  11 |        78.6
+ OT        | TORAH        | NUM       | events_timeline       |              18 |                  11 |        61.1
+ OT        | LATTER       | ISA       | theological_reasoning |              10 |                  10 |       100.0
+ OT        | WRITINGS     | JOB       | theological_reasoning |              11 |                  10 |        90.9
+ OT        | LATTER       | ISA       | promise_prophecy      |              11 |                  10 |        90.9
+ OT        | LATTER       | ISA       | events_timeline       |              12 |                  10 |        83.3
+ OT        | WRITINGS     | EST       | events_timeline       |              12 |                  10 |        83.3
+ OT        | LATTER       | JER       | events_timeline       |              11 |                   9 |        81.8
+ OT        | WRITINGS     | 1CH       | events_timeline       |              11 |                   9 |        81.8
+ OT        | TORAH        | EXO       | law_commands          |               8 |                   8 |       100.0
+ OT        | FORMER       | 2KI       | theological_reasoning |               8 |                   8 |       100.0
+ OT        | LATTER       | DAN       | events_timeline       |              10 |                   8 |        80.0
+ OT        | WRITINGS     | NEH       | events_timeline       |              10 |                   8 |        80.0
+ OT        | TORAH        | GEN       | theological_reasoning |              13 |                   8 |        61.5
+ OT        | LATTER       | LAM       | promise_prophecy      |               7 |                   7 |       100.0
+ OT        | WRITINGS     | PSA       | promise_prophecy      |               7 |                   7 |       100.0
+ OT        | FORMER       | 1KI       | theological_reasoning |               7 |                   7 |       100.0
+ OT        | TORAH        | GEN       | structure_cross_ref   |               7 |                   7 |       100.0
+ OT        | LATTER       | DAN       | theological_reasoning |               7 |                   7 |       100.0
+ OT        | LATTER       | DAN       | promise_prophecy      |               8 |                   7 |        87.5
+ OT        | FORMER       | RUT       | characters_lineage    |               8 |                   7 |        87.5
+ OT        | WRITINGS     | EZR       | events_timeline       |              10 |                   7 |        70.0
+ OT        | TORAH        | EXO       | promise_prophecy      |               6 |                   6 |       100.0
+ OT        | FORMER       | 1SA       | theological_reasoning |               6 |                   6 |       100.0
+ NT        | GOSPELS_ACTS | MAT       | structure_cross_ref   |               6 |                   6 |       100.0
+ OT        | FORMER       | 2KI       | promise_prophecy      |               6 |                   6 |       100.0
+ NT        | GOSPELS_ACTS | ACT       | events_timeline       |               6 |                   6 |       100.0
+ OT        | FORMER       | 1KI       | characters_lineage    |               6 |                   6 |       100.0
+ OT        | TORAH        | EXO       | characters_lineage    |               6 |                   6 |       100.0
+ OT        | TORAH        | DEU       | events_timeline       |               7 |                   6 |        85.7
+ OT        | LATTER       | JER       | promise_prophecy      |               7 |                   6 |        85.7
+ OT        | FORMER       | JOS       | events_timeline       |               9 |                   6 |        66.7
+ NT        | GOSPELS_ACTS | MRK       | events_timeline       |               5 |                   5 |       100.0
+ OT        | LATTER       | EZE       | events_timeline       |               5 |                   5 |       100.0
+ OT        | LATTER       | EZE       | theological_reasoning |               5 |                   5 |       100.0
+ OT        | WRITINGS     | JOB       | events_timeline       |               5 |                   5 |       100.0
+ NT        | GOSPELS_ACTS | JHN       | events_timeline       |               5 |                   5 |       100.0
+ OT        | LATTER       | JER       | theological_reasoning |               5 |                   5 |       100.0
+ OT        | FORMER       | 2SA       | characters_lineage    |               5 |                   5 |       100.0
+ OT        | TORAH        | EXO       | structure_cross_ref   |               5 |                   5 |       100.0
+ NT        | GOSPELS_ACTS | LUK       | events_timeline       |               5 |                   5 |       100.0
+ OT        | LATTER       | DAN       | characters_lineage    |               5 |                   5 |       100.0
+ OT        | FORMER       | 1SA       | promise_prophecy      |               5 |                   5 |       100.0
+ NT        | GOSPELS_ACTS | MAT       | events_timeline       |               5 |                   5 |       100.0
+ OT        | FORMER       | JOS       | promise_prophecy      |               5 |                   5 |       100.0
+ OT        | FORMER       | JDG       | theological_reasoning |               5 |                   5 |       100.0
+ OT        | FORMER       | JOS       | theological_reasoning |               5 |                   5 |       100.0
+ OT        | TORAH        | NUM       | law_commands          |               6 |                   5 |        83.3
+ OT        | TORAH        | DEU       | theological_reasoning |               8 |                   5 |        62.5
+ OT        | TORAH        | GEN       | geography_nations     |               8 |                   5 |        62.5
+ OT        | FORMER       | JDG       | events_timeline       |               9 |                   5 |        55.6
+ OT        | LATTER       | NAM       | promise_prophecy      |               5 |                   4 |        80.0
+ OT        | LATTER       | EZE       | promise_prophecy      |               5 |                   4 |        80.0
+ OT        | LATTER       | LAM       | theological_reasoning |               5 |                   4 |        80.0
+ OT        | LATTER       | ZEC       | events_timeline       |               5 |                   4 |        80.0
+ OT        | FORMER       | 2SA       | geography_nations     |               7 |                   4 |        57.1
+ OT        | TORAH        | EXO       | geography_nations     |               7 |                   4 |        57.1
+ OT        | LATTER       | AMO       | events_timeline       |               5 |                   3 |        60.0
+ OT        | TORAH        | LEV       | theological_reasoning |               6 |                   3 |        50.0
+ OT        | WRITINGS     | PSA       | events_timeline       |               5 |                   2 |        40.0
+(78 rows)
+

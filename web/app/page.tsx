@@ -844,10 +844,15 @@ export default function HomePage() {
           />
         )}
 
-        {!hasCompletedAssessment && !isDashboardLoading && (
+        {/* The exact inverse of the DashboardHeader condition above, so the
+            landing and the header never both render a subject control. */}
+        {isNewAssessmentLanding && !isDashboardLoading && (
           <DashboardTabsBar
             activeDashboardTab={activeDashboardTab}
             setActiveDashboardTab={setActiveDashboardTab}
+            subjectMenuOpen={subjectMenuOpen}
+            setSubjectMenuOpen={setSubjectMenuOpen}
+            subjectMenuRef={subjectMenuRef}
           />
         )}
 

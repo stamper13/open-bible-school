@@ -76,7 +76,8 @@ body {
   flex-shrink: 0;
 }
 @media (max-width: 640px) {
-  .oba-beta-banner { padding: 9px 16px; font-size: 12px; }
+  /* 12px was under the legibility floor for a full sentence of body copy. */
+  .oba-beta-banner { padding: 10px 16px; font-size: 13px; line-height: 1.5; }
 }
 
 .oba-site-footer {
@@ -323,23 +324,33 @@ body {
 .oba-site-footer-copy {
   max-width: 520px;
   margin-top: 7px;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: rgba(237, 244, 251, 0.56);
+  font-size: 13.5px;
+  line-height: 1.6;
+  /* Was .56 alpha at 12.5px, which fell below comfortable contrast on a phone
+     in daylight. */
+  color: rgba(237, 244, 251, 0.68);
 }
 
 .oba-site-footer-links {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
-  gap: 10px 16px;
+  /* Row gap stays tight because each link now supplies its own 44px height. */
+  gap: 0 20px;
 }
 
 .oba-site-footer-links a {
   color: rgba(237, 244, 251, 0.72);
   text-decoration: none;
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 750;
+  /* These rendered 15px tall, well under a usable touch target on a phone.
+     Pad them out vertically; the negative row gap keeps the footer from
+     growing now that each link carries its own 44px box. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 .oba-site-footer-links a:hover,
@@ -368,10 +379,13 @@ body {
 
 .oba-legal-back {
   display: inline-flex;
-  margin-bottom: 28px;
+  /* Was a 16px-tall hit area; give the back link a real touch target. */
+  align-items: center;
+  min-height: 44px;
+  margin-bottom: 16px;
   color: rgba(255, 255, 255, 0.68);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 750;
 }
 
@@ -518,3 +532,16 @@ body {
 .rail-dot:hover { background: rgba(255,255,255,.55); }
 .rail-dot.on { background: var(--accent); border-color: var(--accent); transform: scale(1.4); }
 .rail-dot:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* ============================================================================
+   Mobile legibility floor.
+
+   Several editorial labels sit at 10.5–12.5px, which reads fine on a desktop
+   monitor and poorly on a phone held at arm's length. These raise the smallest
+   shared type on narrow screens only, so the desktop composition is untouched.
+   ========================================================================= */
+@media (max-width: 640px) {
+  .section-label { font-size: 12px; }
+  .hero-eyebrow { font-size: 12.5px; }
+  .section-body { font-size: 16px; line-height: 1.75; }
+}

@@ -1,0 +1,60 @@
+BEGIN
+SET
+SET
+CREATE TABLE
+INSERT 0 8
+DELETE 4
+DO
+SELECT 1491
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+GRANT
+INSERT 0 4
+INSERT 0 4
+DO
+RESET
+          profile_key          | testament | run_number | served | distinct_questions | scopes_seen | duplicate_similarity_items | weak_probe_count | strong_probe_count | observed_accuracy_pct | observed_idk_pct | launch_gate 
+-------------------------------+-----------+------------+--------+--------------------+-------------+----------------------------+------------------+--------------------+-----------------------+------------------+-------------
+ OT_ADVANCED_GEOGRAPHY_WEAK    | OT        |          1 |     12 |                 12 |           4 |                          0 |                0 |                 12 |                  91.7 |              0.0 | PASS
+ OT_BEGINNER                   | OT        |          1 |     12 |                 12 |           4 |                          0 |               12 |                  0 |                  16.7 |             58.3 | PASS
+ OT_PROPHETS_STRONG_TORAH_WEAK | OT        |          1 |     12 |                 12 |           4 |                          0 |                2 |                  6 |                  58.3 |             16.7 | PASS
+ OT_TORAH_STRONG_FORMER_WEAK   | OT        |          1 |     12 |                 12 |           4 |                          0 |                2 |                  2 |                  66.7 |             16.7 | PASS
+(4 rows)
+
+ testament | simulated_fresh_attempts | distinct_first_questions | first_question_scopes |        scope_list        
+-----------+--------------------------+--------------------------+-----------------------+--------------------------
+ OT        |                        4 |                        4 |                     3 | FORMER, LATTER, WRITINGS
+(1 row)
+
+          profile_key          | testament | run_number | ot_questions_answered | ot_display_bli | ot_accuracy_pct | nt_questions_answered | nt_display_bli | nt_accuracy_pct | combined_available 
+-------------------------------+-----------+------------+-----------------------+----------------+-----------------+-----------------------+----------------+-----------------+--------------------
+ OT_ADVANCED_GEOGRAPHY_WEAK    | OT        |          1 |                    12 |            576 |            91.7 |                     0 |              0 |               0 | f
+ OT_BEGINNER                   | OT        |          1 |                    12 |             54 |            16.7 |                     0 |              0 |               0 | f
+ OT_PROPHETS_STRONG_TORAH_WEAK | OT        |          1 |                    12 |            317 |            58.3 |                     0 |              0 |               0 | f
+ OT_TORAH_STRONG_FORMER_WEAK   | OT        |          1 |                    12 |            402 |            66.7 |                     0 |              0 |               0 | f
+(4 rows)
+
+          profile_key          | testament | run_number | scope_key | served | correct | idk 
+-------------------------------+-----------+------------+-----------+--------+---------+-----
+ OT_ADVANCED_GEOGRAPHY_WEAK    | OT        |          1 | LATTER    |      6 |       5 |   0
+ OT_ADVANCED_GEOGRAPHY_WEAK    | OT        |          1 | FORMER    |      2 |       2 |   0
+ OT_ADVANCED_GEOGRAPHY_WEAK    | OT        |          1 | TORAH     |      2 |       2 |   0
+ OT_ADVANCED_GEOGRAPHY_WEAK    | OT        |          1 | WRITINGS  |      2 |       2 |   0
+ OT_BEGINNER                   | OT        |          1 | LATTER    |      6 |       1 |   3
+ OT_BEGINNER                   | OT        |          1 | FORMER    |      2 |       0 |   1
+ OT_BEGINNER                   | OT        |          1 | TORAH     |      2 |       1 |   1
+ OT_BEGINNER                   | OT        |          1 | WRITINGS  |      2 |       0 |   2
+ OT_PROPHETS_STRONG_TORAH_WEAK | OT        |          1 | LATTER    |      6 |       4 |   0
+ OT_PROPHETS_STRONG_TORAH_WEAK | OT        |          1 | FORMER    |      2 |       1 |   0
+ OT_PROPHETS_STRONG_TORAH_WEAK | OT        |          1 | TORAH     |      2 |       0 |   2
+ OT_PROPHETS_STRONG_TORAH_WEAK | OT        |          1 | WRITINGS  |      2 |       2 |   0
+ OT_TORAH_STRONG_FORMER_WEAK   | OT        |          1 | LATTER    |      6 |       5 |   0
+ OT_TORAH_STRONG_FORMER_WEAK   | OT        |          1 | FORMER    |      2 |       0 |   2
+ OT_TORAH_STRONG_FORMER_WEAK   | OT        |          1 | TORAH     |      2 |       2 |   0
+ OT_TORAH_STRONG_FORMER_WEAK   | OT        |          1 | WRITINGS  |      2 |       1 |   0
+(16 rows)
+
+ROLLBACK

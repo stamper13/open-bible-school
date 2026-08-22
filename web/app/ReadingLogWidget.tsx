@@ -280,6 +280,13 @@ export default function ReadingLogWidget({
           cursor: pointer;
         }
         .rl-bubble-dismiss:hover { background: rgba(255,255,255,.16); color: #fff; }
+
+        @media (max-width: 640px) {
+          /* These sat at ~31px and 26px — fine with a cursor, tight for a thumb. */
+          .rl-full-log-link { min-height: 44px; font-size: 13px; padding: 7px 15px; }
+          .rl-bubble-dismiss { width: 32px; height: 32px; }
+          .rl-match span { font-size: 12.5px; }
+        }
       `}</style>
 
       <div className="rl-header">

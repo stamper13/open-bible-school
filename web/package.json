@@ -11,6 +11,8 @@
     "test": "npm run test:unit",
     "test:unit": "node --test tests/unit/*.mts",
     "test:rpc-contract": "node ../scripts/check-frontend-rpc-contract.mjs",
+    "test:data-access-contract": "node ../scripts/check-frontend-direct-data-access.mjs",
+    "test:migration-chain": "node ../scripts/analyze-supabase-migration-chain.mjs --check",
     "test:backend-repo": "node ../scripts/check-backend-repo-health.mjs",
     "test:contract": "node --test tests/unit/bli-contract.test.mts",
     "test:bli-evidence": "node --test tests/unit/bli-evidence.test.mts",

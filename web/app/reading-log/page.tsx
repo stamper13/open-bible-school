@@ -189,6 +189,9 @@ export default function ReadingLogPage() {
 
         @media (max-width: 640px) {
           .page { width: min(100% - 22px, 620px); padding-top: 26px; }
+          /* 11px/12px sit below the phone legibility floor used site-wide. */
+          .eyebrow { font-size: 12px; }
+          .source-note { font-size: 13px; color: rgba(237,244,251,.62); }
         }
       `}</style>
 

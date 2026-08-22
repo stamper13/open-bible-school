@@ -415,6 +415,19 @@ export const ABOUT_PAGE_STYLES = `
           .decay { padding: 20px 16px; }
           .decay-readout { grid-template-columns: 1fr; }
           .constel-caption { min-height: 0; }
+          /* The slider's grab area was 26px tall — hard to catch with a thumb. */
+          .decay-slider { height: 44px; }
+          .decay-slider::-webkit-slider-thumb { width: 26px; height: 26px; }
+          .decay-slider::-moz-range-thumb { width: 26px; height: 26px; }
+          .scope-tab { min-height: 44px; }
+          /* Sub-12px labels don't hold up on a phone. */
+          .cycle-center { font-size: 11.5px; }
+          .contrib-sub { font-size: 13px; }
+          .constel-hint { font-size: 13px; }
+          .map-tag { font-size: 12px; }
+          .decay-cell-sub { font-size: 12.5px; }
+          /* The ring's nodes overhang its box; give it the width to hold them. */
+          .cycle-dial { width: 254px; height: 254px; }
         }
 
         @media (prefers-reduced-motion: reduce) {

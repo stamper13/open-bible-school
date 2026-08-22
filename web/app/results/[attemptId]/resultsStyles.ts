@@ -67,7 +67,12 @@ export const RESULTS_PAGE_STYLES = `
         }
         .score-value { font: 750 66px/1 var(--font-crimson), Georgia, serif; color: var(--navy); }
         .score-value span { font: 700 28px/1 var(--font-inter), sans-serif; }
+        /* Direction is carried by the +/− sign first; colour only reinforces it,
+           so this still reads correctly without colour vision. */
+        .score-value.is-up { color: #1f7a5a; }
+        .score-value.is-down { color: #b4402f; }
         .score-label { margin-top: 8px; color: var(--muted); font-size: 12px; font-weight: 750; line-height: 1.45; }
+        .score-context { margin-top: 6px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
         .summary-body { min-width: 0; padding: 28px 30px; }
         .summary-heading { margin: 0; font: 700 25px/1.1 var(--font-crimson), Georgia, serif; }
         .summary-copy { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 7px 0 24px; }

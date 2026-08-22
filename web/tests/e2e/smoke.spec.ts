@@ -34,14 +34,25 @@ test.describe("public routes render", () => {
     });
   }
 
-  test("dashboard shows its heading", async ({ page }) => {
+  // A signed-out visitor with no completed assessment gets the "new learner"
+  // landing, not the score dashboard: the "Your Learning Dashboard" header is
+  // deliberately withheld until there is something to show (see
+  // isNewAssessmentLanding in app/page.tsx). Assert the state this suite can
+  // actually reach; the signed-in dashboard stays on the manual checklist.
+  test("signed-out home shows the first-assessment landing", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /Your Learning Dashboard/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Take your first Bible assessment/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Your Learning Dashboard/i })).toHaveCount(0);
   });
 
-  test("knowledge map renders its hierarchy panel", async ({ page }) => {
+  // Likewise the knowledge map's hierarchy needs assessment data behind it, so
+  // signed out the page renders its empty state and a way into an assessment.
+  test("signed-out knowledge map shows its empty state and CTA", async ({ page }) => {
     await page.goto("/knowledge-map");
-    await expect(page.getByRole("heading", { name: /learning hierarchy/i })).toBeVisible();
+    await expect(
+      page.getByText(/Sign in and take an assessment to see where your attention should go next/i),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /Get started/i })).toBeVisible();
   });
 });
 
@@ -78,7 +89,9 @@ test.describe("reduced motion", () => {
   test("long transitions are suppressed on the dashboard", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /Your Learning Dashboard/i })).toBeVisible();
+    // Gate on the landing heading a signed-out visitor actually gets, so this
+    // waits for a rendered page rather than timing out on the dashboard header.
+    await expect(page.getByRole("heading", { name: /Take your first Bible assessment/i })).toBeVisible();
 
     // Guard the emulation itself: if the media query does not match, the rest
     // of this test would pass or fail for the wrong reason.

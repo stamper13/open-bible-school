@@ -1,0 +1,1748 @@
+{
+  "summary": {
+    "generatedAt": "2026-08-21T13:05:56.321Z",
+    "firstQuestionSummary": {
+      "OT": {
+        "count": 6,
+        "distinctQuestions": 6,
+        "repeatedQuestionCount": 0,
+        "sections": {
+          "Former Prophets": 2,
+          "Latter Prophets": 1,
+          "Torah": 1,
+          "Writings": 2
+        },
+        "topBooks": [
+          [
+            "JDG",
+            2
+          ],
+          [
+            "PRO",
+            1
+          ],
+          [
+            "DEU",
+            1
+          ],
+          [
+            "ECC",
+            1
+          ],
+          [
+            "NAM",
+            1
+          ]
+        ]
+      },
+      "NT": {
+        "count": 6,
+        "distinctQuestions": 5,
+        "repeatedQuestionCount": 1,
+        "sections": {
+          "Apocalypse": 2,
+          "General": 2,
+          "Pauline": 2
+        },
+        "topBooks": [
+          [
+            "REV",
+            2
+          ],
+          [
+            "2JN",
+            2
+          ],
+          [
+            "EPH",
+            1
+          ],
+          [
+            "2TI",
+            1
+          ]
+        ]
+      }
+    },
+    "fullSessionSummary": {
+      "OT_IDK": {
+        "count": 20,
+        "distinctQuestions": 20,
+        "repeatedQuestionCount": 0,
+        "sections": {
+          "Former Prophets": 5,
+          "Latter Prophets": 6,
+          "Torah": 5,
+          "Writings": 4
+        },
+        "topBooks": [
+          [
+            "GEN",
+            3
+          ],
+          [
+            "JER",
+            2
+          ],
+          [
+            "1KI",
+            2
+          ],
+          [
+            "2CH",
+            2
+          ],
+          [
+            "ECC",
+            1
+          ],
+          [
+            "RUT",
+            1
+          ],
+          [
+            "LEV",
+            1
+          ],
+          [
+            "ISA",
+            1
+          ]
+        ]
+      },
+      "NT_SMOKE": {
+        "count": 20,
+        "distinctQuestions": 20,
+        "repeatedQuestionCount": 0,
+        "sections": {
+          "Apocalypse": 2,
+          "Gospels_Acts": 18
+        },
+        "topBooks": [
+          [
+            "MAT",
+            7
+          ],
+          [
+            "LUK",
+            5
+          ],
+          [
+            "JHN",
+            4
+          ],
+          [
+            "REV",
+            2
+          ],
+          [
+            "MRK",
+            1
+          ],
+          [
+            "ACT",
+            1
+          ]
+        ]
+      }
+    }
+  },
+  "report": {
+    "generatedAt": "2026-08-21T13:05:56.321Z",
+    "firstQuestions": {
+      "OT": [
+        {
+          "run": 1,
+          "questionId": "8c09a0fd-b41a-49ff-af30-d89dd6795817",
+          "prompt": "Which book gathers wisdom sayings and instructions about fearing the Lord and living with skill, justice, and self-control?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Ecclesiastes"
+            },
+            {
+              "id": "B",
+              "text": "Job"
+            },
+            {
+              "id": "C",
+              "text": "Psalms"
+            },
+            {
+              "id": "D",
+              "text": "Proverbs"
+            }
+          ],
+          "bookCode": "PRO",
+          "section": "Writings"
+        },
+        {
+          "run": 2,
+          "questionId": "0eb40eb8-3fd3-4c02-96b4-a49e8028b54c",
+          "prompt": "Which setting best describes Deuteronomy within the larger Old Testament story?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Moses addresses Israel on the plains of Moab before the people enter the land."
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|torah_deuteronomy_setting_001|B"
+                }
+              },
+              "text": "Joshua divides the conquered land among the tribes after Jericho falls."
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|torah_deuteronomy_setting_001|C"
+                }
+              },
+              "text": "Solomon dedicates the temple in Jerusalem after years of construction."
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|torah_deuteronomy_setting_001|D"
+                }
+              },
+              "text": "Ezra reads the law to the returned exiles after the walls are rebuilt."
+            }
+          ],
+          "bookCode": "DEU",
+          "section": "Torah"
+        },
+        {
+          "run": 3,
+          "questionId": "58933cc3-d7b8-4422-babc-7f3c6ddb9ef8",
+          "prompt": "Which item is out of place in the broad story from Joshua through Kings?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Cyrus permits the exiles to return and rebuild the temple."
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|former_out_of_place_001|B"
+                }
+              },
+              "text": "Jericho falls after Israel crosses the Jordan."
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|former_out_of_place_001|C"
+                }
+              },
+              "text": "Israel asks Samuel for a king."
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|former_out_of_place_001|D"
+                }
+              },
+              "text": "Jerusalem falls to Babylon near the end of Kings."
+            }
+          ],
+          "bookCode": "JDG",
+          "section": "Former Prophets"
+        },
+        {
+          "run": 4,
+          "questionId": "51a11707-2305-438a-9e06-12e7d65498a0",
+          "prompt": "Which pattern best describes the repeated cycle in Judges?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Israel turns away, is oppressed, cries out, and is delivered through a judge."
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|judges_cycle_001|B"
+                }
+              },
+              "text": "A prophet writes to exiles, interprets visions, and predicts four empires."
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|judges_cycle_001|C"
+                }
+              },
+              "text": "A king builds the temple, dedicates it, and divides priestly duties."
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|judges_cycle_001|D"
+                }
+              },
+              "text": "A wisdom teacher compares the righteous and wicked through short sayings."
+            }
+          ],
+          "bookCode": "JDG",
+          "section": "Former Prophets"
+        },
+        {
+          "run": 5,
+          "questionId": "0a9cf0c6-62e0-4954-a8ab-ff40b82e7c12",
+          "prompt": "Which book reflects on life under the sun, the limits of human toil, and the fleeting character of earthly gain?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Job"
+            },
+            {
+              "id": "B",
+              "text": "Ecclesiastes"
+            },
+            {
+              "id": "C",
+              "text": "Proverbs"
+            },
+            {
+              "id": "D",
+              "text": "Song of Songs"
+            }
+          ],
+          "bookCode": "ECC",
+          "section": "Writings"
+        },
+        {
+          "run": 6,
+          "questionId": "4d086e28-bb3b-4cb5-9e65-74b6ba045451",
+          "prompt": "Which prophetic book is an oracle celebrating the coming fall of Nineveh?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Obadiah"
+            },
+            {
+              "id": "B",
+              "text": "Jonah"
+            },
+            {
+              "id": "C",
+              "text": "Nahum"
+            },
+            {
+              "id": "D",
+              "text": "Habakkuk"
+            }
+          ],
+          "bookCode": "NAM",
+          "section": "Latter Prophets"
+        }
+      ],
+      "NT": [
+        {
+          "run": 1,
+          "questionId": "e9395170-db32-4923-b68c-6afc38666adc",
+          "prompt": "What does John see after the first heaven and first earth pass away?",
+          "questionType": "nt_foundation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "A rebuilt Roman Empire"
+            },
+            {
+              "id": "B",
+              "text": "A return to the garden without a city"
+            },
+            {
+              "id": "C",
+              "text": "A new heaven, a new earth, and the holy city"
+            },
+            {
+              "id": "D",
+              "text": "The restoration of the old Jerusalem temple system"
+            }
+          ],
+          "bookCode": "REV",
+          "scope": "Apocalypse"
+        },
+        {
+          "run": 2,
+          "questionId": "b55e0ad0-4ecb-4cb3-a7a4-5486f7a84f80",
+          "prompt": "What time-related limit does Ephesians place on anger?",
+          "questionType": "nt_expository_mcq_v2",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Keep silent for seven days before speaking"
+            },
+            {
+              "id": "B",
+              "text": "Resolve anger before entering the assembly"
+            },
+            {
+              "id": "C",
+              "text": "Delay any response until two witnesses are present"
+            },
+            {
+              "id": "D",
+              "text": "Do not let the sun go down on your anger"
+            }
+          ],
+          "bookCode": "EPH",
+          "scope": "Pauline"
+        },
+        {
+          "run": 3,
+          "questionId": "facdd1d9-0ad6-4d36-b241-1c9128871fae",
+          "prompt": "How does 2 John define love immediately after repeating the command to love one another?",
+          "questionType": "nt_expository_mcq_v2",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Love is agreement on every disputed teaching"
+            },
+            {
+              "id": "B",
+              "text": "Love is walking according to God's commandments"
+            },
+            {
+              "id": "C",
+              "text": "Love is receiving every traveling teacher"
+            },
+            {
+              "id": "D",
+              "text": "Love is avoiding all correction of another believer"
+            }
+          ],
+          "bookCode": "2JN",
+          "scope": "General"
+        },
+        {
+          "run": 4,
+          "questionId": "facdd1d9-0ad6-4d36-b241-1c9128871fae",
+          "prompt": "How does 2 John define love immediately after repeating the command to love one another?",
+          "questionType": "nt_expository_mcq_v2",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Love is agreement on every disputed teaching"
+            },
+            {
+              "id": "B",
+              "text": "Love is walking according to God's commandments"
+            },
+            {
+              "id": "C",
+              "text": "Love is receiving every traveling teacher"
+            },
+            {
+              "id": "D",
+              "text": "Love is avoiding all correction of another believer"
+            }
+          ],
+          "bookCode": "2JN",
+          "scope": "General"
+        },
+        {
+          "run": 5,
+          "questionId": "efc1da96-4c91-418e-a8b0-51fbcefdbdb8",
+          "prompt": "On what island was John when he received the vision addressed to the seven churches?",
+          "questionType": "nt_expository_mcq_v2",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Crete"
+            },
+            {
+              "id": "B",
+              "text": "Cyprus"
+            },
+            {
+              "id": "C",
+              "text": "Patmos"
+            },
+            {
+              "id": "D",
+              "text": "Malta"
+            }
+          ],
+          "bookCode": "REV",
+          "scope": "Apocalypse"
+        },
+        {
+          "run": 6,
+          "questionId": "d6356258-7f76-4e47-b672-5608bc22eac1",
+          "prompt": "How does 2 Timothy describe Scripture?",
+          "questionType": "nt_foundation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "As inspired only when interpreted by rulers"
+            },
+            {
+              "id": "B",
+              "text": "As God-breathed and useful for teaching and training"
+            },
+            {
+              "id": "C",
+              "text": "As useful only for private devotion"
+            },
+            {
+              "id": "D",
+              "text": "As a temporary guide until the apostles die"
+            }
+          ],
+          "bookCode": "2TI",
+          "scope": "Pauline"
+        }
+      ]
+    },
+    "fullSessions": {
+      "OT_IDK": [
+        {
+          "itemNumber": 1,
+          "questionId": "8b3bd5ab-1ecc-4a54-b79e-5c09c66a31df",
+          "prompt": "Which prophetic book addresses Judah's final years, warns of Babylon, portrays a suffering prophet, and promises a new covenant?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Isaiah"
+            },
+            {
+              "id": "B",
+              "text": "Ezekiel"
+            },
+            {
+              "id": "C",
+              "text": "Lamentations"
+            },
+            {
+              "id": "D",
+              "text": "Jeremiah"
+            }
+          ],
+          "bookCode": "JER",
+          "section": "Latter Prophets"
+        },
+        {
+          "itemNumber": 2,
+          "questionId": "2fba4da7-7849-400d-9487-2636be7f0a6f",
+          "prompt": "Which book moves from creation and the flood to the family stories of Abraham, Isaac, Jacob, and Joseph?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Exodus"
+            },
+            {
+              "id": "B",
+              "text": "Genesis"
+            },
+            {
+              "id": "C",
+              "text": "Joshua"
+            },
+            {
+              "id": "D",
+              "text": "1 Chronicles"
+            }
+          ],
+          "bookCode": "GEN",
+          "section": "Torah"
+        },
+        {
+          "itemNumber": 3,
+          "questionId": "0a9cf0c6-62e0-4954-a8ab-ff40b82e7c12",
+          "prompt": "Which book reflects on life under the sun, the limits of human toil, and the fleeting character of earthly gain?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Job"
+            },
+            {
+              "id": "B",
+              "text": "Ecclesiastes"
+            },
+            {
+              "id": "C",
+              "text": "Proverbs"
+            },
+            {
+              "id": "D",
+              "text": "Song of Songs"
+            }
+          ],
+          "bookCode": "ECC",
+          "section": "Writings"
+        },
+        {
+          "itemNumber": 4,
+          "questionId": "919b7031-82c6-4ae2-8588-d88e59165dc8",
+          "prompt": "Which book tells how a Moabite widow joins Israel, finds a redeemer in Bethlehem, and enters the family line of David?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Esther"
+            },
+            {
+              "id": "B",
+              "text": "Judges"
+            },
+            {
+              "id": "C",
+              "text": "Song of Songs"
+            },
+            {
+              "id": "D",
+              "text": "Ruth"
+            }
+          ],
+          "bookCode": "RUT",
+          "section": "Former Prophets"
+        },
+        {
+          "itemNumber": 5,
+          "questionId": "76daf312-51e5-4116-9b59-cbe64e9e7ea7",
+          "prompt": "Which book is organized largely around sacrifices, priesthood, ritual purity, and Israel's call to holiness?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Leviticus"
+            },
+            {
+              "id": "B",
+              "text": "Numbers"
+            },
+            {
+              "id": "C",
+              "text": "Deuteronomy"
+            },
+            {
+              "id": "D",
+              "text": "Ezekiel"
+            }
+          ],
+          "bookCode": "LEV",
+          "section": "Torah"
+        },
+        {
+          "itemNumber": 6,
+          "questionId": "0c451742-dde9-4981-aef9-b22366b41d38",
+          "prompt": "Which book begins with Solomon, the temple, and the kingdom's division, then follows kings such as Ahab and prophets such as Elijah?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "1 Kings"
+            },
+            {
+              "id": "B",
+              "text": "2 Kings"
+            },
+            {
+              "id": "C",
+              "text": "2 Samuel"
+            },
+            {
+              "id": "D",
+              "text": "2 Chronicles"
+            }
+          ],
+          "bookCode": "1KI",
+          "section": "Former Prophets"
+        },
+        {
+          "itemNumber": 7,
+          "questionId": "a51eccad-2c4f-41ec-84e6-984487bb4d29",
+          "prompt": "Which prophetic book moves between judgment and hope while emphasizing Zion, a coming ruler, the Lord's servant, and future restoration?",
+          "questionType": "book_orientation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Isaiah"
+            },
+            {
+              "id": "B",
+              "text": "Jeremiah"
+            },
+            {
+              "id": "C",
+              "text": "Ezekiel"
+            },
+            {
+              "id": "D",
+              "text": "Micah"
+            }
+          ],
+          "bookCode": "ISA",
+          "section": "Latter Prophets"
+        },
+        {
+          "itemNumber": 8,
+          "questionId": "ecb59cd3-aa4b-4ead-b0be-29f29656c9c9",
+          "prompt": "Which description best links Kings, Chronicles, and Ezra-Nehemiah in the larger story?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Kings ends in exile, Chronicles retells the story with temple hope, and Ezra-Nehemiah follows return and rebuilding."
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|section_bridge_001|B"
+                }
+              },
+              "text": "Kings begins with creation, Chronicles gives Sinai law, and Ezra-Nehemiah narrates the conquest."
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|section_bridge_001|C"
+                }
+              },
+              "text": "Kings is wisdom poetry, Chronicles is prophetic vision, and Ezra-Nehemiah is patriarchal narrative."
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|section_bridge_001|D"
+                }
+              },
+              "text": "Kings explains Passover, Chronicles explains Balaam, and Ezra-Nehemiah explains the flood."
+            }
+          ],
+          "bookCode": "2CH",
+          "section": "Writings"
+        },
+        {
+          "itemNumber": 9,
+          "questionId": "fa50d72c-46cc-472b-813b-ec18c0340f15",
+          "prompt": "Which event comes latest in the Old Testament storyline?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Daniel is thrown into the lions' den."
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|cross_chronology_latest_001|B"
+                }
+              },
+              "text": "The tower of Babel is built."
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|cross_chronology_latest_001|C"
+                }
+              },
+              "text": "The walls of Jericho fall."
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|cross_chronology_latest_001|D"
+                }
+              },
+              "text": "David defeats Goliath."
+            }
+          ],
+          "bookCode": "DAN",
+          "section": "Latter Prophets"
+        },
+        {
+          "itemNumber": 10,
+          "questionId": "405f480e-5ef4-4b5c-8db4-e1e202939f37",
+          "prompt": "Which description best captures the broad work of the writing prophets?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "They confront covenant unfaithfulness, interpret judgment and exile, and hold out hope for restoration."
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|prophets_arc_001|B"
+                }
+              },
+              "text": "They narrate the conquest of Canaan, tribal allotments, and the rise of the judges."
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|prophets_arc_001|C"
+                }
+              },
+              "text": "They collect royal songs, wisdom sayings, and festival poems for worship."
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|prophets_arc_001|D"
+                }
+              },
+              "text": "They retell creation, the flood, Abraham, the exodus, and Sinai in one continuous law code."
+            }
+          ],
+          "bookCode": "JER",
+          "section": "Latter Prophets"
+        },
+        {
+          "itemNumber": 11,
+          "questionId": "ce3375be-cd72-4a29-996e-33260b064ccb",
+          "prompt": "Which broad timeline best fits the settings of these prophetic books?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Assyrian threat, Babylonian exile, return-era temple rebuilding"
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|prophets_sequence_001|B"
+                }
+              },
+              "text": "Return-era temple rebuilding, Assyrian threat, Babylonian exile"
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|prophets_sequence_001|C"
+                }
+              },
+              "text": "Babylonian exile, conquest of Canaan, Assyrian threat"
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|prophets_sequence_001|D"
+                }
+              },
+              "text": "Conquest of Canaan, return-era temple rebuilding, Sinai covenant"
+            }
+          ],
+          "bookCode": "HAG",
+          "section": "Latter Prophets"
+        },
+        {
+          "itemNumber": 12,
+          "questionId": "9dabb6dc-b7f1-44a3-a459-259af4bc62f7",
+          "prompt": "Which pattern appears often across the prophetic books?",
+          "questionType": "section_competency_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Judgment for covenant unfaithfulness followed by hope for restoration"
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|prophetic_pattern_001|B"
+                }
+              },
+              "text": "A judge is raised, wins a battle, and begins a dynasty in Jerusalem"
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "high",
+                  "misconception_code": "section_competency|ot|prophetic_pattern_001|C"
+                }
+              },
+              "text": "A genealogy leads to a census, which leads to tribal land allotments"
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "other_reviewed",
+                  "plausibility": "medium",
+                  "misconception_code": "section_competency|ot|prophetic_pattern_001|D"
+                }
+              },
+              "text": "A wisdom teacher gives proverbs about ants, sluggards, and speech"
+            }
+          ],
+          "bookCode": "MIC",
+          "section": "Latter Prophets"
+        },
+        {
+          "itemNumber": 13,
+          "questionId": "27c8018e-1dcf-48f5-8550-fb8c86a32562",
+          "prompt": "Which geographic movement best describes the family story in Genesis after the call of Abram?",
+          "questionType": "geography_book_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "From Mesopotamia and Haran into Canaan, with the family eventually going down to Egypt"
+            },
+            {
+              "id": "B",
+              "text": "From Egypt through Sinai and the wilderness toward the plains of Moab"
+            },
+            {
+              "id": "C",
+              "text": "From Shiloh through the Philistine frontier and wilderness to Jerusalem"
+            },
+            {
+              "id": "D",
+              "text": "From Babylon through the Persian provinces to rebuilt Jerusalem"
+            }
+          ],
+          "bookCode": "GEN",
+          "section": "Torah"
+        },
+        {
+          "itemNumber": 14,
+          "questionId": "83597f01-4278-4232-ad96-b302d6dccfa8",
+          "prompt": "What major transition follows Solomon's reign in 1 Kings?",
+          "questionType": "minimum_coverage_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "meta": {
+                "distractor": {
+                  "relation": "near_chronology",
+                  "plausibility": "high",
+                  "misconception_code": "confuses_the_transition_after_solomon_with_the_much_later_return_from_exile"
+                }
+              },
+              "text": "Judah returns home from exile"
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "near_chronology",
+                  "plausibility": "high",
+                  "misconception_code": "confuses_the_transition_after_solomon_with_davids_much_earlier_capture_of_jerusalem"
+                }
+              },
+              "text": "David first captures the city of Jerusalem"
+            },
+            {
+              "id": "C",
+              "text": "The kingdom divides into Israel and Judah"
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "near_chronology",
+                  "plausibility": "high",
+                  "misconception_code": "confuses_the_transition_after_solomon_with_the_much_earlier_construction_of_the_tabernacle"
+                }
+              },
+              "text": "The wilderness tabernacle is built"
+            }
+          ],
+          "bookCode": "1KI",
+          "section": "Former Prophets"
+        },
+        {
+          "itemNumber": 15,
+          "questionId": "c53befaf-87f9-4c9e-99eb-81ef9ca5ce56",
+          "prompt": "What core argument did Job's three friends repeatedly make about his suffering?",
+          "questionType": "significance_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "That his suffering was a test he had already failed"
+            },
+            {
+              "id": "B",
+              "text": "That his suffering came from Satan's direct curse alone"
+            },
+            {
+              "id": "C",
+              "text": "That his suffering was punishment for hidden sin he needed to confess"
+            },
+            {
+              "id": "D",
+              "text": "That his suffering proved God had abandoned the righteous entirely"
+            }
+          ],
+          "bookCode": "JOB",
+          "section": "Writings"
+        },
+        {
+          "itemNumber": 16,
+          "questionId": "cb250392-93f9-4e64-9d61-228465653e4d",
+          "prompt": "Who was the wife of Isaac?",
+          "questionType": "relationship_curated_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Sarah"
+            },
+            {
+              "id": "B",
+              "text": "Leah"
+            },
+            {
+              "id": "C",
+              "text": "Rebekah"
+            },
+            {
+              "id": "D",
+              "text": "Rachel"
+            }
+          ],
+          "bookCode": "GEN",
+          "section": "Torah"
+        },
+        {
+          "itemNumber": 17,
+          "questionId": "70affc85-8483-4577-a000-3afeead9e146",
+          "prompt": "Which two royal capitals fall to foreign empires in 2 Kings?",
+          "questionType": "geography_book_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "meta": {
+                "distractor": {
+                  "relation": "same_theme",
+                  "plausibility": "high",
+                  "misconception_code": "reverses_the_correct_empire_capital_pairing"
+                }
+              },
+              "text": "Jerusalem falls to Assyria, and Samaria falls to Babylon"
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "near_chronology",
+                  "plausibility": "high",
+                  "misconception_code": "conflates_the_two_separate_conquests_decades_apart_into_a_single_campaign"
+                }
+              },
+              "text": "Both Samaria and Jerusalem fall to Assyria in the same campaign"
+            },
+            {
+              "id": "C",
+              "meta": {
+                "distractor": {
+                  "relation": "same_theme",
+                  "plausibility": "medium",
+                  "misconception_code": "denies_jerusalems_later_fall_to_babylon"
+                }
+              },
+              "text": "Samaria falls to Assyria, but Jerusalem survives unconquered"
+            },
+            {
+              "id": "D",
+              "text": "Samaria falls to Assyria, and Jerusalem falls to Babylon"
+            }
+          ],
+          "bookCode": "2KI",
+          "section": "Former Prophets"
+        },
+        {
+          "itemNumber": 18,
+          "questionId": "911e54f5-6c90-4d2e-b1ac-14ec3bfdbdf6",
+          "prompt": "What did Jehoshaphat send officials, Levites, and priests throughout Judah to do?",
+          "questionType": "minimum_coverage_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Register every family for military service"
+            },
+            {
+              "id": "B",
+              "text": "Remove all city gates and defensive walls"
+            },
+            {
+              "id": "C",
+              "text": "Teach from the Book of the Law of the LORD"
+            },
+            {
+              "id": "D",
+              "text": "Collect materials for a new palace"
+            }
+          ],
+          "bookCode": "2CH",
+          "section": "Writings"
+        },
+        {
+          "itemNumber": 19,
+          "questionId": "f2daca41-ad9a-49fe-a56d-e0b0042fce4e",
+          "prompt": "What section of Exodus follows the Ten Commandments with case laws for Israel's covenant life?",
+          "questionType": "batch12_context_probe_book_covenant_after_decalogue_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "meta": {
+                "distractor": {
+                  "relation": "same_theme",
+                  "plausibility": "high",
+                  "misconception_code": "substitutes_the_real_scholarly_name_for_leviticus_17_26_for_the_exodus_section_actually_asked_about"
+                }
+              },
+              "text": "The Holiness Code"
+            },
+            {
+              "id": "B",
+              "meta": {
+                "distractor": {
+                  "relation": "same_book",
+                  "plausibility": "high",
+                  "misconception_code": "confuses_this_section_with_the_later_tabernacle_instructions_of_exodus_25_31"
+                }
+              },
+              "text": "The tabernacle blueprint"
+            },
+            {
+              "id": "C",
+              "text": "The Book of the Covenant"
+            },
+            {
+              "id": "D",
+              "meta": {
+                "distractor": {
+                  "relation": "same_book",
+                  "plausibility": "high",
+                  "misconception_code": "confuses_this_section_with_the_later_ordination_material_of_exodus_29"
+                }
+              },
+              "text": "The priestly ordination instructions"
+            }
+          ],
+          "bookCode": "EXO",
+          "section": "Torah"
+        },
+        {
+          "itemNumber": 20,
+          "questionId": "4fc39135-e167-4798-bc5b-058a508c09c4",
+          "prompt": "When David confesses 'I have sinned against the LORD,' what does Nathan declare immediately?",
+          "questionType": "speech_promise_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "The LORD has heard your prayer — the child will live, but your kingdom will be reduced as a sign of discipline"
+            },
+            {
+              "id": "B",
+              "text": "The LORD has put away your sin — you shall not die; but the child born to you shall die"
+            },
+            {
+              "id": "C",
+              "text": "The LORD requires public restitution — you must confess before the assembly and pay a fourfold penalty in silver"
+            },
+            {
+              "id": "D",
+              "text": "The LORD will restore you after seven years of fasting and mourning to demonstrate the sincerity of your repentance"
+            }
+          ],
+          "bookCode": "2SA",
+          "section": "Former Prophets"
+        }
+      ],
+      "NT_SMOKE": [
+        {
+          "itemNumber": 1,
+          "questionId": "f1198bc7-a336-40b4-955e-ab3635f402d6",
+          "prompt": "What three-part response is commanded after the church in Ephesus is told it has abandoned its first love?",
+          "questionType": "nt_expository_mcq_v2",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Wait, watch, and endure"
+            },
+            {
+              "id": "B",
+              "text": "Remember, repent, and do the works done at first"
+            },
+            {
+              "id": "C",
+              "text": "Fast, appoint elders, and send a gift"
+            },
+            {
+              "id": "D",
+              "text": "Leave the city, gather in Pergamum, and remain silent"
+            }
+          ],
+          "bookCode": "REV",
+          "scope": "Apocalypse"
+        },
+        {
+          "itemNumber": 2,
+          "questionId": "e9db04c8-653c-436b-b720-42eadd9c56d0",
+          "prompt": "Asked where the Christ was to be born, the chief priests pointed to a town called small among the clans of Judah, from which a ruler whose origins are from ancient days would come. Which prophet wrote this?",
+          "questionType": "crossref_attribution_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Amos"
+            },
+            {
+              "id": "B",
+              "text": "Micah"
+            },
+            {
+              "id": "C",
+              "text": "Hosea"
+            },
+            {
+              "id": "D",
+              "text": "Zechariah"
+            }
+          ],
+          "bookCode": "MAT",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 3,
+          "questionId": "e89eb3ae-9580-4fc0-89a1-380c430c906d",
+          "prompt": "What does Jesus say must happen before the end?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "The temple must be enlarged"
+            },
+            {
+              "id": "B",
+              "text": "Rome must become a Jewish kingdom"
+            },
+            {
+              "id": "C",
+              "text": "The gospel must be proclaimed to all nations"
+            },
+            {
+              "id": "D",
+              "text": "Every disciple must return to Galilee"
+            }
+          ],
+          "bookCode": "MRK",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 4,
+          "questionId": "63e4c1f3-7f25-4183-9722-bde67f6c4138",
+          "prompt": "Reading in the Nazareth synagogue, Jesus announced good news to the poor, liberty to captives, and the year of the Lord's favor, then said the scripture was fulfilled. Which prophet had he read?",
+          "questionType": "crossref_attribution_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Jeremiah"
+            },
+            {
+              "id": "B",
+              "text": "Joel"
+            },
+            {
+              "id": "C",
+              "text": "Micah"
+            },
+            {
+              "id": "D",
+              "text": "Isaiah"
+            }
+          ],
+          "bookCode": "LUK",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 5,
+          "questionId": "fa36cffb-5c56-40a6-9206-18cdbf2d9d9e",
+          "prompt": "Which two commands does Jesus identify as the greatest?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Keep the Sabbath and offer sacrifices"
+            },
+            {
+              "id": "B",
+              "text": "Love God fully and love your neighbor as yourself"
+            },
+            {
+              "id": "C",
+              "text": "Fast weekly and give a tenth of every herb"
+            },
+            {
+              "id": "D",
+              "text": "Honor the emperor and avoid all Gentiles"
+            }
+          ],
+          "bookCode": "MAT",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 6,
+          "questionId": "48852778-c418-4a86-b2fc-10e4a314d491",
+          "prompt": "What material opens Matthew before the birth narrative?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "A collection of parables"
+            },
+            {
+              "id": "B",
+              "text": "An account of John's imprisonment"
+            },
+            {
+              "id": "C",
+              "text": "A description of the temple's destruction"
+            },
+            {
+              "id": "D",
+              "text": "A genealogy tracing Jesus through David and Abraham"
+            }
+          ],
+          "bookCode": "MAT",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 7,
+          "questionId": "61b9d7be-9ea3-4399-9917-fdd59c486c6f",
+          "prompt": "John the Baptist identified himself as a voice calling in the wilderness to make straight the way for the Lord. Which prophet was he quoting?",
+          "questionType": "crossref_attribution_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Isaiah"
+            },
+            {
+              "id": "B",
+              "text": "Malachi"
+            },
+            {
+              "id": "C",
+              "text": "Jeremiah"
+            },
+            {
+              "id": "D",
+              "text": "Joel"
+            }
+          ],
+          "bookCode": "JHN",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 8,
+          "questionId": "efc1da96-4c91-418e-a8b0-51fbcefdbdb8",
+          "prompt": "On what island was John when he received the vision addressed to the seven churches?",
+          "questionType": "nt_expository_mcq_v2",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Crete"
+            },
+            {
+              "id": "B",
+              "text": "Cyprus"
+            },
+            {
+              "id": "C",
+              "text": "Patmos"
+            },
+            {
+              "id": "D",
+              "text": "Malta"
+            }
+          ],
+          "bookCode": "REV",
+          "scope": "Apocalypse"
+        },
+        {
+          "itemNumber": 9,
+          "questionId": "83c578ff-9664-4d58-bab4-f918d27c972a",
+          "prompt": "What is Jesus' first sign in John?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Turning water into wine at Cana"
+            },
+            {
+              "id": "B",
+              "text": "Feeding five thousand people"
+            },
+            {
+              "id": "C",
+              "text": "Raising Lazarus"
+            },
+            {
+              "id": "D",
+              "text": "Healing the man born blind"
+            }
+          ],
+          "bookCode": "JHN",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 10,
+          "questionId": "be5ee4be-5542-4c95-b0d7-3c7813bc4a3f",
+          "prompt": "Why does John say the signs in his book were written?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "To prove that signs eliminate the need for faith"
+            },
+            {
+              "id": "B",
+              "text": "So readers can calculate the date of Jesus' return"
+            },
+            {
+              "id": "C",
+              "text": "To provide a complete record of every miracle"
+            },
+            {
+              "id": "D",
+              "text": "So readers may believe Jesus is the Messiah, the Son of God, and have life"
+            }
+          ],
+          "bookCode": "JHN",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 11,
+          "questionId": "76e0d7ac-db26-4e1a-93f1-ce9d354ad20f",
+          "prompt": "Whom does Jesus promise the Father will give the disciples to be with them forever?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Another high priest"
+            },
+            {
+              "id": "B",
+              "text": "Another Advocate, the Spirit of truth"
+            },
+            {
+              "id": "C",
+              "text": "A commander of angels visible to the world"
+            },
+            {
+              "id": "D",
+              "text": "A new earthly king"
+            }
+          ],
+          "bookCode": "JHN",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 12,
+          "questionId": "eb76e809-bc50-4011-b060-70b746e96d71",
+          "prompt": "How does Jesus summarize the Son of Man's mission after meeting Zacchaeus?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "To judge Rome and establish an army"
+            },
+            {
+              "id": "B",
+              "text": "To seek and save the lost"
+            },
+            {
+              "id": "C",
+              "text": "To replace the priesthood immediately"
+            },
+            {
+              "id": "D",
+              "text": "To remain hidden from the crowds"
+            }
+          ],
+          "bookCode": "LUK",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 13,
+          "questionId": "90c6d97a-c47d-4328-bc48-c7d121b07f67",
+          "prompt": "Before the high priest, Jesus spoke of the Son of Man coming with the clouds of heaven. Which Old Testament book describes that figure approaching the Ancient of Days?",
+          "questionType": "crossref_attribution_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Daniel"
+            },
+            {
+              "id": "B",
+              "text": "Ezekiel"
+            },
+            {
+              "id": "C",
+              "text": "Zechariah"
+            },
+            {
+              "id": "D",
+              "text": "Isaiah"
+            }
+          ],
+          "bookCode": "MAT",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 14,
+          "questionId": "3dadc476-e97c-4944-a563-79dfab026bb3",
+          "prompt": "What does Jesus promise the disciples will receive when the Holy Spirit comes upon them?",
+          "questionType": "nt_foundation_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Freedom from all persecution"
+            },
+            {
+              "id": "B",
+              "text": "Immediate rule over Israel"
+            },
+            {
+              "id": "C",
+              "text": "Power to be his witnesses"
+            },
+            {
+              "id": "D",
+              "text": "Authority to rebuild the temple"
+            }
+          ],
+          "bookCode": "ACT",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 15,
+          "questionId": "a7f26fb1-2a33-4fab-a997-012d5959be33",
+          "prompt": "What does Mary do after receiving Gabriel's announcement?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "She visits Elizabeth in the hill country"
+            },
+            {
+              "id": "B",
+              "text": "She travels immediately to Bethlehem"
+            },
+            {
+              "id": "C",
+              "text": "She tells Herod about the child"
+            },
+            {
+              "id": "D",
+              "text": "She takes Jesus to the temple"
+            }
+          ],
+          "bookCode": "LUK",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 16,
+          "questionId": "319cc7b8-f989-47be-9a72-b0646764ffed",
+          "prompt": "Clearing the temple, Jesus declared that God's house would be called a house of prayer for all the nations. That phrase comes from which prophet?",
+          "questionType": "crossref_attribution_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Jeremiah"
+            },
+            {
+              "id": "B",
+              "text": "Ezekiel"
+            },
+            {
+              "id": "C",
+              "text": "Isaiah"
+            },
+            {
+              "id": "D",
+              "text": "Malachi"
+            }
+          ],
+          "bookCode": "MAT",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 17,
+          "questionId": "69e256ea-e072-4576-a238-8c51b004538e",
+          "prompt": "What happens immediately after Jesus is baptized in Matthew?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "He calls Matthew from the tax booth"
+            },
+            {
+              "id": "B",
+              "text": "He delivers the Sermon on the Mount"
+            },
+            {
+              "id": "C",
+              "text": "He enters Jerusalem on a donkey"
+            },
+            {
+              "id": "D",
+              "text": "The Spirit leads him into the wilderness to be tempted"
+            }
+          ],
+          "bookCode": "MAT",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 18,
+          "questionId": "fce6ebb3-112a-4ba0-8316-bff5d6f3f8de",
+          "prompt": "What major narrative movement begins when Jesus sets his face toward Jerusalem?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "The resurrection appearances"
+            },
+            {
+              "id": "B",
+              "text": "The extended journey toward Jerusalem"
+            },
+            {
+              "id": "C",
+              "text": "The infancy narrative"
+            },
+            {
+              "id": "D",
+              "text": "The Galilean genealogy"
+            }
+          ],
+          "bookCode": "LUK",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 19,
+          "questionId": "314eaf7d-f96c-4d78-8487-99021565fc95",
+          "prompt": "What are the disciples told to await in the city?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "Power from on high"
+            },
+            {
+              "id": "B",
+              "text": "The arrival of the Magi"
+            },
+            {
+              "id": "C",
+              "text": "A decree from Caesar"
+            },
+            {
+              "id": "D",
+              "text": "The rebuilding of the temple"
+            }
+          ],
+          "bookCode": "LUK",
+          "scope": "Gospels_Acts"
+        },
+        {
+          "itemNumber": 20,
+          "questionId": "07be7433-a7a5-481e-a4ba-9959ce248647",
+          "prompt": "What does Jesus promise his disciples at the end of Matthew?",
+          "questionType": "nt_gospel_pilot_mcq_v1",
+          "choices": [
+            {
+              "id": "A",
+              "text": "They will remain permanently in Galilee"
+            },
+            {
+              "id": "B",
+              "text": "They will never face opposition"
+            },
+            {
+              "id": "C",
+              "text": "Jerusalem will immediately accept their message"
+            },
+            {
+              "id": "D",
+              "text": "He will be with them always, to the end of the age"
+            }
+          ],
+          "bookCode": "MAT",
+          "scope": "Gospels_Acts"
+        }
+      ]
+    }
+  }
+}

@@ -23,6 +23,12 @@ jobs:
       - name: Check frontend RPC contract
         run: node scripts/check-frontend-rpc-contract.mjs
 
+      - name: Check frontend direct data access contract
+        run: node scripts/check-frontend-direct-data-access.mjs
+
+      - name: Check migration chain reconciliation report
+        run: node scripts/analyze-supabase-migration-chain.mjs --check
+
       - name: Check backend repo health
         run: node scripts/check-backend-repo-health.mjs
 

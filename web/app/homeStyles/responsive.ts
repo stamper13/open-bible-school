@@ -51,7 +51,11 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           @keyframes coneDescriptionIn { from { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(.96); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
           .cone-marker { right: 50%; transform: translate(50%, -50%); }
           .cone-marker::before { width: 46px; }
-          .dashboard-tabs { grid-template-columns: 1fr; margin-top: -8px; }
+          .dashboard-subject-row { margin-top: -8px; }
+          /* Now the primary subject control on a phone, so it needs a real
+             touch target rather than the 29px the inline trigger rendered. */
+          .subject-trigger { min-height: 44px; padding: 8px 16px 8px 13px; font-size: 13.5px; }
+          .subject-menu-item { min-height: 44px; }
           .placeholder-dashboard { grid-template-columns: 1fr; padding: 30px 24px; min-height: 360px; }
           .placeholder-orbit { width: min(210px, 70vw); margin: 0 auto; }
           .scope-drawer-backdrop { align-items: flex-end; }
@@ -72,7 +76,13 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .beta-badge { position: static; }
           .beta-tooltip { left: 12px; right: 12px; width: auto; top: calc(100% + 6px); }
           .nav-right { flex-wrap: wrap; gap: 7px; }
-          .nav-btn { padding: 7px 12px; font-size: 12px; }
+          /* The reduced padding left these at 30px tall. Hold a 32px floor so
+             the primary nav controls stay a usable touch target on a phone. */
+          .nav-btn {
+            padding: 7px 12px; font-size: 12px;
+            min-height: 32px;
+            display: inline-flex; align-items: center; justify-content: center;
+          }
           .bli-tooltip,
           .level-tooltip {
             position: fixed;
@@ -89,12 +99,16 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .level-tooltip::before {
             display: none;
           }
+          /* This used to be pinned with position:fixed and top:86px, a number
+             tuned for a single-row nav. The nav now wraps to two rows on a
+             phone (142px), so the menu opened 56px *behind* it, and the subject
+             switcher — which lives in the page, not the nav — had its menu
+             yanked to the top of the viewport, covering its own trigger.
+             Staying absolute keeps every menu anchored under whatever opened
+             it, at any nav height. */
           .learn-more-menu {
-            position: fixed;
-            left: 16px;
-            right: 16px;
-            top: 86px;
-            width: auto;
+            top: calc(100% + 10px);
+            width: min(300px, calc(100vw - 32px));
           }
           .learn-more-menu::before { display: none; }
           .page { padding: 28px 16px 72px; }

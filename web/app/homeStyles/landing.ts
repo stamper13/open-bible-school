@@ -1,37 +1,17 @@
 export const HOME_LANDING_STYLES = `        /* ============================================================
            Dashboard subject tabs & loading card
            ============================================================ */
-        .dashboard-tabs {
-          display: inline-grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 6px; width: 100%; max-width: 760px;
-          padding: 6px; margin: -14px 0 28px;
-          border: 1px solid rgba(212,160,23,.28); border-radius: 16px;
-          background: rgba(255,255,255,.07); backdrop-filter: blur(14px);
-          box-shadow: 0 16px 40px rgba(0,0,0,.22), 0 0 30px rgba(212,160,23,.055), inset 0 0 0 1px rgba(245,200,66,.06);
+        /* One dashboard subject control, shared with the header's switcher
+           (see SubjectSwitcher in homeDashboard/nav.tsx). This replaces the old
+           three-tile .dashboard-tabs grid, which stacked into three full-width
+           boxes on a phone and pushed the real content below the fold. */
+        .dashboard-subject-row {
+          display: flex; align-items: center;
+          margin: -14px 0 28px;
         }
-        .page.is-new-assessment-landing .dashboard-tabs {
-          max-width: 820px;
-          margin: 0 0 28px;
+        .page.is-new-assessment-landing .dashboard-subject-row {
+          margin: 0 0 24px;
         }
-        .dashboard-tab {
-          border: 0; border-radius: 11px; padding: 12px 14px;
-          background: transparent; color: rgba(255,255,255,.62);
-          display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
-          cursor: pointer; font-family: inherit; text-align: left;
-          transition: background .16s ease, color .16s ease, transform .14s ease;
-        }
-        .dashboard-tab strong {
-          font-size: 13px; font-weight: 800; letter-spacing: .02em;
-        }
-        .dashboard-tab span {
-          font-size: 11px; font-weight: 650; color: rgba(255,255,255,.38);
-        }
-        .dashboard-tab:hover { background: rgba(255,255,255,.08); color: #fff; transform: translateY(-1px); }
-        .dashboard-tab.is-active {
-          background: rgba(255,255,255,.92); color: var(--navy);
-          box-shadow: 0 10px 24px rgba(0,0,0,.2);
-        }
-        .dashboard-tab.is-active span { color: var(--muted); }
         .dashboard-loading-card {
           position: relative;
           min-height: min(460px, 62vh); width: 100%; padding: 32px;

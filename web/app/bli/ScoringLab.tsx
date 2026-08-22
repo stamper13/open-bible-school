@@ -314,6 +314,15 @@ export default function ScoringLab() {
         @media (max-width: 620px) {
           .lab-reward { margin-left: 0; }
           .lab-row-bar { max-width: 90px; }
+          /* Touch sizing: the run controls were ~33px tall and the speed slider
+             only 110px wide and 16px tall — both awkward to hit on a phone. */
+          .lab-run { gap: 10px 12px; padding: 14px; }
+          .lab-btn { padding: 11px 18px; font-size: 13.5px; min-height: 44px; }
+          .lab-range { width: 100%; min-height: 32px; }
+          .lab-hint { font-size: 13px; }
+          /* 9.5px/12px labels are unreadable at arm's length. */
+          .lab-tag { font-size: 11.5px; }
+          .lab-reward { font-size: 12.5px; }
         }
       `}</style>
 

@@ -292,6 +292,22 @@ export const CREDENTIAL_PAGE_STYLES = `
           .module-desc { max-width: 100%; }
           .contact-strip { padding: 26px 22px; flex-direction: column; align-items: flex-start; }
           .motif-glyphs .glyph { opacity: .12; }
+          /* The pager dots are 10px circles — right visually, far too small to
+             tap. Extend the hit area with a pseudo-element so the dot keeps its
+             size, and widen the gap so neighbouring targets stay 30px apart and
+             cannot overlap into each other's taps. */
+          .carousel-dots { gap: 20px; }
+          .carousel-dot { position: relative; }
+          .carousel-dot::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 44px;
+          }
+          .carousel-btn { width: 44px; height: 44px; }
         }
 
         @media (prefers-reduced-motion: reduce) {

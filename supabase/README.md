@@ -17,6 +17,7 @@ Supabase applies every SQL file in that directory when migrations are pushed.
 - `manual/`: one-time data recomputations that intentionally persist changes
 - `diagnostics/`: read-only investigation queries
 - `baseline/`: ignored local schema dumps used during migration reconciliation
+- `docs/`: human-readable backend contract and architecture references
 
 ## Current backend shape
 
@@ -35,11 +36,23 @@ domain model:
 - The current frontend RPC contract is captured in
   `verify/frontend_rpc_contract_verify.sql`. Regenerate/check it with
   `node scripts/check-frontend-rpc-contract.mjs --write` or
-  `npm --prefix web run test:rpc-contract`.
+  `npm --prefix web run test:rpc-contract`. The human-readable RPC registry is
+  `docs/rpc-contracts.md`.
+- Direct frontend Data API access is captured in
+  `review/frontend_direct_data_access.generated.md` and
+  `verify/frontend_direct_relation_contract_verify.sql`. Regenerate/check it
+  with `node scripts/check-frontend-direct-data-access.mjs --write` or
+  `npm --prefix web run test:data-access-contract`. The human-readable direct
+  access registry is `docs/direct-data-access.md`.
 - Load-bearing internal RPC chains are captured in
   `verify/load_bearing_rpc_chain_verify.sql`.
 - The intentional client-executable `SECURITY DEFINER` grant surface is
   snapshotted in `verify/security_definer_client_surface_verify.sql`.
+- The first legacy deletion/consolidation candidate set is checked by
+  `verify/legacy_candidate_reachability_verify.sql`.
+- The first non-destructive legacy grant-hardening batch is
+  `migrations/20260821025851_legacy_candidate_rpc_grant_hardening.sql`, with
+  branch notes in `review/legacy_candidate_grant_hardening_2026-08-21.md`.
 - New active migrations are checked by `scripts/check-backend-repo-health.mjs`;
   it requires rollback/verify companions and blocks function-body mutation
   patches in migrations after the 2026-08-18 repair floor.
@@ -52,7 +65,15 @@ preconditions, postconditions, explicit grants, and a companion rollback/verify
 file. Avoid mutation-style function patches unless there is no safer option.
 
 The baseline capture helper is `scripts/capture-supabase-schema-baseline.sh`.
+When a full dump is blocked by missing local tools or database URL, use
+`diagnostics/schema_catalog_baseline.sql` and record a fallback catalog snapshot
+under `review/`.
+The current local schema dump capture is recorded in
+`review/schema_baseline_capture_2026-08-21.md`.
 See `docs/backend-organization-roadmap.md` for the cleanup order.
+Deletion/consolidation candidates are tracked in
+`review/deletion_candidates_2026-08-20.md`; do not drop from those lists without
+the proof gates in that document.
 
 ## Applying a change
 

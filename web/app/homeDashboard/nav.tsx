@@ -9,6 +9,72 @@ import { DASHBOARD_SUBJECTS } from "../homeConstants";
 import type { AssessmentSnapshot, DashboardTab } from "../homeTypes";
 
 // ---------------------------------------------------------------------------
+// The one dashboard subject control (Bible Assessment / Church History /
+// Biblical Languages).
+//
+// This used to exist twice: this dropdown in the dashboard header, and a
+// separate three-tile .dashboard-tabs grid on the pre-baseline landing. They
+// disagreed on the first subject's name ("Bible Assessment" vs "BLI") and both
+// rendered at once whenever a learner without a completed assessment selected a
+// non-BLI subject. One component, driven by DASHBOARD_SUBJECTS, keeps the two
+// entry points identical and the labels in one place.
+// ---------------------------------------------------------------------------
+
+export function SubjectSwitcher({
+  activeDashboardTab,
+  setActiveDashboardTab,
+  subjectMenuOpen,
+  setSubjectMenuOpen,
+  subjectMenuRef,
+}: {
+  activeDashboardTab: DashboardTab;
+  setActiveDashboardTab: Dispatch<SetStateAction<DashboardTab>>;
+  subjectMenuOpen: boolean;
+  setSubjectMenuOpen: Dispatch<SetStateAction<boolean>>;
+  subjectMenuRef: RefObject<HTMLDivElement | null>;
+}) {
+  const active = DASHBOARD_SUBJECTS.find(s => s.id === activeDashboardTab);
+  return (
+    <div className="subject-switcher" ref={subjectMenuRef}>
+      <button
+        type="button"
+        className="subject-trigger"
+        onClick={() => setSubjectMenuOpen(open => !open)}
+        aria-haspopup="menu"
+        aria-expanded={subjectMenuOpen}
+      >
+        <span className="subject-trigger-dot" style={{ background: active?.color }} aria-hidden="true" />
+        {active?.label}
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {subjectMenuOpen && (
+        <div className="learn-more-menu subject-menu" role="menu" aria-label="Dashboard subject">
+          {DASHBOARD_SUBJECTS.map(subject => (
+            <button
+              type="button"
+              key={subject.id}
+              role="menuitemradio"
+              aria-checked={activeDashboardTab === subject.id}
+              className={`learn-more-item subject-menu-item ${activeDashboardTab === subject.id ? "is-active" : ""}`}
+              onClick={() => { setActiveDashboardTab(subject.id); setSubjectMenuOpen(false); }}
+              style={{ "--planet-color": subject.color } as CSSProperties}
+            >
+              <span className="learn-more-planet" aria-hidden="true" />
+              <span className="learn-more-item-copy">
+                <span className="learn-more-item-title">{subject.label}</span>
+                <span>{subject.subtitle}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 export function HomeNavBar({
   userEmail,
@@ -195,46 +261,13 @@ export function DashboardHeader({
             <div>
               <div className="page-title-row">
                 <h1 className="page-title">Your Learning Dashboard</h1>
-                <div className="subject-switcher" ref={subjectMenuRef}>
-                  <button
-                    type="button"
-                    className="subject-trigger"
-                    onClick={() => setSubjectMenuOpen(open => !open)}
-                    aria-haspopup="menu"
-                    aria-expanded={subjectMenuOpen}
-                  >
-                    <span
-                      className="subject-trigger-dot"
-                      style={{ background: DASHBOARD_SUBJECTS.find(s => s.id === activeDashboardTab)?.color }}
-                      aria-hidden="true"
-                    />
-                    {DASHBOARD_SUBJECTS.find(s => s.id === activeDashboardTab)?.label}
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
-                  {subjectMenuOpen && (
-                    <div className="learn-more-menu subject-menu" role="menu" aria-label="Dashboard subject">
-                      {DASHBOARD_SUBJECTS.map(subject => (
-                        <button
-                          type="button"
-                          key={subject.id}
-                          role="menuitemradio"
-                          aria-checked={activeDashboardTab === subject.id}
-                          className={`learn-more-item subject-menu-item ${activeDashboardTab === subject.id ? "is-active" : ""}`}
-                          onClick={() => { setActiveDashboardTab(subject.id); setSubjectMenuOpen(false); }}
-                          style={{ "--planet-color": subject.color } as CSSProperties}
-                        >
-                          <span className="learn-more-planet" aria-hidden="true" />
-                          <span className="learn-more-item-copy">
-                            <span className="learn-more-item-title">{subject.label}</span>
-                            <span>{subject.id === "bli" ? subject.subtitle : "Coming soon"}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <SubjectSwitcher
+                  activeDashboardTab={activeDashboardTab}
+                  setActiveDashboardTab={setActiveDashboardTab}
+                  subjectMenuOpen={subjectMenuOpen}
+                  setSubjectMenuOpen={setSubjectMenuOpen}
+                  subjectMenuRef={subjectMenuRef}
+                />
               </div>
               <p className="page-meta">
                 {activeDashboardTab === "bli" && (!dashboardHydrated
@@ -302,44 +335,27 @@ export function DashboardHeader({
 export function DashboardTabsBar({
   activeDashboardTab,
   setActiveDashboardTab,
+  subjectMenuOpen,
+  setSubjectMenuOpen,
+  subjectMenuRef,
 }: {
   activeDashboardTab: DashboardTab;
   setActiveDashboardTab: Dispatch<SetStateAction<DashboardTab>>;
+  subjectMenuOpen: boolean;
+  setSubjectMenuOpen: Dispatch<SetStateAction<boolean>>;
+  subjectMenuRef: RefObject<HTMLDivElement | null>;
 }) {
-  return (<>
-          <div className="dashboard-tabs" role="tablist" aria-label="Dashboard views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeDashboardTab === "bli"}
-              className={`dashboard-tab ${activeDashboardTab === "bli" ? "is-active" : ""}`}
-              onClick={() => setActiveDashboardTab("bli")}
-            >
-              <strong>BLI</strong>
-              <span>OT, NT, and combined literacy</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeDashboardTab === "church-history"}
-              className={`dashboard-tab ${activeDashboardTab === "church-history" ? "is-active" : ""}`}
-              onClick={() => setActiveDashboardTab("church-history")}
-            >
-              <strong>Church History</strong>
-              <span>Coming soon</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeDashboardTab === "biblical-languages"}
-              className={`dashboard-tab ${activeDashboardTab === "biblical-languages" ? "is-active" : ""}`}
-              onClick={() => setActiveDashboardTab("biblical-languages")}
-            >
-              <strong>Biblical Languages</strong>
-              <span>Coming soon</span>
-            </button>
-          </div>
-  </>);
+  return (
+    <div className="dashboard-subject-row">
+      <SubjectSwitcher
+        activeDashboardTab={activeDashboardTab}
+        setActiveDashboardTab={setActiveDashboardTab}
+        subjectMenuOpen={subjectMenuOpen}
+        setSubjectMenuOpen={setSubjectMenuOpen}
+        subjectMenuRef={subjectMenuRef}
+      />
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

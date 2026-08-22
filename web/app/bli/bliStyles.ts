@@ -296,5 +296,17 @@ export const BLI_PAGE_STYLES = `
           .route-lane::before { display: none; }
           .level-row { grid-template-columns: 1fr; gap: 4px; }
           .cta-row { flex-direction: column; }
+          /* The probe slider sat in a 26px band — fine with a mouse, fiddly with
+             a thumb. Widen the grab area and grow the handle, keeping the track
+             visually where it was via the compensating negative margin. */
+          .probe-input { height: 44px; margin-top: -28px; }
+          .probe-input::-webkit-slider-thumb { width: 26px; height: 26px; }
+          .probe-input::-moz-range-thumb { width: 26px; height: 26px; }
+          /* Sub-12px labels read fine on a monitor and not on a phone. */
+          .probe-scale { font-size: 11.5px; }
+          .illustrative-tag { font-size: 11.5px; }
+          .route-label { font-size: 12px; }
+          .mechanic-var { font-size: 12px; }
+          .mechanic-range-inline { font-size: 12px; }
         }
 `;

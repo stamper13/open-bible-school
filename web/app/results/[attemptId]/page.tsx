@@ -5,6 +5,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import { supabase } from "@/lib/supabase/client";
+import {
+  ATTEMPT_HISTORY_LIMIT,
+  deriveAttemptScoreState,
+  formatAttemptScore,
+  type AttemptScoreState,
+  type ProgressHistoryRow,
+} from "@/lib/attemptScore";
 import { RESULTS_PAGE_STYLES } from "./resultsStyles";
 
 type Testament = "OT" | "NT";
@@ -60,6 +67,8 @@ type AttemptReviewRow = {
   source_ref: string | null;
   explanation: string | null;
 };
+
+const UNKNOWN_SCORE_STATE: AttemptScoreState = { mode: "unknown", change: null };
 
 const FILTERS: Array<{ key: ReviewFilter; label: string }> = [
   { key: "all", label: "All" },
@@ -148,6 +157,9 @@ export default function AttemptResultsPage() {
   // go back, or simply try again.
   const [errorKind, setErrorKind] = useState<"auth" | "notfound" | "failed" | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  // BLI movement for this session. See lib/attemptScore.ts for why a baseline
+  // cannot be recognised from score_change alone.
+  const [scoreState, setScoreState] = useState<AttemptScoreState>(UNKNOWN_SCORE_STATE);
 
   // Standard site starfield: gradient + a soft teal nebula glow, both painted
   // into the canvas itself (matching /bli, /about, /credential, /assess) —
@@ -207,6 +219,9 @@ export default function AttemptResultsPage() {
 
   useEffect(() => {
     if (!attemptId) return;
+    // Narrowed once here; the async body below is a closure, so TypeScript
+    // cannot carry the guard above into it.
+    const currentAttemptId = attemptId;
     let cancelled = false;
 
     async function loadResults() {
@@ -252,8 +267,27 @@ export default function AttemptResultsPage() {
         return;
       }
 
-      setSummary(summaryData as AttemptSummary);
+      const loadedSummary = summaryData as AttemptSummary;
+      setSummary(loadedSummary);
       setReviewRows((reviewData ?? []) as AttemptReviewRow[]);
+
+      // The BLI delta needs the testament, so it can only be asked for once the
+      // summary is back. Deliberately non-fatal: the rest of the page is already
+      // usable, so a history failure falls back to showing the absolute BLI
+      // rather than replacing working results with an error.
+      setScoreState(UNKNOWN_SCORE_STATE);
+      const { data: historyData, error: historyError } = await supabase.rpc("obs_get_progress_history", {
+        p_user_id: userId,
+        p_testament: loadedSummary.testament,
+        p_limit: ATTEMPT_HISTORY_LIMIT,
+      });
+      if (cancelled) return;
+      if (historyError) {
+        console.error("Progress history load failed on results page:", historyError);
+      } else {
+        setScoreState(deriveAttemptScoreState((historyData ?? []) as ProgressHistoryRow[], currentAttemptId));
+      }
+
       setLoading(false);
     }
 
@@ -290,7 +324,13 @@ export default function AttemptResultsPage() {
     ? null
     : `${Math.round(Math.max(0, Math.min(100, sessionAccuracy)))}%`;
   const pageError = attemptId ? error : "This results link is incomplete.";
-  const scoreLabel = "Session accuracy";
+
+  const score = formatAttemptScore({
+    state: scoreState,
+    displayBli: summary?.snapshot?.display_bli ?? null,
+    bliLevel: summary?.snapshot?.bli_level ?? null,
+    accuracyDisplay: sessionAccuracyDisplay,
+  });
   // NOTE: despite the name, obs_get_attempt_summary's `completed_at` is
   // max(answered_at) — the time of the most recent answer, not a real
   // "attempt finished" flag. It's non-null after the very first question, so
@@ -354,10 +394,11 @@ export default function AttemptResultsPage() {
             <section className={`results-summary ${isComplete ? "" : "is-in-progress"}`} aria-label="Assessment summary">
               {isComplete && (
                 <div className="score-signal">
-                  <div className="score-value">
-                    {sessionAccuracyDisplay ?? "--"}
+                  <div className={`score-value${score.trendClass}`} aria-label={score.aria}>
+                    {score.value ?? "--"}
                   </div>
-                  <div className="score-label">{scoreLabel}</div>
+                  <div className="score-label">{score.label}</div>
+                  {score.context && <div className="score-context">{score.context}</div>}
                 </div>
               )}
               <div className="summary-body">
