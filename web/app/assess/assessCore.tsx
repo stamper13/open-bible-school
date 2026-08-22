@@ -83,7 +83,9 @@ export function AssessNavBar({
             </button>
           ))}
           {attemptId && answeredCount > 0 && (
-            <Link className="nav-exit" href={`/results/${attemptId}`}>Review session</Link>
+            <Link className="nav-exit" href={`/results/${attemptId}`}>
+              Review<span className="nav-exit-tail"> session</span>
+            </Link>
           )}
           <Link className="nav-exit" href="/">Exit</Link>
         </div>
