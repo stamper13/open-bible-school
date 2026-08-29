@@ -256,7 +256,7 @@ export function CoverageMapSection({
                           scopeType: "UNIT",
                           scopeKey: backendRecommendation.unit_key,
                           unitKey: backendRecommendation.unit_key,
-                          label: backendRecommendation.label,
+                          label: recommendedStudy.label,
                           subtitle: `${backendRecommendation.section} · ${BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code}`,
                         });
                       }}

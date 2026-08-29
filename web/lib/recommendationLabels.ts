@@ -7,13 +7,20 @@ export type RecommendationPassageParts = {
   label: string;
 };
 
+export function sanitizePassageReference(reference: string): string {
+  return reference
+    .replace(/:999\b/g, "")
+    .replace(/\b(\d+):1-(\d+)(?![\d:])/g, "$1-$2");
+}
+
 export function recommendationPassageLabel(recommendation: RecommendationPassageParts): string {
-  if (!recommendation.label.includes(":999")) return recommendation.label;
+  const sanitized = sanitizePassageReference(recommendation.label);
+  if (!recommendation.label.includes(":999")) return sanitized;
   const bookName = BOOK_NAMES[recommendation.book_code] ?? recommendation.book_code;
   const startChapter = Number(recommendation.start_chapter);
   const endChapter = Number(recommendation.end_chapter);
   if (!bookName || !Number.isFinite(startChapter)) {
-    return recommendation.label.replace(/:999\b/g, "");
+    return sanitized;
   }
   const chapterRange = Number.isFinite(endChapter) && endChapter !== startChapter
     ? `${startChapter}-${endChapter}`

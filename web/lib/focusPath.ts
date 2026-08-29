@@ -1,4 +1,5 @@
 import { BIBLE_BOOKS, BOOK_CHAPTER_COUNT, BOOK_NAMES, type Testament } from "@/lib/bibleTaxonomy";
+import { sanitizePassageReference } from "@/lib/recommendationLabels";
 import { supabase } from "@/lib/supabase/client";
 
 /**
@@ -253,14 +254,14 @@ export function focusModeCopy(mode: FocusMode): string {
 /** "Genesis 20:1-22:24" — falls back to the chapter/verse fields when the
  *  backend has no stored reference string for a unit-derived leaf. */
 export function passageReference(row: FocusPathRow): string {
-  if (row.reference) return row.reference;
+  if (row.reference) return sanitizePassageReference(row.reference);
   const bookName = row.book_code ? BOOK_NAMES[row.book_code] ?? row.book_code : "";
   if (!bookName) return row.label;
   if (row.start_ch === null) return bookName;
   const start = row.start_vs === null ? `${row.start_ch}` : `${row.start_ch}:${row.start_vs}`;
   if (row.end_ch === null) return `${bookName} ${start}`;
-  const end = row.end_vs === null ? `${row.end_ch}` : `${row.end_ch}:${row.end_vs}`;
-  return `${bookName} ${start}-${end}`;
+  const end = row.end_vs === null || row.end_vs === 999 ? `${row.end_ch}` : `${row.end_ch}:${row.end_vs}`;
+  return sanitizePassageReference(`${bookName} ${start}-${end}`);
 }
 
 /** Short form for tight spaces: "Genesis 20-22". */
