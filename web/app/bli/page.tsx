@@ -375,14 +375,14 @@ export default function BliPage() {
                 <tbody>
                   {BLI_LEVELS.map(band => (
                     <tr key={band.name}>
-                      <td>
+                      <td data-label="Band">
                         <span className="oba-doc-band">
                           <i style={{ background: band.color }} />
                           {band.name}
                         </span>
                       </td>
-                      <td><span className="oba-doc-range">{band.min}&ndash;{band.max}</span></td>
-                      <td>{band.description}</td>
+                      <td data-label="Range"><span className="oba-doc-range">{band.min}&ndash;{band.max}</span></td>
+                      <td data-label="Meaning">{band.description}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -485,9 +485,9 @@ export default function BliPage() {
                 <tbody>
                   {CONFIDENCE_STEPS.map(step => (
                     <tr key={step.label}>
-                      <td><span className="oba-doc-band">{step.label}</span></td>
-                      <td><span className="oba-doc-range">{step.range}</span></td>
-                      <td>{step.copy}</td>
+                      <td data-label="Confidence"><span className="oba-doc-band">{step.label}</span></td>
+                      <td data-label="Evidence"><span className="oba-doc-range">{step.range}</span></td>
+                      <td data-label="Meaning">{step.copy}</td>
                     </tr>
                   ))}
                 </tbody>

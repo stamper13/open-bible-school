@@ -617,6 +617,71 @@ body {
 .oba-doc-code em { color: #6fe0e0; font-style: normal; }
 .oba-doc-code .oba-doc-code-gap { display: block; height: 10px; }
 
+@media (max-width: 640px) {
+  .oba-doc-table-wrap {
+    overflow-x: visible;
+  }
+
+  .oba-doc-table {
+    min-width: 0;
+    display: block;
+    font-size: 13.5px;
+  }
+
+  .oba-doc-table thead {
+    display: none;
+  }
+
+  .oba-doc-table tbody,
+  .oba-doc-table tr,
+  .oba-doc-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .oba-doc-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .oba-doc-table tr {
+    padding: 14px 14px 13px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    background: rgba(4, 8, 20, 0.38);
+  }
+
+  .oba-doc-table td {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+    padding: 0;
+    border-bottom: none;
+  }
+
+  .oba-doc-table td + td {
+    margin-top: 9px;
+  }
+
+  .oba-doc-table td::before {
+    content: attr(data-label);
+    color: rgba(255, 255, 255, 0.44);
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .oba-doc-table td[data-label="Meaning"] {
+    align-items: start;
+  }
+
+  .oba-doc-table td[data-label="Meaning"]::before {
+    padding-top: 2px;
+  }
+}
+
 .oba-doc-dl { margin-top: 16px; display: grid; gap: 14px; }
 
 .oba-doc-dl dt {
