@@ -37,6 +37,7 @@ begin
       ('public.obs_get_bli_uncertainty(uuid,text)', 'authenticated'),
       ('public.obs_get_current_focus_path(uuid)', 'authenticated'),
       ('public.obs_get_ladder_state_v1(uuid)', 'authenticated'),
+      ('public.obs_mark_unit_reread(uuid,text,text)', 'authenticated'),
       ('public.obs_get_next_focused_question_v2(uuid,uuid,text,text,integer,integer,text)', 'authenticated'),
       ('public.obs_get_next_nt_assessment_question(uuid)', 'authenticated'),
       ('public.obs_get_next_ot_assessment_question(uuid)', 'authenticated'),
@@ -63,6 +64,7 @@ begin
       ('public.obs_submit_nt_assessment_answer(uuid,uuid,text)', 'authenticated'),
       ('public.obs_submit_ot_assessment_answer(uuid,uuid,text)', 'authenticated'),
       ('public.obs_submit_ot_assessment_response_v2(uuid,uuid,text,text,jsonb)', 'authenticated'),
+      ('public.obs_submit_question_quality_rating(uuid,uuid,smallint,text,text,text,text)', 'authenticated'),
       ('public.obs_submit_section_sort_answers(uuid,uuid,jsonb)', 'authenticated')
   ), actual(signature, role_name) as (
     select

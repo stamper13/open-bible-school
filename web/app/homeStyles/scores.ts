@@ -356,7 +356,7 @@ export const HOME_SCORE_STYLES = `        /* ===================================
         .level-desc-empty strong { color: #fff; }
         /* Verse of the day fills the same middle column once a score
            exists — see lib/verseOfTheDay.ts for the (deterministic,
-           public-domain KJV) rotation. */
+           public-domain Berean Standard Bible) rotation. */
         .verse-of-day {
           margin: 0; max-width: 380px; align-self: center; text-align: center;
         }
@@ -386,7 +386,7 @@ export const HOME_SCORE_STYLES = `        /* ===================================
         .verse-of-day-ref::before { content: "— "; }
         /* Same slot as the verse of the day, swapped in for a brand-new
            signed-out result — deliberately just the two lines, no card,
-           no graphic. See .save-results-card below for the fuller version
+           no graphic. This is now the only save prompt on the dashboard
            of this same prompt shown elsewhere on the page. */
         .save-progress-mini {
           display: flex; flex-direction: column; align-items: center; gap: 12px;

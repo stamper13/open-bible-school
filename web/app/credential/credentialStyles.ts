@@ -182,14 +182,22 @@ export const CREDENTIAL_PAGE_STYLES = `
         .carousel-btn:disabled { opacity: .3; cursor: not-allowed; }
         .carousel-btn:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 3px; }
 
-        .carousel-dots { display: flex; align-items: center; gap: 10px; }
+        .carousel-dots { display: flex; align-items: center; gap: 4px; }
         .carousel-dot {
-          width: 10px; height: 10px; border-radius: 50%; padding: 0;
-          background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.24);
+          position: relative; width: 32px; height: 32px; border-radius: 999px; padding: 0;
+          background: transparent; border: 0;
           cursor: pointer; transition: background .15s, transform .15s, width .2s;
         }
-        .carousel-dot:hover { background: rgba(255,255,255,.35); }
-        .carousel-dot.is-active { background: var(--dot-accent, #fff); width: 26px; border-radius: 999px; border-color: transparent; }
+        .carousel-dot::before {
+          content: ""; position: absolute; left: 50%; top: 50%;
+          width: 10px; height: 10px; border-radius: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.24);
+          transition: background .15s, border-color .15s, width .2s, border-radius .2s;
+        }
+        .carousel-dot:hover::before { background: rgba(255,255,255,.35); }
+        .carousel-dot.is-active { width: 40px; }
+        .carousel-dot.is-active::before { background: var(--dot-accent, #fff); width: 26px; border-radius: 999px; border-color: transparent; }
         .carousel-dot:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 3px; }
 
         .sr-only {
@@ -292,21 +300,7 @@ export const CREDENTIAL_PAGE_STYLES = `
           .module-desc { max-width: 100%; }
           .contact-strip { padding: 26px 22px; flex-direction: column; align-items: flex-start; }
           .motif-glyphs .glyph { opacity: .12; }
-          /* The pager dots are 10px circles — right visually, far too small to
-             tap. Extend the hit area with a pseudo-element so the dot keeps its
-             size, and widen the gap so neighbouring targets stay 30px apart and
-             cannot overlap into each other's taps. */
-          .carousel-dots { gap: 20px; }
-          .carousel-dot { position: relative; }
-          .carousel-dot::after {
-            content: "";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 30px;
-            height: 44px;
-          }
+          .carousel-dots { gap: 2px; }
           .carousel-btn { width: 44px; height: 44px; }
         }
 
@@ -316,5 +310,38 @@ export const CREDENTIAL_PAGE_STYLES = `
             animation-iteration-count: 1 !important;
             transition-duration: 0.001ms !important;
           }
+        }
+
+        /* Prose sections carried over from the retired /about page. The
+           .section-label / .section-heading / .section-body classes they use
+           are the shared editorial chrome in app/globals.css. */
+        .cred-section { margin-top: 66px; }
+        .use-cases {
+          display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px; margin-top: 22px;
+        }
+        .use-case {
+          padding: 20px; border-radius: 16px;
+          border: 1px solid rgba(255,255,255,.13);
+          background: rgba(255,255,255,.045);
+        }
+        .use-case-n {
+          display: block; font-family: var(--mono, ui-monospace), monospace;
+          font-size: 11px; font-weight: 800; letter-spacing: .1em;
+          color: #6fe0e0; margin-bottom: 12px;
+        }
+        .use-case-title {
+          font-family: var(--font-crimson), Georgia, serif;
+          font-size: 19px; font-weight: 650; line-height: 1.25;
+          color: #fff; margin-bottom: 9px;
+        }
+        .use-case-copy { font-size: 13.5px; line-height: 1.65; color: rgba(255,255,255,.66); }
+        .cred-note {
+          margin-top: 20px; font-size: 13px; line-height: 1.7;
+          color: rgba(255,255,255,.5);
+        }
+        @media (max-width: 760px) {
+          .use-cases { grid-template-columns: minmax(0, 1fr); }
+          .cred-section { margin-top: 48px; }
         }
 `;

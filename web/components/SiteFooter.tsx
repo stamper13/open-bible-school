@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
+import ContactEmail from "@/components/ContactEmail";
 
 export default function SiteFooter() {
   return (
@@ -14,8 +15,8 @@ export default function SiteFooter() {
           </p>
         </div>
         <nav className="oba-site-footer-links" aria-label="Footer">
-          <a href="mailto:adstamper35@gmail.com?subject=Open%20Bible%20Assessment%20feedback">Contact</a>
-          <Link href="/about">About</Link>
+          <ContactEmail subject="Open Bible Assessment feedback" label="Contact" />
+          <Link href="/philosophy">About</Link>
           <Link href="/bli">How BLI works</Link>
         </nav>
       </div>

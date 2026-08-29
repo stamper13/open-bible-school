@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { IDK_CHOICE_ID } from "./constants";
-import type { Question, ReportCategory } from "./types";
+import type { Question, QuestionQualityRating, ReportCategory } from "./types";
 
 type SubmitQuestionReportArgs = {
   attemptId: string | null;
@@ -13,14 +13,16 @@ type SubmitQuestionReportArgs = {
 
 export function useQuestionReport() {
   const [showReportModal, setShowReportModal] = useState(false);
-  const [reportCategory, setReportCategory] = useState<ReportCategory>("wrong_answer");
+  const [qualityRating, setQualityRating] = useState<QuestionQualityRating | null>(null);
+  const [reportCategory, setReportCategory] = useState<ReportCategory | null>(null);
   const [reportText, setReportText] = useState("");
   const [reportStatus, setReportStatus] = useState<"idle" | "sent">("idle");
   const [reportError, setReportError] = useState("");
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
   const resetQuestionReport = useCallback(() => {
-    setReportCategory("wrong_answer");
+    setQualityRating(null);
+    setReportCategory(null);
     setReportText("");
     setReportStatus("idle");
     setReportError("");
@@ -41,6 +43,16 @@ export function useQuestionReport() {
   }: SubmitQuestionReportArgs) => {
     if (!question || !userId) return;
     const trimmedFeedback = reportText.trim();
+    const hasIssueReport = reportCategory !== null;
+    const hasQualityRating = qualityRating !== null;
+    if (!hasIssueReport && !hasQualityRating) {
+      setReportError("Choose a rating or flag an issue.");
+      return;
+    }
+    if (hasQualityRating && !attemptId) {
+      setReportError("This assessment session is still loading. Try again in a moment.");
+      return;
+    }
     if (reportCategory === "other" && !trimmedFeedback) {
       setReportError("Add a short note so we know what to review.");
       return;
@@ -52,30 +64,54 @@ export function useQuestionReport() {
       && (selectedChoice === IDK_CHOICE_ID || question.choices.some(choice => choice.id === selectedChoice))
       ? selectedChoice
       : null;
-    const { error } = await supabase
-      .from("question_reports")
-      .insert({
-        generated_question_id: question.out_generated_question_id,
-        attempt_id: attemptId,
-        user_id: userId,
-        report_category: reportCategory,
-        feedback_text: trimmedFeedback || null,
-        selected_choice_id: reportSelectedChoiceId,
-        correct_choice_id: correctChoiceId,
-        question_prompt: question.prompt,
+
+    if (hasQualityRating) {
+      const { error } = await supabase.rpc("obs_submit_question_quality_rating", {
+        p_attempt_id: attemptId,
+        p_generated_question_id: question.out_generated_question_id,
+        p_rating: qualityRating,
+        p_feedback_text: trimmedFeedback || null,
+        p_selected_choice_id: reportSelectedChoiceId,
+        p_correct_choice_id: correctChoiceId,
+        p_question_prompt: question.prompt,
       });
 
-    setIsSubmittingReport(false);
-    if (error) {
-      setReportError(error.message);
-      return;
+      if (error) {
+        setIsSubmittingReport(false);
+        setReportError(error.message);
+        return;
+      }
     }
+
+    if (hasIssueReport) {
+      const { error } = await supabase
+        .from("question_reports")
+        .insert({
+          generated_question_id: question.out_generated_question_id,
+          attempt_id: attemptId,
+          user_id: userId,
+          report_category: reportCategory,
+          feedback_text: trimmedFeedback || null,
+          selected_choice_id: reportSelectedChoiceId,
+          correct_choice_id: correctChoiceId,
+          question_prompt: question.prompt,
+        });
+
+      if (error) {
+        setIsSubmittingReport(false);
+        setReportError(error.message);
+        return;
+      }
+    }
+
+    setIsSubmittingReport(false);
     setReportStatus("sent");
-  }, [reportCategory, reportText]);
+  }, [qualityRating, reportCategory, reportText]);
 
   return {
     isSubmittingReport,
     openQuestionReport,
+    qualityRating,
     reportCategory,
     reportError,
     reportStatus,
@@ -84,6 +120,7 @@ export function useQuestionReport() {
     setReportCategory,
     setReportError,
     setReportText,
+    setQualityRating,
     setShowReportModal,
     showReportModal,
     submitQuestionReport,

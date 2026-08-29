@@ -13,7 +13,7 @@ historical or optional cleanup names. They are allowlisted here so new dynamic a
 
 | Relation | Caller(s) |
 |---|---|
-| `assessment_answers` | web/app/page.tsx:672 (select) |
+| `assessment_answers` | web/app/page.tsx:869 (select) |
 | `obs_admin_assessment_readiness` | web/app/api/admin/question-quality/route.ts:47 (select) |
 | `obs_admin_coverage_audit` | web/app/api/admin/question-quality/route.ts:56 (select)<br>web/app/api/admin/question-quality/route.ts:128 (select) |
 | `obs_admin_difficulty_audit` | web/app/api/admin/question-quality/route.ts:67 (select) |
@@ -22,9 +22,9 @@ historical or optional cleanup names. They are allowlisted here so new dynamic a
 | `obs_admin_question_bank_audit` | web/app/api/admin/question-quality/route.ts:51 (select) |
 | `obs_admin_question_bank_audit_summary` | web/app/api/admin/question-quality/route.ts:43 (select) |
 | `obs_admin_repetition_audit` | web/app/api/admin/question-quality/route.ts:62 (select) |
-| `obs_reading_log_entries` | web/lib/readingLog.ts:106 (select)<br>web/lib/readingLog.ts:135 (insert) |
+| `obs_reading_log_entries` | web/lib/readingLog.ts:143 (select)<br>web/lib/readingLog.ts:172 (insert) |
 | `obs_starfield_rewards` | web/app/assess/BlackHoleEvent.tsx:281 (insert)<br>web/components/StarfieldRewardsLayer.tsx:42 (select) |
-| `question_reports` | web/app/assess/useAssessmentAnswerFlow.ts:159 (insert)<br>web/app/assess/useQuestionReport.ts:56 (insert) |
+| `question_reports` | web/app/assess/useAssessmentAnswerFlow.ts:159 (insert)<br>web/app/assess/useQuestionReport.ts:88 (insert) |
 | `scripture_books` | web/app/assess/useNtBookMetadata.ts:23 (select) |
 
 ## Dynamic Relation Calls

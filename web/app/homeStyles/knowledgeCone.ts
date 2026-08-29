@@ -301,6 +301,26 @@ export const HOME_KNOWLEDGE_CONE_STYLES = `        /* ==========================
         .std-assess-toggle-btn svg { opacity: .6; transition: opacity .2s ease; }
         .std-assess-toggle-btn.is-active { color: #fff; }
         .std-assess-toggle-btn.is-active svg { opacity: .95; }
+        .std-assess-toggle-btn:disabled { cursor: default; opacity: .55; }
+        /* Not yet available, but still pressable so it can say so. */
+        .std-assess-toggle-btn.is-soon { opacity: .58; }
+        .std-assess-toggle-btn.is-soon:hover { opacity: .78; }
+        .std-nt-soon {
+          position: absolute; left: 50%; top: calc(100% + 9px);
+          transform: translateX(-25%);
+          white-space: nowrap; padding: 5px 12px; border-radius: 999px;
+          background: rgba(124,58,237,.18);
+          border: 1px solid rgba(167,139,250,.5);
+          color: #c4b5fd; font-size: 11.5px; font-weight: 800;
+          letter-spacing: .04em;
+          animation: ntSoonIn .18s ease-out both;
+          pointer-events: none;
+        }
+        @keyframes ntSoonIn {
+          from { opacity: 0; transform: translate(-25%, -4px); }
+          to { opacity: 1; transform: translate(-25%, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) { .std-nt-soon { animation: none; } }
         .std-assess-actions { display: flex; align-items: center; gap: 12px; }
         .std-assess-cta {
           position: relative; overflow: hidden;
@@ -311,6 +331,10 @@ export const HOME_KNOWLEDGE_CONE_STYLES = `        /* ==========================
           transition: filter .15s ease, transform .15s ease, background .3s ease;
         }
         .std-assess-cta:hover { filter: brightness(1.08); transform: translateY(-1px); }
+        .std-assess-cta.is-disabled {
+          cursor: default; opacity: .62; filter: none; transform: none;
+          box-shadow: none;
+        }
         /* A slow, occasional sheen sweep — reads as "this is the thing to
            click" without being an constant distraction. */
         .std-assess-cta::after {

@@ -38,7 +38,7 @@ export const ASSESS_OVERLAY_STYLES = `        /* ===============================
            ============================================================ */
         .center-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; }
         .big-num { font-family: var(--font-crimson), Georgia, serif; font-size: 72px; font-weight: 700; color: var(--navy); line-height: 1; }
-        .card-heading { font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; color: var(--navy); }
+        .card-heading { margin: 0; font-family: var(--font-crimson), Georgia, serif; font-size: 26px; font-weight: 600; color: var(--navy); }
         .card-sub { font-size: 15px; color: var(--muted); line-height: 1.6; max-width: 400px; }
         .btn-primary {
           display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px;

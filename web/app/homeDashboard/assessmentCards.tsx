@@ -1,7 +1,8 @@
 "use client";
 
-import { type CSSProperties, type Dispatch, type SetStateAction } from "react";
+import { useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
+import { NT_PILOT_ENABLED } from "../assess/constants";
 import type { DashboardTab } from "../homeTypes";
 
 // ---------------------------------------------------------------------------
@@ -15,6 +16,11 @@ export function FirstAssessmentCard({
   firstAssessmentChooserOpen: boolean;
   setFirstAssessmentChooserOpen: Dispatch<SetStateAction<boolean>>;
 }) {
+  // Local to this card: nothing outside it needs to know whether the
+  // "Learn more" chooser is open. It is kept mutually exclusive with the
+  // testament chooser below so the card never sprouts two panels at once.
+  const [learnMoreOpen, setLearnMoreOpen] = useState(false);
+
   return (<>
               <section className="first-assessment-card" aria-label="Start your first assessment">
                 <div className="first-assessment-orbit" aria-hidden="true">
@@ -24,35 +30,73 @@ export function FirstAssessmentCard({
                 </div>
                 <div className="first-assessment-content">
                   <p className="first-assessment-kicker">Start here</p>
-                  <h2>Take your first Bible assessment</h2>
+                  <h1>Take your first Bible assessment</h1>
                   <p>
-                    Answer a short adaptive set of questions. OBA will estimate your BLI, map likely strengths and gaps, and recommend one next place to study.
+                    Answer a short adaptive set. OBA estimates your BLI, maps strengths, and gives one next step.
                   </p>
                   <div className="first-assessment-actions">
                     {inProgressTestament ? (
-                      <Link
-                        className="first-assessment-primary"
-                        href={inProgressTestament === "OT" ? "/assess" : "/assess?testament=NT&scope=NT"}
-                      >
-                        Continue assessment
-                        <span aria-hidden="true">→</span>
-                      </Link>
+                      inProgressTestament === "NT" && !NT_PILOT_ENABLED ? (
+                        <button
+                          type="button"
+                          className="first-assessment-primary is-disabled"
+                          disabled
+                        >
+                          NT coming soon
+                        </button>
+                      ) : (
+                        <Link
+                          className="first-assessment-primary"
+                          href={inProgressTestament === "OT" ? "/assess" : "/assess?testament=NT&scope=NT"}
+                        >
+                          Continue assessment
+                          <span aria-hidden="true">→</span>
+                        </Link>
+                      )
                     ) : (
                       <button
                         type="button"
                         className="first-assessment-primary"
                         aria-expanded={firstAssessmentChooserOpen}
                         aria-controls="first-assessment-choice-panel"
-                        onClick={() => setFirstAssessmentChooserOpen(open => !open)}
+                        onClick={() => {
+                          setLearnMoreOpen(false);
+                          setFirstAssessmentChooserOpen(open => !open);
+                        }}
                       >
                         Take assessment
                         <span aria-hidden="true">→</span>
                       </button>
                     )}
-                    <Link className="first-assessment-secondary" href="/bli">
+                    <button
+                      type="button"
+                      className="first-assessment-secondary"
+                      aria-expanded={learnMoreOpen}
+                      aria-controls="first-assessment-learn-panel"
+                      onClick={() => {
+                        setFirstAssessmentChooserOpen(false);
+                        setLearnMoreOpen(open => !open);
+                      }}
+                    >
                       Learn more
-                    </Link>
+                    </button>
                   </div>
+                  {learnMoreOpen && (
+                    <div
+                      id="first-assessment-learn-panel"
+                      className="first-assessment-choice-panel"
+                      aria-label="Choose how to learn more"
+                    >
+                      <Link className="first-assessment-choice" href="/intro">
+                        <strong>OBA Intro Presentation</strong>
+                        <span>A guided tour of the canon — its sections, books, and passages.</span>
+                      </Link>
+                      <Link className="first-assessment-choice" href="/philosophy">
+                        <strong>About</strong>
+                        <span>The full write-up behind the project, start to finish.</span>
+                      </Link>
+                    </div>
+                  )}
                   {!inProgressTestament && firstAssessmentChooserOpen && (
                     <div
                       id="first-assessment-choice-panel"
@@ -63,10 +107,17 @@ export function FirstAssessmentCard({
                         <strong>Old Testament</strong>
                         <span>Genesis through Malachi, scored as its own 0-800 BLI.</span>
                       </Link>
-                      <Link className="first-assessment-choice" href="/assess?testament=NT&scope=NT">
-                        <strong>New Testament</strong>
-                        <span>Matthew through Revelation, scored separately from OT.</span>
-                      </Link>
+                      {NT_PILOT_ENABLED ? (
+                        <Link className="first-assessment-choice" href="/assess?testament=NT&scope=NT">
+                          <strong>New Testament</strong>
+                          <span>Matthew through Revelation, scored separately from OT.</span>
+                        </Link>
+                      ) : (
+                        <span className="first-assessment-choice is-disabled" aria-disabled="true">
+                          <strong>New Testament</strong>
+                          <span>Coming soon after the V7 router is ready for NT.</span>
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -84,7 +135,7 @@ export function FirstAssessmentCard({
                   <p className="oba-feature-kicker">Adaptive</p>
                   <h3 className="oba-feature-title">Follows where you&rsquo;re unsure</h3>
                   <p className="oba-feature-copy">
-                    OBA weights central passages more heavily and spends extra questions on your least-tested sections, so your score reflects real familiarity — not just how many questions you answered.
+                    Central passages count more, and least-tested sections get extra questions.
                   </p>
                 </article>
 
@@ -119,37 +170,53 @@ export function FirstAssessmentCard({
 }
 
 // ---------------------------------------------------------------------------
-// Prompt to sign in and save a just-taken, signed-out assessment result.
+// The save prompt. This is what a signed-out learner meets first after their
+// result lands on the dashboard; closing it does not throw the ask away, it
+// hands off to the save-progress slot in the score strip beside the BLI. See
+// the savePromptDismissed handling in app/page.tsx.
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-
-export function SaveResultsCard({
+export function SaveResultsModal({
   handleSignIn,
+  dismissSavePrompt,
 }: {
   handleSignIn: () => Promise<void>;
+  dismissSavePrompt: () => void;
 }) {
-  return (<>
-          <section className="save-results-card" aria-label="Save assessment results">
-            <div className="save-results-graphic" aria-hidden="true">
-              <span className="save-results-check" />
-            </div>
-            <div className="save-results-content">
-              <span className="save-results-kicker">Keep this result</span>
-              <h2 className="save-results-title">Save your progress across devices.</h2>
-              <p className="save-results-copy">
-                You just created a BLI snapshot in this browser. Sign in to keep it, sync it across devices, and return to your recommendation later.
-              </p>
-            </div>
-            <div className="save-results-actions">
-              <button className="save-results-btn" type="button" onClick={handleSignIn}>
-                Save results
-                <span aria-hidden="true">→</span>
-              </button>
-              <span className="save-results-note">Your existing answers transfer after sign-in.</span>
-            </div>
-          </section>
-  </>);
+  return (
+    <div className="save-modal-backdrop" role="presentation" onClick={dismissSavePrompt}>
+      <div className="save-modal" role="dialog" aria-modal="true" aria-labelledby="save-modal-title" onClick={event => event.stopPropagation()}>
+        <button
+          className="save-modal-close"
+          type="button"
+          onClick={dismissSavePrompt}
+          aria-label="Close - the save option stays on your dashboard"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+        <span className="save-modal-badge" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </span>
+        <h2 className="save-modal-title" id="save-modal-title">Save your result?</h2>
+        <p className="save-modal-copy">
+          Sign in to keep your score and reach it from any device.
+        </p>
+        <div className="save-modal-actions">
+          <button className="save-modal-secondary" type="button" onClick={dismissSavePrompt}>
+            Not now
+          </button>
+          <button className="save-modal-primary" type="button" onClick={handleSignIn}>
+            Save results
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -174,13 +241,13 @@ export function PlaceholderDashboard({
               </h2>
               <p className="placeholder-copy">
                 {activeDashboardTab === "church-history"
-                  ? "This space will eventually track progress through major eras, councils, figures, doctrines, movements, and the story of the global church. For now it is a holding place while the course content is being built."
-                  : "This space will eventually track progress in biblical Hebrew, Greek, vocabulary, grammar, parsing, and reading fluency. For now it is a holding place while the language pathway is being built."}
+                  ? "Progress through eras, councils, figures, doctrines, and global church history will live here."
+                  : "Hebrew, Greek, vocabulary, grammar, parsing, and reading fluency will live here."}
               </p>
               <div className="placeholder-list">
-                <span className="placeholder-pill">Progress metrics pending</span>
-                <span className="placeholder-pill">Recommendations pending</span>
-                <span className="placeholder-pill">Assessment engine pending</span>
+                <span className="placeholder-pill">Progress metrics</span>
+                <span className="placeholder-pill">Recommendations</span>
+                <span className="placeholder-pill">Assessments</span>
               </div>
             </div>
             <div className="placeholder-orbit" aria-hidden="true" />

@@ -126,12 +126,22 @@ export const HOME_CHROME_STYLES = `
           transition: background .14s ease;
           opacity: 0;
         }
-        /* Three slightly different arrival curves so the items read as
-           separate bodies swinging into place rather than one block sliding
-           in — the closest a transform-only animation gets to an orbit path. */
+        /* Slightly different arrival curves so the items read as separate
+           bodies swinging into place rather than one block sliding in — the
+           closest a transform-only animation gets to an orbit path.
+           There must be one rule per menu item: .learn-more-item starts at
+           opacity 0, so an item past the last :nth-child rule here would
+           never become visible. */
         .learn-more-item:nth-child(1) { animation: learnMoreItemIn1 .5s cubic-bezier(.22,.9,.32,1) .02s both; }
         .learn-more-item:nth-child(2) { animation: learnMoreItemIn2 .5s cubic-bezier(.22,.9,.32,1) .10s both; }
         .learn-more-item:nth-child(3) { animation: learnMoreItemIn3 .5s cubic-bezier(.22,.9,.32,1) .18s both; }
+        .learn-more-item:nth-child(4) { animation: learnMoreItemIn4 .5s cubic-bezier(.22,.9,.32,1) .26s both; }
+        .learn-more-item:nth-child(5) { animation: learnMoreItemIn2 .5s cubic-bezier(.22,.9,.32,1) .34s both; }
+        /* Catch-all. .learn-more-item starts at opacity 0 and is only revealed
+           by these arrival animations, so an item past the last hand-tuned rule
+           would render permanently invisible — a menu entry that silently is
+           not there. This makes adding one safe by default. */
+        .learn-more-item:nth-child(n+6) { animation: learnMoreItemIn1 .5s cubic-bezier(.22,.9,.32,1) .40s both; }
         @keyframes learnMoreItemIn1 {
           0% { opacity: 0; transform: translate(26px,-20px) scale(.5); }
           60% { opacity: 1; transform: translate(-4px,4px) scale(1.06); }
@@ -145,6 +155,11 @@ export const HOME_CHROME_STYLES = `
         @keyframes learnMoreItemIn3 {
           0% { opacity: 0; transform: translate(-6px,-22px) scale(.5); }
           60% { opacity: 1; transform: translate(3px,4px) scale(1.05); }
+          100% { opacity: 1; transform: translate(0,0) scale(1); }
+        }
+        @keyframes learnMoreItemIn4 {
+          0% { opacity: 0; transform: translate(-18px,-16px) scale(.5); }
+          60% { opacity: 1; transform: translate(5px,3px) scale(1.05); }
           100% { opacity: 1; transform: translate(0,0) scale(1); }
         }
         .learn-more-planet {
@@ -213,7 +228,7 @@ export const HOME_CHROME_STYLES = `
            the dropdown itself so it doesn't feel like a third pattern. */
         .subject-switcher { position: relative; }
         .subject-trigger {
-          display: inline-flex; align-items: center; gap: 7px;
+          display: inline-flex; align-items: center; gap: 7px; min-height: 32px;
           padding: 6px 12px 6px 10px; border-radius: 999px; margin-top: 2px;
           background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16);
           color: rgba(255,255,255,.85); font: inherit; font-size: 12.5px; font-weight: 750;

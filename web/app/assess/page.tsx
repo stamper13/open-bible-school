@@ -86,6 +86,7 @@ export default function AssessPage() {
   const {
     isSubmittingReport,
     openQuestionReport,
+    qualityRating,
     reportCategory,
     reportError,
     reportStatus,
@@ -94,6 +95,7 @@ export default function AssessPage() {
     setReportCategory,
     setReportError,
     setReportText,
+    setQualityRating,
     setShowReportModal,
     showReportModal,
     submitQuestionReport,
@@ -520,6 +522,8 @@ export default function AssessPage() {
           setShowReportModal={setShowReportModal}
           reportStatus={reportStatus}
           question={question}
+          qualityRating={qualityRating}
+          setQualityRating={setQualityRating}
           reportCategory={reportCategory}
           setReportCategory={setReportCategory}
           setReportError={setReportError}

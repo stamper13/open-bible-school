@@ -1,10 +1,11 @@
 "use client";
 
-import { type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useState, type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from "react";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { type Testament as BibleTestament } from "@/lib/bibleTaxonomy";
 import type { BliContractScores } from "@/lib/bliContract";
+import { NT_PILOT_ENABLED } from "../assess/constants";
 import { DASHBOARD_SUBJECTS } from "../homeConstants";
 import type { AssessmentSnapshot, DashboardTab } from "../homeTypes";
 
@@ -127,6 +128,19 @@ export function HomeNavBar({
                 <Link
                   className="learn-more-item"
                   role="menuitem"
+                  href="/intro"
+                  onClick={() => setLearnMoreOpen(false)}
+                  style={{ "--planet-color": "#4fd6d6" } as CSSProperties}
+                >
+                  <span className="learn-more-planet" aria-hidden="true" />
+                  <span className="learn-more-item-copy">
+                    <span className="learn-more-item-title">OBA Intro Presentation</span>
+                    <span>The project as a map of the canon</span>
+                  </span>
+                </Link>
+                <Link
+                  className="learn-more-item"
+                  role="menuitem"
                   href="/credential"
                   onClick={() => setLearnMoreOpen(false)}
                   style={{ "--planet-color": "#d4a017" } as CSSProperties}
@@ -140,14 +154,14 @@ export function HomeNavBar({
                 <Link
                   className="learn-more-item"
                   role="menuitem"
-                  href="/about"
+                  href="/philosophy"
                   onClick={() => setLearnMoreOpen(false)}
                   style={{ "--planet-color": "#0aa3a3" } as CSSProperties}
                 >
                   <span className="learn-more-planet" aria-hidden="true" />
                   <span className="learn-more-item-copy">
                     <span className="learn-more-item-title">About</span>
-                    <span>Purpose, limits, and philosophy</span>
+                    <span>The full write-up, start to finish</span>
                   </span>
                 </Link>
                 <Link
@@ -256,6 +270,12 @@ export function DashboardHeader({
   suiteTestament: BibleTestament;
   setSuiteTestament: Dispatch<SetStateAction<BibleTestament>>;
 }) {
+  // The New Testament suite is not open yet. The tab used to be `disabled`
+  // and labelled "NT soon", which meant a click did nothing at all and the
+  // "Coming soon" CTA beside it was unreachable — you could only reach that
+  // state by already being on NT, which the disabled tab prevented. The tab
+  // now says what it is and answers when pressed.
+  const [ntNotice, setNtNotice] = useState(false);
   return (<>
           <header className="page-header">
             <div>
@@ -275,8 +295,8 @@ export function DashboardHeader({
                   : testamentScores?.combined_questions_answered
                   ? `${testamentScores.combined_questions_answered} questions answered across OT and NT`
                   : visibleAssessmentData ? `${visibleAssessmentData.answered} questions answered` : "No assessment taken yet")}
-                {activeDashboardTab === "church-history" && "Church History dashboard coming soon"}
-                {activeDashboardTab === "biblical-languages" && "Biblical Languages dashboard coming soon"}
+                {activeDashboardTab === "church-history" && "Future course area"}
+                {activeDashboardTab === "biblical-languages" && "Future course area"}
               </p>
             </div>
             {activeDashboardTab === "bli" && dashboardHydrated && (() => {
@@ -285,6 +305,7 @@ export function DashboardHeader({
               // The toggle already picked the testament, so both routes go
               // straight to that assessment — no "which testament?" interstitial.
               const ctaHref = isOT ? "/assess" : "/assess?testament=NT&scope=NT";
+              const ntDisabled = !isOT && !NT_PILOT_ENABLED;
               return (
                 <div className="header-assess" style={{ "--suite-hue": isOT ? "#d4a017" : "#7c3aed" } as CSSProperties}>
                   <div className="std-assess-toggle" role="tablist" aria-label="Testament">
@@ -292,7 +313,7 @@ export function DashboardHeader({
                     <button
                       type="button" role="tab" aria-selected={isOT}
                       className={`std-assess-toggle-btn ${isOT ? "is-active" : ""}`}
-                      onClick={() => setSuiteTestament("OT")}
+                      onClick={() => { setNtNotice(false); setSuiteTestament("OT"); }}
                     >
                       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <rect x="3" y="4" width="7" height="16" rx="2"/>
@@ -302,8 +323,12 @@ export function DashboardHeader({
                     </button>
                     <button
                       type="button" role="tab" aria-selected={!isOT}
-                      className={`std-assess-toggle-btn ${!isOT ? "is-active" : ""}`}
-                      onClick={() => setSuiteTestament("NT")}
+                      aria-disabled={!NT_PILOT_ENABLED}
+                      className={`std-assess-toggle-btn ${!isOT ? "is-active" : ""}${NT_PILOT_ENABLED ? "" : " is-soon"}`}
+                      onClick={() => {
+                        if (!NT_PILOT_ENABLED) { setNtNotice(true); return; }
+                        setSuiteTestament("NT");
+                      }}
                     >
                       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <line x1="12" y1="3" x2="12" y2="21"/>
@@ -311,12 +336,19 @@ export function DashboardHeader({
                       </svg>
                       New Testament
                     </button>
+                    {ntNotice && !NT_PILOT_ENABLED && (
+                      <span className="std-nt-soon" role="status">Coming soon</span>
+                    )}
                   </div>
                   <div className="std-assess-actions">
-                    <Link className="std-assess-cta" href={ctaHref}>
-                      {hasData ? "Continue assessment" : "Start assessment"}
-                      <span aria-hidden="true">→</span>
-                    </Link>
+                    {ntDisabled ? (
+                      <span className="std-assess-cta is-disabled" aria-disabled="true">Coming soon</span>
+                    ) : (
+                      <Link className="std-assess-cta" href={ctaHref}>
+                        {hasData ? "Continue assessment" : "Start assessment"}
+                        <span aria-hidden="true">→</span>
+                      </Link>
+                    )}
                   </div>
                 </div>
               );

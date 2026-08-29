@@ -11,6 +11,10 @@ import { loadPublicQuestionMetadata } from "@/lib/supabase/questionMetadata";
 import { clearPendingTransfer } from "@/lib/auth/anonymousTransfer";
 import { BLI_LEVELS, toDisplayScore } from "@/lib/bli";
 import {
+  FOLLOWUP_ASSESSMENT_TARGET,
+  NT_PILOT_ENABLED,
+} from "./assess/constants";
+import {
   poolBliSections,
   testamentHeadlineAsSection,
   type BliContractScores,
@@ -183,10 +187,17 @@ export function detailTargetForScore(score: ScopeScore): ScopeDetailTarget {
 }
 
 export function assessmentHrefForScore(score: ScopeScore): string | null {
+  if (score.testament === "NT" && !NT_PILOT_ENABLED) return null;
+
   if (score.kind === "canon") {
+    const targetParam = score.answered > 0
+      ? `&target=${FOLLOWUP_ASSESSMENT_TARGET}`
+      : "";
     return score.testament === "NT"
-      ? "/assess?testament=NT&scope=NT"
-      : "/assess";
+      ? `/assess?testament=NT&scope=NT${targetParam}`
+      : score.answered > 0
+        ? `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}`
+        : "/assess";
   }
 
   if (score.testament === "NT") {
@@ -194,7 +205,7 @@ export function assessmentHrefForScore(score: ScopeScore): string | null {
     const params = new URLSearchParams({
       testament: "NT",
       scope: score.backendScopeKey,
-      target: score.kind === "book" ? "15" : "20",
+      target: String(FOLLOWUP_ASSESSMENT_TARGET),
     });
     return `/assess?${params.toString()}`;
   }
@@ -202,7 +213,7 @@ export function assessmentHrefForScore(score: ScopeScore): string | null {
   const params = new URLSearchParams({
     mode: "scope",
     label: score.label,
-    target: score.kind === "book" ? "15" : "20",
+    target: String(FOLLOWUP_ASSESSMENT_TARGET),
   });
 
   if (score.kind === "book") {
@@ -451,7 +462,7 @@ export function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessmen
       start: String(bookTarget.focus.start),
       end: String(bookTarget.focus.end),
       label: bookTarget.focus.range,
-      target: "15",
+      target: String(FOLLOWUP_ASSESSMENT_TARGET),
     });
     return {
       label: bookTarget.focus.range,
@@ -480,8 +491,7 @@ export function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessmen
     priority: score
       ? `${score.accuracy_pct}% accuracy · ${score.total} answers`
       : "Not enough answers yet",
-    actionHref: "/assess",
+    actionHref: `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}`,
     actionLabel: "Continue assessment",
   };
 }
-

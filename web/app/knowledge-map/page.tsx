@@ -10,10 +10,15 @@ import {
   focusNodeDomId,
   loadExploreTree,
   loadFocusPath,
+  type ExploreBook,
+  type ExploreSection,
   type ExploreTree,
+  type ExploreUnit,
   type FocusPath,
+  type FocusPathRow,
 } from "@/lib/focusPath";
 import { supabase } from "@/lib/supabase/client";
+import { SECTION_INTERPRETATION_FLOOR } from "@/lib/bliEvidence";
 import FocusStarMap from "./FocusStarMap";
 import FocusTransition from "./FocusTransition";
 import MapOverview from "./MapOverview";
@@ -32,8 +37,47 @@ import { KNOWLEDGE_MAP_PAGE_STYLES } from "./knowledgeMapPageStyles";
  */
 
 const FOCUS_MEMORY_KEY = "obs_km_focus";
+const OT_RECOMMENDATION_SECTION_LABELS = ["Torah", "Former Prophets", "Latter Prophets", "Writings"] as const;
 
 type FocusMemory = { l1: string; l2: string; l3: string };
+type BliScoresPayload = {
+  ot_section_scores?: Record<string, { answered?: number | null } | undefined> | null;
+};
+
+function hasOtRecommendationEvidence(payload: unknown) {
+  const scores = (payload as BliScoresPayload | null)?.ot_section_scores;
+  return OT_RECOMMENDATION_SECTION_LABELS.every(label => (
+    Number(scores?.[label]?.answered ?? 0) >= SECTION_INTERPRETATION_FLOOR
+  ));
+}
+
+function clearPathRecommendation(path: FocusPath): FocusPath {
+  if (path.isEmpty) return path;
+  const clearRows = (rows: FocusPathRow[]) => rows.map(row => ({ ...row, is_focus: false }));
+  return {
+    ...path,
+    sections: clearRows(path.sections),
+    books: clearRows(path.books),
+    leaves: clearRows(path.leaves),
+    focusSection: null,
+    focusBook: null,
+    focusLeaf: null,
+  };
+}
+
+function clearTreeRecommendation(tree: ExploreTree): ExploreTree {
+  return {
+    sections: tree.sections.map((section): ExploreSection => ({
+      ...section,
+      isFocus: false,
+      books: section.books.map((book): ExploreBook => ({
+        ...book,
+        isFocus: false,
+        units: book.units.map((unit): ExploreUnit => ({ ...unit, isFocus: false })),
+      })),
+    })),
+  };
+}
 
 function readFocusMemory(userId: string): FocusMemory | null {
   try {
@@ -72,6 +116,10 @@ export default function KnowledgeMapPage() {
   const [ntComingSoon, setNtComingSoon] = useState(false);
   const [motionPaused, setMotionPaused] = useState(false);
   const [focusFullView, setFocusFullView] = useState(false);
+  // First load only: someone with nothing assessed yet has no recommendation
+  // for Study view to centre on, so the atlas is the better first look. Guarded
+  // by a ref so it never overrides a view the reader picked themselves.
+  const viewDefaultedRef = useRef(false);
 
   const openMapView = (view: "focus" | "overview") => {
     setMapView(view);
@@ -80,7 +128,7 @@ export default function KnowledgeMapPage() {
     });
   };
   const hasMapStructure = tree.sections.length > 0;
-  const hasRecommendation = !path.isEmpty;
+  const hasRecommendation = Boolean(path.focusLeaf);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,14 +139,30 @@ export default function KnowledgeMapPage() {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const id = sessionData.session?.user?.id ?? null;
-        const [nextPath, nextTree] = await Promise.all([
+        const [nextPath, nextTree, scoresResult] = await Promise.all([
           loadFocusPath(id),
-          loadExploreTree(id),
+          // includeBlankFallback: without a signed-in user this returns the
+          // blank canon ladder rather than nothing, so a new learner opening
+          // the map from the dashboard sees the territory - every section,
+          // book and chapter section, all still unassessed - instead of a
+          // dead end telling them to go away and come back.
+          loadExploreTree(id, "OT", true),
+          id
+            ? supabase.rpc("obs_get_bli_scores_v2", { p_user_id: id })
+            : Promise.resolve({ data: null, error: null }),
         ]);
         if (cancelled) return;
+        if (scoresResult.error) {
+          console.warn("Recommendation evidence check failed:", scoresResult.error);
+        }
+        const recommendationReady = hasOtRecommendationEvidence((scoresResult.data ?? [])[0]);
         setUserId(id);
-        setPath(nextPath);
-        setTree(nextTree);
+        setPath(recommendationReady ? nextPath : clearPathRecommendation(nextPath));
+        setTree(recommendationReady ? nextTree : clearTreeRecommendation(nextTree));
+        if (!viewDefaultedRef.current) {
+          viewDefaultedRef.current = true;
+          if (nextPath.isEmpty) setMapView("overview");
+        }
         setLoading(false);
       } catch (error) {
         // Log the underlying cause; show the user a recoverable message.
@@ -171,6 +235,7 @@ export default function KnowledgeMapPage() {
       />
 
       <main className="page">
+        <h1 className="sr-only">Knowledge Map</h1>
         {loadError ? (
           <div className="error" role="alert">
             <p className="state-line">{loadError}</p>
@@ -185,9 +250,7 @@ export default function KnowledgeMapPage() {
         ) : path.isEmpty && !hasMapStructure ? (
           <div className="empty" role="status">
             <p className="state-line">
-              {userId
-                ? "There is no map to show yet. Take an assessment to start filling in the Old Testament atlas."
-                : "Sign in and take an assessment to see where your attention should go next."}
+              The Old Testament atlas could not be loaded. This is usually a temporary connection problem.
             </p>
             <Link className="retry-btn" href="/assess">
               {userId ? "Take an assessment" : "Get started"}
@@ -195,6 +258,17 @@ export default function KnowledgeMapPage() {
           </div>
         ) : (
           <>
+            {path.isEmpty && (
+              <div className="km-unassessed" role="status">
+                <p>
+                  Nothing is filled in yet. Answer questions to start coloring the Old Testament map.
+                </p>
+                <Link className="km-unassessed-cta" href="/assess">
+                  {userId ? "Take an assessment" : "Get started"}
+                  <span aria-hidden="true">→</span>
+                </Link>
+              </div>
+            )}
             <div className="km-view-bar">
               <div className="km-view-toggle" role="tablist" aria-label="Map view">
                 <button type="button" role="tab" aria-selected={mapView === "focus"} className={`km-view-btn ${mapView === "focus" ? "is-active" : ""}`} onClick={() => openMapView("focus")}>
@@ -266,7 +340,7 @@ export default function KnowledgeMapPage() {
                     ? "Map-only view. Show the outline again when you want the section list back."
                     : hasRecommendation
                       ? "Recommended passage, course outline, and map context together."
-                      : "Blank course map. Take an assessment to fill in recommendations and scores."
+                      : "Answer more questions to unlock a recommended focus."
                   : "Every section, book, and chapter section at once — chronology down, dependency across."}
               </p>
             </div>

@@ -157,6 +157,30 @@ export const ASSESS_INTERACTION_STYLES = `        /* ===========================
           display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px; margin-bottom: 14px;
         }
+        .quality-rating {
+          display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px; margin-bottom: 14px;
+        }
+        .quality-rating-option {
+          min-height: 104px; border: 1.5px solid var(--border);
+          background: rgba(255,255,255,.72); color: var(--navy);
+          border-radius: 12px; padding: 11px 10px;
+          cursor: pointer; font-family: inherit; text-align: left;
+          display: flex; flex-direction: column; gap: 8px;
+          transition: border-color .13s, background .13s, color .13s;
+        }
+        .quality-rating-option.is-active {
+          background: rgba(212,160,23,.14); border-color: rgba(212,160,23,.58); color: #4a3a08;
+        }
+        .quality-stars {
+          color: #b9800f; font-size: 15px; line-height: 1; white-space: nowrap;
+        }
+        .quality-rating-copy {
+          display: flex; flex-direction: column; gap: 4px; min-width: 0;
+        }
+        .quality-rating-copy strong { font-size: 13px; line-height: 1.15; }
+        .quality-rating-copy span { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+        .quality-rating-option.is-active .quality-rating-copy span { color: #6b4f11; }
         .report-option {
           border: 1.5px solid var(--border); background: rgba(255,255,255,.72);
           color: var(--navy); border-radius: 12px; padding: 11px 12px;
@@ -194,6 +218,10 @@ export const ASSESS_INTERACTION_STYLES = `        /* ===========================
         .report-sent {
           padding: 22px 6px 4px; text-align: center;
           color: var(--correct); font-size: 15px; font-weight: 750;
+        }
+        @media (max-width: 560px) {
+          .quality-rating { grid-template-columns: 1fr; }
+          .quality-rating-option { min-height: 0; }
         }
         .overlay-score {
           font-family: var(--font-crimson), Georgia, serif;

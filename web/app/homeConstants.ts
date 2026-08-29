@@ -22,6 +22,13 @@ export {
   NT_ATTEMPT_ID_KEY,
 };
 
+// UI STATE ONLY. Marks that the signed-out learner closed the save-progress
+// popup, so the dashboard leaves the ask to the save-progress slot in the
+// score strip instead of re-opening the popup. It lives in sessionStorage on purpose: the snapshot
+// the prompt is about (SESSION_ANSWERED_KEY / SESSION_CORRECT_KEY) is
+// session-scoped too, so the dismissal dies with the result it dismissed.
+export const SAVE_PROMPT_DISMISSED_KEY = "obs_save_prompt_dismissed";
+
 export const RECOMMENDATION_RETEST_WAIT_MS = 20 * 60 * 1000;
 
 export const DASHBOARD_SUBJECTS: Array<{

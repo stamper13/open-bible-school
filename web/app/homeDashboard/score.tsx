@@ -2,6 +2,7 @@
 
 import { type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
+import { NT_PILOT_ENABLED } from "../assess/constants";
 import { BLI_LEVELS, levelForScore, type BliLevel, type BliLevelBand } from "@/lib/bli";
 import { type Testament as BibleTestament } from "@/lib/bibleTaxonomy";
 import type { BliContractScores } from "@/lib/bliContract";
@@ -87,10 +88,12 @@ export function ScoreStrip({
               name: "NT BLI", accent: "#7c3aed", hasData: ntHasData,
               score: testamentScores?.nt_display_bli ?? 0, level: ntLevel,
               description: testamentize(ntBand.description, "the New Testament"),
-              emptyDescription: <>Take the New Testament assessment to find out where you stand. It builds its own <strong>separate 0-800 score</strong>, distinct from the OT BLI.</>,
+              emptyDescription: NT_PILOT_ENABLED
+                ? <>Take the New Testament assessment to find out where you stand. It builds its own <strong>separate 0-800 score</strong>, distinct from the OT BLI.</>
+                : <>New Testament assessment is <strong>coming soon</strong> after the V7 router is ready for the NT bank.</>,
               evidence: ntBliEvidence,
               tooltip: "Your NT Bible Literacy Index measures New Testament knowledge across the Gospels, Acts, the Epistles, and Revelation. It is scored separately from the OT BLI.",
-              range: ntHasData ? `${ntLevel} · 0-800` : "Complete the NT assessment · 0-800",
+              range: ntHasData ? `${ntLevel} · 0-800` : NT_PILOT_ENABLED ? "Complete the NT assessment · 0-800" : "Coming soon · 0-800",
             },
             COMBINED: {
               name: "Combined BLI", accent: "#0aa3a3", hasData: combinedHasData,
@@ -176,7 +179,7 @@ export function ScoreStrip({
                       <Link
                         className={`bli-tooltip ${showBliTooltip ? "is-open" : ""}`}
                         role="tooltip"
-                        href="/about"
+                        href="/philosophy"
                         onMouseEnter={openBliTooltip}
                         onMouseLeave={closeBliTooltipSoon}
                         onFocus={openBliTooltip}

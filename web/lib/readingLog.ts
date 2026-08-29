@@ -1,7 +1,16 @@
-// A self-directed reading log: "what did I read". localStorage remains the
+// A self-directed reading log: "what did I read". Browser storage is the
 // source of truth for the widget's own UI (works signed-out and offline);
 // see persistReadingLogEntryRemote below for the best-effort mirror to
 // Supabase.
+//
+// That browser copy lives in sessionStorage, not localStorage, so it has the
+// same lifetime as the signed-out assessment it sits beside (see
+// ANON_SESSION_ACTIVE_KEY / SESSION_ANSWERED_KEY in app/homeConstants.ts).
+// When it was in localStorage the two disagreed: closing the browser and
+// coming back correctly reset the dashboard to "take your first assessment"
+// while the reading log still listed the previous visit's passages, which
+// reads like the site half-remembers you. Signed-in readers are unaffected -
+// their durable, cross-device history is the Supabase table below.
 //
 // This is deliberately NOT a knowledge input on its own. Logging a passage
 // never changes a score by itself — the BLI measures what testing shows you
@@ -29,10 +38,34 @@ export type ReadingLogEntry = {
 const STORAGE_KEY = "obs_reading_log";
 const MAX_ENTRIES = 50;
 
-function readRaw(): ReadingLogEntry[] {
-  if (typeof window === "undefined") return [];
+/**
+ * The session-scoped store, plus a one-time sweep of the log's former home.
+ * Without the sweep, anyone who used the site before this change would keep
+ * seeing their old entries forever: the stale localStorage copy would simply
+ * sit there, unread by this module and unclearable by the user.
+ *
+ * Returns null when storage is unavailable (private mode, blocked cookies),
+ * which the callers treat as "no log", never as an error.
+ */
+function browserLog(): Storage | null {
+  if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage disabled entirely; nothing to clean up.
+  }
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readRaw(): ReadingLogEntry[] {
+  const store = browserLog();
+  if (!store) return [];
+  try {
+    const raw = store.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -67,8 +100,12 @@ export function addReadingLogEntry(input: {
     loggedAt: new Date().toISOString(),
   };
   const next = [entry, ...readRaw()].slice(0, MAX_ENTRIES);
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  const store = browserLog();
+  try {
+    store?.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Quota or private mode: the entry still returns, and the remote mirror
+    // in persistReadingLogEntryRemote is the durable copy that matters.
   }
   return entry;
 }

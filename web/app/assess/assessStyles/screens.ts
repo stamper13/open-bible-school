@@ -17,6 +17,14 @@ export const ASSESS_SCREEN_STYLES = `        /* ================================
           border-color: var(--accent-line); background: #fff;
           box-shadow: 0 14px 30px rgba(27,36,66,.13);
         }
+        .testament-card:disabled {
+          cursor: default; opacity: .72; background: rgba(255,255,255,.46);
+        }
+        .testament-card:disabled:hover,
+        .testament-card:disabled:focus-visible {
+          transform: none; border-color: var(--border);
+          background: rgba(255,255,255,.46); box-shadow: none;
+        }
         .testament-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
         .testament-title {
           font-family: var(--font-crimson), Georgia, serif;

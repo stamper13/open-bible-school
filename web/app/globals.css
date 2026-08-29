@@ -42,6 +42,18 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Shared with components/BetaBanner.tsx (about/credential/bli pages).
  * Previously a byte-for-byte identical .beta-banner/.beta-badge block
  * (base rules + narrow-viewport override) was copy-pasted into all three
@@ -155,7 +167,7 @@ body {
   opacity: 0.72;
 }
 
-/* Shared with components/SiteNav.tsx (about/credential/bli/knowledge-map/
+/* Shared with components/SiteNav.tsx (credential/bli/knowledge-map/
  * reading-log pages — the home and assess pages have their own distinct,
  * signed-in-aware nav and are not part of this).
  *
@@ -431,6 +443,11 @@ body {
 }
 
 .oba-legal-body section {
+  /* Grid items default to min-width:auto, so a wide child (the score-band
+     table, the formula block) stretches the whole track instead of scrolling
+     inside it — which made the entire document page scroll sideways on a
+     phone. Pinning this to 0 keeps overflow where it belongs. */
+  min-width: 0;
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
@@ -438,6 +455,9 @@ body {
 }
 
 .oba-legal-body h2 {
+  display: flex;
+  align-items: center;
+  gap: 11px;
   margin: 0 0 10px;
   color: #fff;
   font-family: var(--font-crimson), Georgia, serif;
@@ -445,12 +465,178 @@ body {
   font-weight: 650;
 }
 
-.oba-legal-body ul {
+/* Section marks on the long documents. Decorative only — the heading text is
+   still the heading, so nothing is lost to a screen reader or to search. They
+   are line art in the kicker's teal, sized to the cap height of the serif
+   beside them rather than to the whole line. */
+.oba-doc-h2-icon {
+  flex: none;
+  width: 21px;
+  height: 21px;
+  color: #4fd6d6;
+  opacity: 0.92;
+}
+
+.oba-legal-body ul,
+.oba-legal-body ol {
   margin: 10px 0 0 20px;
+}
+
+.oba-legal-body ol {
+  display: grid;
+  gap: 10px;
 }
 
 .oba-legal-body a {
   color: #7fe9e9;
+}
+
+/* Document-page building blocks: reference tables, formula blocks and the
+   worked example lists used by the long-form docs (/bli today, available to
+   /philosophy and the legal pages). Scoped under .oba-doc- so they cannot
+   collide with the editorial chrome further down. */
+.oba-doc-lead-alt {
+  margin: 14px 0 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--accent);
+  background: rgba(10, 163, 163, 0.08);
+  border-radius: 0 10px 10px 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/* The callout is also used above .oba-legal-body (the tour offer at the top of
+   /philosophy), where it is out of reach of .oba-legal-body a and links fall
+   back to the UA's #0000EE — unreadable on this background. */
+.oba-doc-lead-alt a {
+  color: #7fe9e9;
+}
+
+.oba-doc-eg {
+  margin-top: 14px;
+  padding: 15px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.oba-doc-eg-label {
+  margin: 0 0 9px;
+  font-size: 10.5px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6fe0e0;
+}
+
+.oba-doc-eg ul {
+  margin: 0 0 0 18px;
+  padding: 0;
+}
+
+.oba-doc-eg li {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.oba-doc-eg li + li { margin-top: 4px; }
+
+.oba-doc-table-wrap { overflow-x: auto; max-width: 100%; margin-top: 18px; }
+.oba-doc-table-wrap:focus-visible {
+  outline: 2px solid rgba(127, 233, 233, 0.86);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.oba-doc-table {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.oba-doc-table th,
+.oba-doc-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.oba-doc-table th {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.oba-doc-table td { color: rgba(255, 255, 255, 0.74); line-height: 1.55; }
+.oba-doc-table tr:last-child td { border-bottom: none; }
+
+.oba-doc-band {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 750;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.oba-doc-band i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  font-style: normal;
+  flex: 0 0 auto;
+}
+
+.oba-doc-range {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.oba-doc-code {
+  max-width: 100%;
+  margin-top: 16px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(4, 8, 20, 0.6);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.85;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.oba-doc-code b { color: #fff; font-weight: 750; }
+.oba-doc-code em { color: #6fe0e0; font-style: normal; }
+.oba-doc-code .oba-doc-code-gap { display: block; height: 10px; }
+
+.oba-doc-dl { margin-top: 16px; display: grid; gap: 14px; }
+
+.oba-doc-dl dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0c674;
+}
+
+.oba-doc-dl dd {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.oba-doc-dl dd em { color: rgba(255, 255, 255, 0.55); font-style: italic; }
+
+@media (max-width: 640px) {
+  .oba-doc-eg li, .oba-doc-dl dd { font-size: 15px; }
 }
 
 @media (max-width: 700px) {
@@ -481,9 +667,11 @@ body {
 
 /* ============================================================================
    Editorial page chrome — the long-form marketing/explainer pages.
-   Shared by app/about, app/bli (full set) and app/credential (.hero-eyebrow).
+   Used by app/credential. Was also used by app/about (retired in favour of
+   app/philosophy) and app/bli (now a plain document, see app/bli/page.tsx).
 
-   These rules were byte-identical copies in aboutStyles.ts and bliStyles.ts.
+   These rules were byte-identical copies in the old aboutStyles.ts and in
+   bliStyles.ts.
    Pages that want a different look still win by redefining the class in their
    own <style> block, which renders after this sheet: app/assess and
    app/knowledge-map both do exactly that for .btn-primary/.btn-secondary.

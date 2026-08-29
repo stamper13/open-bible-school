@@ -26,6 +26,7 @@ export type Question = {
 };
 export type Phase = "starting" | "question" | "feedback" | "complete" | "error";
 export type ReportCategory = "wrong_answer" | "inaccurate" | "poorly_worded" | "other" | "malformed_question";
+export type QuestionQualityRating = 1 | 2 | 3;
 export type NtBookMetadata = {
   book_code: string;
   canon_order: number;

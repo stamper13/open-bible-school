@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import { NT_PILOT_ENABLED, REPORT_OPTIONS } from "./constants";
+import { NT_PILOT_ENABLED, QUESTION_RATING_OPTIONS, REPORT_OPTIONS } from "./constants";
 import { clearAssessmentBrowserStorage, ntScopeFromKey } from "./assessmentHelpers";
 import type {
   AssessmentMode,
@@ -17,6 +17,7 @@ import type {
   NtScopeOption,
   OtAssessmentStartRow,
   Question,
+  QuestionQualityRating,
   ReportCategory,
 } from "./types";
 
@@ -25,25 +26,35 @@ import type {
 export function ModeSelectScreen() {
   return (
     <div className="card center-card">
-      <p className="pilot-badge">Choose assessment</p>
-      <div className="card-heading">What would you like to assess?</div>
-      <p className="card-sub">Choose an adaptive Old or New Testament assessment. Each builds its own 0-800 BLI score.</p>
+      <p className="pilot-badge">Assessment</p>
+      <h1 className="card-heading">What would you like to assess?</h1>
+      <p className="card-sub">Start with the Old Testament. New Testament is coming soon.</p>
       <div className="selection-grid">
         <button className="testament-card" type="button" onClick={() => window.location.href = "/assess"}>
           <div className="testament-top">
             <strong className="testament-title">Old Testament Assessment</strong>
           </div>
-          <p className="testament-desc">Full adaptive assessment across the Old Testament.</p>
+          <p className="testament-desc">Adaptive questions across the Old Testament.</p>
         </button>
-        <button className="testament-card" type="button" onClick={() => window.location.href = NT_PILOT_ENABLED ? "/assess?testament=NT&scope=NT" : "/assess?choose=1"}>
+        <button
+          className="testament-card"
+          type="button"
+          disabled={!NT_PILOT_ENABLED}
+          onClick={() => {
+            if (NT_PILOT_ENABLED) window.location.href = "/assess?testament=NT&scope=NT";
+          }}
+        >
           <div className="testament-top">
             <strong className="testament-title">New Testament Assessment</strong>
-            <span className="pilot-badge">NT BLI</span>
+            <span className="pilot-badge">{NT_PILOT_ENABLED ? "NT BLI" : "Coming soon"}</span>
           </div>
-          <p className="testament-desc">Adaptive questions across all 27 New Testament books, scored as a separate NT BLI.</p>
+          <p className="testament-desc">
+            {NT_PILOT_ENABLED
+              ? "Adaptive questions across all 27 New Testament books, scored as a separate NT BLI."
+              : "Paused while the V7 router is brought over to the New Testament bank."}
+          </p>
         </button>
       </div>
-      {!NT_PILOT_ENABLED && <p className="card-sub">The New Testament assessment is currently unavailable.</p>}
     </div>
   );
 }
@@ -318,6 +329,8 @@ export function ReportQuestionModal({
   setShowReportModal,
   reportStatus,
   question,
+  qualityRating,
+  setQualityRating,
   reportCategory,
   setReportCategory,
   setReportError,
@@ -330,8 +343,10 @@ export function ReportQuestionModal({
   setShowReportModal: (open: boolean) => void;
   reportStatus: "idle" | "sent";
   question: Question;
-  reportCategory: ReportCategory;
-  setReportCategory: (value: ReportCategory) => void;
+  qualityRating: QuestionQualityRating | null;
+  setQualityRating: (value: QuestionQualityRating | null) => void;
+  reportCategory: ReportCategory | null;
+  setReportCategory: (value: ReportCategory | null) => void;
   setReportError: (value: string) => void;
   reportText: string;
   setReportText: (value: string) => void;
@@ -347,12 +362,35 @@ export function ReportQuestionModal({
         </button>
 
         {reportStatus === "sent" ? (
-          <div className="report-sent">Thanks. This question has been flagged for review.</div>
+          <div className="report-sent">Thanks. Your feedback was saved.</div>
         ) : (
           <>
-            <h2 className="report-title">Report this question</h2>
-            <p className="report-desc">Choose what looks wrong and add a note if it would help the review.</p>
+            <h2 className="report-title">Question feedback</h2>
+            <p className="report-desc">Rate the question quality, flag a specific issue, or both.</p>
             <div className="report-question">{question.prompt}</div>
+
+            <div className="quality-rating" role="group" aria-label="Question quality rating">
+              {QUESTION_RATING_OPTIONS.map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`quality-rating-option ${qualityRating === option.value ? "is-active" : ""}`}
+                  aria-pressed={qualityRating === option.value}
+                  onClick={() => {
+                    setQualityRating(qualityRating === option.value ? null : option.value);
+                    setReportError("");
+                  }}
+                >
+                  <span className="quality-stars" aria-hidden="true">
+                    {"★".repeat(option.value)}{"☆".repeat(3 - option.value)}
+                  </span>
+                  <span className="quality-rating-copy">
+                    <strong>{option.label}</strong>
+                    <span>{option.detail}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
 
             <div className="report-options" role="group" aria-label="Report reason">
               {REPORT_OPTIONS.map(option => (
@@ -361,7 +399,7 @@ export function ReportQuestionModal({
                   type="button"
                   className={`report-option ${reportCategory === option.value ? "is-active" : ""}`}
                   onClick={() => {
-                    setReportCategory(option.value);
+                    setReportCategory(reportCategory === option.value ? null : option.value);
                     setReportError("");
                   }}
                 >
@@ -375,7 +413,7 @@ export function ReportQuestionModal({
               value={reportText}
               maxLength={2000}
               onChange={e => setReportText(e.target.value)}
-              placeholder="Optional note"
+              placeholder="Optional note about the rating or report"
             />
             {reportError && <p className="report-error">{reportError}</p>}
 
@@ -387,9 +425,13 @@ export function ReportQuestionModal({
                 type="button"
                 className="report-submit"
                 onClick={submitQuestionReport}
-                disabled={isSubmittingReport || (reportCategory === "other" && reportText.trim().length === 0)}
+                disabled={
+                  isSubmittingReport
+                  || (!qualityRating && !reportCategory)
+                  || (reportCategory === "other" && reportText.trim().length === 0)
+                }
               >
-                {isSubmittingReport ? "Submitting..." : "Submit report"}
+                {isSubmittingReport ? "Saving..." : "Save feedback"}
               </button>
             </div>
           </>

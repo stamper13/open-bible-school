@@ -23,13 +23,16 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .retest-modal-actions { align-items: stretch; flex-direction: column-reverse; }
           .retest-modal-primary,
           .retest-modal-secondary { width: 100%; }
-          .save-results-card { grid-template-columns: 1fr; padding: 16px 18px; }
-          .save-results-actions { align-items: stretch; }
-          .save-results-btn { width: 100%; }
-          .save-results-note { text-align: center; }
+          .save-modal { padding: 24px 22px 20px; }
+          .save-modal-title { font-size: 24px; }
+          .save-modal-actions { align-items: stretch; flex-direction: column-reverse; }
+          .save-modal-primary { justify-content: center; }
+          .save-modal-primary,
+          .save-modal-secondary { width: 100%; }
+          .save-modal-note { text-align: center; }
           .first-assessment-card { grid-template-columns: 1fr; padding: 28px 20px; min-height: auto; }
           .first-assessment-orbit { width: min(100%, 280px); }
-          .first-assessment-content h2 { font-size: 36px; }
+          .first-assessment-content h1 { font-size: 36px; }
           .first-assessment-primary,
           .first-assessment-secondary { width: 100%; }
           .first-assessment-choice-panel { grid-template-columns: 1fr; }

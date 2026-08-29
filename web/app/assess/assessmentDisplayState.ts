@@ -1,4 +1,5 @@
 import {
+  FOLLOWUP_ASSESSMENT_TARGET,
   IDK_CHOICE,
   IDK_CHOICE_ID,
 } from "./constants";
@@ -81,8 +82,13 @@ export function deriveAssessmentDisplayState({
   const ntProgressPct = assessmentMode === "NT"
     ? boundedProgress(answeredCount, 0, ntProgressEnd)
     : 0;
-  const nextMilestone = answeredCount < otTargetCount ? otTargetCount : Math.ceil((answeredCount + 1) / 10) * 10;
-  const progressStart = isInitialPhase ? 0 : nextMilestone - 10;
+  const followupAnswered = Math.max(0, answeredCount - otTargetCount);
+  const nextMilestone = answeredCount < otTargetCount
+    ? otTargetCount
+    : otTargetCount + Math.ceil((followupAnswered + 1) / FOLLOWUP_ASSESSMENT_TARGET) * FOLLOWUP_ASSESSMENT_TARGET;
+  const progressStart = isInitialPhase
+    ? 0
+    : otTargetCount + Math.floor(followupAnswered / FOLLOWUP_ASSESSMENT_TARGET) * FOLLOWUP_ASSESSMENT_TARGET;
   const progressEnd = isInitialPhase ? otTargetCount : nextMilestone;
   const progressPct = boundedProgress(answeredCount, progressStart, progressEnd);
 

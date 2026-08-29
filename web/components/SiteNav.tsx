@@ -20,6 +20,7 @@ export type NavLinkKey =
   | "dashboard"
   | "assess"
   | "knowledge-map"
+  | "intro"
   | "about"
   | "bli"
   | "credential"
@@ -29,7 +30,12 @@ const NAV_LINKS: Record<NavLinkKey, { href: string; label: string }> = {
   dashboard: { href: "/", label: "Dashboard" },
   assess: { href: "/assess", label: "Assess" },
   "knowledge-map": { href: "/knowledge-map", label: "Knowledge Map" },
-  about: { href: "/about", label: "About" },
+  // "Intro Presentation" rather than the full "OBA Intro Presentation" used in
+  // the dashboard's Learn More menu: inside the site's own nav the OBA prefix
+  // is redundant, and this row already carries seven pills.
+  intro: { href: "/intro", label: "Intro Presentation" },
+  // /about was retired; the philosophy write-up is the about page now.
+  about: { href: "/philosophy", label: "About" },
   bli: { href: "/bli", label: "How BLI Works" },
   credential: { href: "/credential", label: "Future Ideas" },
   "reading-log": { href: "/reading-log", label: "Reading Log" },

@@ -327,6 +327,7 @@ export default function ReadingLogWidget({
               ref={searchRef}
               className="rl-search"
               type="text"
+              aria-label="Book"
               placeholder="Start typing a book name…"
               value={query}
               onChange={e => {

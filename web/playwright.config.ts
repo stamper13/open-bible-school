@@ -4,10 +4,12 @@ import { defineConfig, devices } from "@playwright/test";
 // reuses whatever is already on this port and only boots one when nothing is
 // listening. Override the port with PLAYWRIGHT_PORT.
 const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 3000);
-// Must be "localhost", not 127.0.0.1: Next's dev-mode cross-origin protection
+const PREVIEW_BASE_URL = process.env.PLAYWRIGHT_BASE_URL?.replace(/\/$/, "");
+// Local dev must be "localhost", not 127.0.0.1: Next's dev-mode cross-origin protection
 // refuses to hydrate the app when the host differs from the dev server's own,
 // which silently leaves every page on its server-rendered loading state.
-const BASE_URL = `http://localhost:${PORT}`;
+const LOCAL_BASE_URL = `http://localhost:${PORT}`;
+const BASE_URL = PREVIEW_BASE_URL ?? LOCAL_BASE_URL;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -29,11 +31,15 @@ export default defineConfig({
     { name: "mobile", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } },
   ],
 
-  // Reuses an already-running dev server; starts one only if the port is free.
-  webServer: {
-    command: `npm run dev -- --port ${PORT}`,
-    url: BASE_URL,
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  ...(PREVIEW_BASE_URL
+    ? {}
+    : {
+        // Reuses an already-running dev server; starts one only if the port is free.
+        webServer: {
+          command: `npm run dev -- --port ${PORT}`,
+          url: LOCAL_BASE_URL,
+          reuseExistingServer: true,
+          timeout: 120_000,
+        },
+      }),
 });

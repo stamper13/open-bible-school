@@ -170,11 +170,11 @@ export default function CoverageGrid({
       {showSummary && (
         <section className="cov-summary" aria-labelledby="coverage-title">
           <div>
-            <p className="cov-kicker">{focusedView ? "Focused coverage" : "Coverage overview"}</p>
-            <h2 id="coverage-title" className="cov-title">{focusedView ? "Recommended range" : `Every ${shortName} chapter`}</h2>
+            <p className="cov-kicker">{focusedView ? "Focus" : "Coverage overview"}</p>
+            <h2 id="coverage-title" className="cov-title">{focusedView ? "Current range" : `Every ${shortName} chapter`}</h2>
             <p className="cov-copy">
               {focusedView
-                ? `The recommended ${testamentName} range is pulled forward here; Overview restores it to the full map.`
+                ? `Pulled forward from the full ${testamentName} map.`
                 : `A course-style grid of the whole ${testamentName} ladder. Each box is a chapter; thin outlines show the larger learning ranges underneath it.`}
             </p>
           </div>

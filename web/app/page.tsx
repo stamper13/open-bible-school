@@ -10,12 +10,17 @@ import {
   EMPTY_FOCUS_PATH,
   loadExploreTree,
   loadFocusPath,
+  type ExploreBook,
+  type ExploreSection,
   type ExploreTree,
+  type ExploreUnit,
   type FocusPath,
 } from "@/lib/focusPath";
 import { type CoverageGridView } from "./knowledge-map/CoverageGrid";
 import ReadingLogWidget from "./ReadingLogWidget";
+import ScoreMilestone from "@/components/ScoreMilestone";
 import StarfieldRewardsLayer from "@/components/StarfieldRewardsLayer";
+import { detectScoreMilestone, type ScoreMilestoneResult } from "@/lib/scoreMilestone";
 import Starfield from "@/components/Starfield";
 import { useNavMenus } from "./useNavMenus";
 import { useScoreTooltips } from "./useScoreTooltips";
@@ -25,6 +30,10 @@ import { useHomeAccountActions } from "./useHomeAccountActions";
 import { useProgressChart } from "./useProgressChart";
 import { useProgressHistory } from "./useProgressHistory";
 import { HOME_PAGE_STYLES } from "./homeStyles";
+import {
+  NT_PILOT_ENABLED,
+  TOTAL_INITIAL,
+} from "./assess/constants";
 import {
   DeleteAccountModal,
   KnowledgeConePanel,
@@ -38,6 +47,7 @@ import {
   type BliContractScores,
 } from "@/lib/bliContract";
 import {
+  SECTION_INTERPRETATION_FLOOR,
   leastEvidenceSection,
   sectionEvidence,
 } from "@/lib/bliEvidence";
@@ -73,6 +83,7 @@ import {
   SESSION_ANSWERED_KEY,
   SESSION_CORRECT_KEY,
   RECOMMENDATION_RETEST_WAIT_MS,
+  SAVE_PROMPT_DISMISSED_KEY,
 } from "./homeConstants";
 import { mergeKnowledgeGapGuidance } from "./homeKnowledgeGapGuidance";
 import {
@@ -95,12 +106,34 @@ import {
   DashboardHeader,
   DashboardTabsBar,
   FirstAssessmentCard,
-  SaveResultsCard,
+  SaveResultsModal,
   ScoreStrip,
   ScorePanelTriggers,
   CoverageMapSection,
   PlaceholderDashboard,
 } from "./homeDashboard";
+
+const OT_RECOMMENDATION_SECTION_LABELS = ["Torah", "Former Prophets", "Latter Prophets", "Writings"] as const;
+const OT_RECOMMENDATION_SECTION_SCOPES: Record<(typeof OT_RECOMMENDATION_SECTION_LABELS)[number], string> = {
+  Torah: "torah",
+  "Former Prophets": "former",
+  "Latter Prophets": "latter",
+  Writings: "writings",
+};
+
+function clearCoverageTreeRecommendation(tree: ExploreTree): ExploreTree {
+  return {
+    sections: tree.sections.map((section): ExploreSection => ({
+      ...section,
+      isFocus: false,
+      books: section.books.map((book): ExploreBook => ({
+        ...book,
+        isFocus: false,
+        units: book.units.map((unit): ExploreUnit => ({ ...unit, isFocus: false })),
+      })),
+    })),
+  };
+}
 
 export default function HomePage() {
   // ---------------------------------------------------------------------------
@@ -176,6 +209,9 @@ export default function HomePage() {
   const [ntPilotSummary, setNtPilotSummary] = useState<NtPilotSummary | null>(null);
   const [testamentScores, setTestamentScores] = useState<BliContractScores | null>(null);
   const [pendingRetestHref, setPendingRetestHref] = useState<string | null>(null);
+  // Starts dismissed so the popup cannot flash before the effect below has
+  // read the real answer out of sessionStorage.
+  const [savePromptDismissed, setSavePromptDismissed] = useState(true);
   const scopeRequestRef = useRef(0);
   // Guards ONE in-flight explicit recommendation interaction so a double-click
   // or a concurrent handler cannot start a second logical event. It is not a
@@ -190,6 +226,70 @@ export default function HomePage() {
     progressLoading,
     setActiveProgressAttemptId,
   } = useProgressHistory(dashboardUserId, progressTestament);
+
+  /**
+   * Crossing a hundred, celebrated once.
+   *
+   * Two gates, doing different jobs. `obs_dashboard_arriving` is set by
+   * useDashboardTransition when a round hands off to the dashboard, so the
+   * moment only fires on the way back from answering questions and never on
+   * an ordinary visit — it was being written and never read until now, so it
+   * is cleared here as it is consumed. The localStorage key is the durable
+   * one: it survives reloads, so a refresh on the dashboard cannot replay the
+   * celebration for an attempt already seen.
+   *
+   * Both are deliberately checked after the history has loaded, or the
+   * arriving flag would be spent on the first empty render.
+   */
+  const [milestone, setMilestone] = useState<ScoreMilestoneResult | null>(null);
+
+  useEffect(() => {
+    if (!progressHistory.length) return;
+    if (sessionStorage.getItem("obs_dashboard_arriving") !== "1") return;
+    sessionStorage.removeItem("obs_dashboard_arriving");
+
+    const found = detectScoreMilestone(progressHistory);
+    if (!found) return;
+
+    const key = `obs_milestone_seen:${found.attemptId}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+    } catch {
+      // A browser with storage blocked still gets the moment; it just cannot
+      // remember that it happened. Better than swallowing it entirely.
+    }
+    setMilestone(found);
+  }, [progressHistory]);
+
+  /**
+   * Preview the milestone overlay without earning one:
+   *
+   *   /?milestone=demo      587 -> 602, the plain crossing
+   *   /?milestone=499-513   crosses 500 and changes band, so the band is named
+   *   /?milestone=587-599   no crossing, so nothing shows (also worth seeing)
+   *
+   * It runs the real detectScoreMilestone over a fabricated history rather
+   * than hand-building a result, so previewing exercises the same rules the
+   * live path does — a pair that should not celebrate will not celebrate here
+   * either.
+   *
+   * Deliberately writes nothing: no seen-key, and it never touches
+   * obs_dashboard_arriving. Previewing cannot burn a real celebration, and a
+   * real one cannot be hidden by having previewed.
+   */
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("milestone");
+    if (!raw) return;
+    const pair = /^(\d{1,3})-(\d{1,3})$/.exec(raw);
+    const from = pair ? Number(pair[1]) : 587;
+    const to = pair ? Number(pair[2]) : 602;
+    const demo = detectScoreMilestone([
+      { attempt_id: "milestone-demo", display_bli: to, bli_level: levelForScore(to) },
+      { attempt_id: "milestone-demo-prev", display_bli: from, bli_level: levelForScore(from) },
+    ]);
+    if (demo) setMilestone(demo);
+  }, []);
   const {
     deleteBusy,
     deleteConfirm,
@@ -238,6 +338,7 @@ export default function HomePage() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     setSessionAssessmentData(readSessionAssessmentData());
+    setSavePromptDismissed(sessionStorage.getItem(SAVE_PROMPT_DISMISSED_KEY) === "1");
     try {
       const stored = localStorage.getItem("oba_nt_pilot_summary");
       if (!stored) return;
@@ -268,6 +369,30 @@ export default function HomePage() {
     ))),
     [scopeScores.sections],
   );
+  const recommendationEvidence = useMemo(() => {
+    const otSections = OT_RECOMMENDATION_SECTION_LABELS.map(label => {
+      const score = scopeScores.sections.find(section => (
+        section.testament === "OT"
+        && section.kind === "section"
+        && section.label === label
+      ));
+      const answered = score?.answered ?? 0;
+      return {
+        label,
+        answered,
+        answersNeeded: Math.max(0, SECTION_INTERPRETATION_FLOOR - answered),
+      };
+    });
+    const weakestSection = [...otSections].sort((left, right) => (
+      left.answered - right.answered
+      || OT_RECOMMENDATION_SECTION_LABELS.indexOf(left.label) - OT_RECOMMENDATION_SECTION_LABELS.indexOf(right.label)
+    ))[0];
+    return {
+      canRecommend: otSections.every(section => section.answersNeeded === 0),
+      answersNeeded: otSections.reduce((sum, section) => sum + section.answersNeeded, 0),
+      weakestSection,
+    };
+  }, [scopeScores.sections]);
   const uncertaintyFollowup = sectionFollowup?.is_provisional
     ? {
         label: sectionFollowup.section_name,
@@ -285,19 +410,22 @@ export default function HomePage() {
           target: Math.max(5, sectionEvidence(localSectionFollowup.answered).answersToInterpretation),
         }
       : null;
-  const isRecommendationEvidenceBlocked = Boolean(uncertaintyFollowup);
-  const uncertaintyRecommendation = visibleAssessmentData && uncertaintyFollowup ? {
-    label: `Clarify your ${uncertaintyFollowup.label} profile`,
-    books: `${uncertaintyFollowup.label} · Build the sample`,
-    focus: "Add a few more answers here before OBA chooses a lowest confirmed weakness.",
-    priority: `${uncertaintyFollowup.answersNeeded} more ${uncertaintyFollowup.answersNeeded === 1 ? "answer" : "answers"} to unlock recommendations`,
+  const isRecommendationEvidenceBlocked = Boolean(visibleAssessmentData) && !recommendationEvidence.canRecommend;
+  // This card used to say "not enough evidence yet" four times over - in the
+  // eyebrow, the title, the meta line and again in a two-sentence paragraph -
+  // and then put the one fact a reader actually needs (how many answers are
+  // left) in small print off to the side. The count is now the headline, the
+  // meta line says where to spend those answers, and the paragraph is gone.
+  const uncertaintyRecommendation = visibleAssessmentData && isRecommendationEvidenceBlocked ? {
+    label: `${recommendationEvidence.answersNeeded} more ${recommendationEvidence.answersNeeded === 1 ? "answer" : "answers"}`,
+    books: `Start with ${recommendationEvidence.weakestSection.label}`,
     actionHref: `/assess?${new URLSearchParams({
       mode: "scope",
-      label: uncertaintyFollowup.label,
-      scope: uncertaintyFollowup.scopeKey,
-      target: String(uncertaintyFollowup.target),
+      label: uncertaintyFollowup?.label ?? recommendationEvidence.weakestSection.label,
+      scope: uncertaintyFollowup?.scopeKey ?? OT_RECOMMENDATION_SECTION_SCOPES[recommendationEvidence.weakestSection.label],
+      target: String(uncertaintyFollowup?.target ?? Math.max(5, recommendationEvidence.weakestSection.answersNeeded)),
     }).toString()}`,
-    actionLabel: "Add section evidence",
+    actionLabel: "Continue assessment",
   } : null;
   const recommendedStudy = uncertaintyRecommendation ?? (!isRecommendationEvidenceBlocked && backendRecommendation ? (() => {
     const hasDimensionTarget = !!backendRecommendation.dimension_key;
@@ -324,27 +452,26 @@ export default function HomePage() {
       params.set("dimension", backendRecommendation.dimension_key);
     }
     return {
-      // Just the dimension name (e.g. "Law") — this used to read "Law gap"
-      // right underneath a badge that also said "Law", which was the same
-      // fact stated twice. The eyebrow above ("Dimension gap") already
-      // carries the "gap" framing, so the title only needs the name itself.
+      // With a dimension, show just the dimension name (e.g. "Law"). Without
+      // one, keep the card compact: passage, section, and one sentence about
+      // why the dimension is still pending.
       label: hasDimensionTarget && dimensionName
         ? dimensionName
-        : `${bookName} gap evidence`,
+        : backendRecommendation.label,
       books: hasDimensionTarget
         ? `${bookName} · ${backendRecommendation.label}`
-        : `${backendRecommendation.label} · ${backendRecommendation.section}`,
+        : `${backendRecommendation.section} · dimension pending`,
       focus: hasDimensionTarget
         ? (backendRecommendation.dimension_focus_text
           ?? `Test ${dimensionName?.toLowerCase() ?? "this dimension"} questions inside ${backendRecommendation.label}. The passage is the context; the gap is the dimension.`)
-        : `OBA has selected ${backendRecommendation.label} as the next assessment area, but it has not isolated a dimension-level deficit there yet. Answer a focused set here so the next Knowledge Gap can name the weak dimension instead of only the passage.`,
+        : "Answer a short focused set so OBA can name the weakest dimension here.",
       priority: hasDimensionTarget && backendRecommendation.dimension_display_score
         ? `${backendRecommendation.dimension_display_score} BLI · ${backendRecommendation.dimension_answered ?? 0} ${dimensionName ?? "dimension"} answers`
         : backendRecommendation.display_score
-        ? `${backendRecommendation.display_score} BLI in this passage · dimension gap pending`
+        ? `${backendRecommendation.display_score} BLI in this passage`
         : "Needs focused answers before a dimension gap can be named",
       actionHref: `/assess?${params.toString()}`,
-      actionLabel: hasDimensionTarget && dimensionName ? `Retest ${dimensionName}` : "Find the gap",
+      actionLabel: hasDimensionTarget && dimensionName ? `Retest ${dimensionName}` : "Narrow the gap",
       guidanceLabel: dimensionGuidance?.label,
       guidanceSteps: dimensionGuidance?.steps ?? [],
       resources: dimensionGuidance?.resources ?? [],
@@ -352,11 +479,11 @@ export default function HomePage() {
   })() : getRecommendedStudy(sectionScores, !!visibleAssessmentData, scopeScores.books));
   const isBackendRecommendationShown = !isRecommendationEvidenceBlocked && Boolean(backendRecommendation);
   const knowledgeGapEyebrow = isRecommendationEvidenceBlocked
-    ? "Evidence gap"
+    ? "Before recommendations"
     : backendRecommendation?.dimension_key
       ? "Dimension gap"
       : backendRecommendation
-        ? "Gap evidence"
+        ? "Next focus"
         : "Knowledge gap";
   const recommendedGuidanceSteps = "guidanceSteps" in recommendedStudy && Array.isArray(recommendedStudy.guidanceSteps)
     ? recommendedStudy.guidanceSteps.filter((step): step is string => typeof step === "string")
@@ -404,24 +531,32 @@ export default function HomePage() {
   // ---------------------------------------------------------------------------
   // Coverage-map mode & assessment-completion status
   // ---------------------------------------------------------------------------
-  const hasReadingRecommendation = Boolean(frontier.focusLeaf);
+  const hasReadingRecommendation = !isRecommendationEvidenceBlocked && Boolean(frontier.focusLeaf);
+  const visibleCoverageTree = useMemo(
+    () => (isRecommendationEvidenceBlocked ? clearCoverageTreeRecommendation(coverageTree) : coverageTree),
+    [coverageTree, isRecommendationEvidenceBlocked],
+  );
   const activeCoverageMapMode: CoverageGridView = suiteTestament === "OT"
-    ? (coverageMapMode === "recommended" && !hasReadingRecommendation ? "overview" : coverageMapMode)
+    ? (coverageMapMode === "recommended" && !hasReadingRecommendation && !isRecommendationEvidenceBlocked ? "overview" : coverageMapMode)
     : "overview";
   const coverageModeCopy = suiteTestament === "NT"
-    ? "Every New Testament chapter, ready for NT recommendations when that engine comes online."
+    ? (NT_PILOT_ENABLED
+      ? "Every New Testament chapter, ready for NT recommendations when that engine comes online."
+      : "New Testament coverage is coming soon after the V7 router is ready for the NT bank.")
+    : isRecommendationEvidenceBlocked
+      ? "Every Old Testament chapter in context."
     : activeCoverageMapMode === "skill"
-      ? "The recommended dimension gap is pulled forward with concrete practice steps."
+      ? "Current focus and practice steps."
       : activeCoverageMapMode === "overview"
         ? "Every Old Testament chapter in its full section and book context."
         : "The next reading range is pulled forward; Overview snaps it back into the full map.";
   // The dashboard only switches from the "new learner" landing to full
-  // results once a standard assessment is actually complete (20 questions —
-  // see TOTAL_INITIAL / NT_PILOT_TARGET in app/assess/page.tsx). Anything
+  // results once a standard assessment is actually complete. The current
+  // target is 25 questions; see app/assess/constants.ts. Anything
   // short of that is a partial attempt: leaving mid-test and coming back to
   // the dashboard should not surface a half-answered score as if it were a
   // finished result.
-  const ASSESSMENT_COMPLETE_THRESHOLD = 20;
+  const ASSESSMENT_COMPLETE_THRESHOLD = TOTAL_INITIAL;
   const otAnsweredCount = testamentScores?.ot_questions_answered ?? visibleAssessmentData?.answered ?? 0;
   const ntAnsweredCount = testamentScores?.nt_questions_answered ?? ntPilotSummary?.answered ?? 0;
   const hasCompletedAssessment = Boolean(
@@ -591,6 +726,38 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeScopeDetail, scopeDetailTarget]);
 
+  // ---------------------------------------------------------------------------
+  // Save-progress prompt: popup first, inline card after it is closed
+  // ---------------------------------------------------------------------------
+  // A signed-out learner whose result exists only in this browser meets the
+  // ask as a popup. Closing it does not drop the ask - the save-progress slot
+  // in the score strip, right beside the BLI, keeps it one click away without
+  // holding the dashboard hostage. There used to be a second full-width card
+  // above the strip saying the same thing; two prompts for one action read as
+  // nagging, so the strip slot is now the only one.
+  const hasUnsavedResult = Boolean(!userEmail && visibleAssessmentData);
+  const showSavePromptModal = Boolean(
+    hasUnsavedResult &&
+    !savePromptDismissed &&
+    dashboardHydrated &&
+    hasCompletedAssessment &&
+    activeDashboardTab === "bli"
+  );
+
+  const dismissSavePrompt = useCallback(() => {
+    sessionStorage.setItem(SAVE_PROMPT_DISMISSED_KEY, "1");
+    setSavePromptDismissed(true);
+  }, []);
+
+  useEffect(() => {
+    if (!showSavePromptModal) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismissSavePrompt();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dismissSavePrompt, showSavePromptModal]);
+
   useEffect(() => {
     if (!progressPanelOpen && !conePanelOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -625,6 +792,28 @@ export default function HomePage() {
   const continuePendingRetest = () => {
     if (!pendingRetestHref) return;
     // No client-side `retest_started` here either; see handleRecommendedAction.
+    //
+    // Confirming "I reread it" IS recorded, as router antievidence. It is not
+    // an analytics event and it never moves a score: it tells the router that
+    // its standing thesis about this unit may be out of date, so v6 retests
+    // the unit rather than continuing to treat old misses as current
+    // weakness. See docs/router/MODES.md#antievidence.
+    //
+    // Fire-and-forget on purpose. The retest must never be blocked or delayed
+    // by this write, and obs_mark_unit_reread already collapses repeat marks
+    // within an hour, so a double-click cannot hold the unit stale.
+    const unitKey = backendRecommendation?.unit_key;
+    if (dashboardUserId && unitKey) {
+      void supabase
+        .rpc("obs_mark_unit_reread", {
+          p_user_id: dashboardUserId,
+          p_unit_key: unitKey,
+          p_source: "retest_interstitial",
+        })
+        .then(({ error }) => {
+          if (error) console.warn("Reread mark was not recorded:", error);
+        });
+    }
     window.location.href = pendingRetestHref;
   };
 
@@ -653,7 +842,15 @@ export default function HomePage() {
       const localAssessment = readSessionAssessmentData();
       if (localAssessment) {
         setSessionAssessmentData(localAssessment);
-        setDashboardHydrated(true);
+        // Only call the dashboard hydrated here when there is no session whose
+        // scores are still on their way. Declaring it hydrated the moment a
+        // local snapshot exists opened a window where dashboardHydrated was
+        // true but testamentScores was still null, so hasCompletedAssessment
+        // was computed from the thin local snapshot alone - the dashboard
+        // showed "Take your first Bible assessment" to someone who already has
+        // a score, then swapped in their real BLI once the fetch landed. The
+        // loading card is the honest thing to show in that gap.
+        if (!session?.user?.id) setDashboardHydrated(true);
       }
       if (session?.user?.id) {
         const [
@@ -803,6 +1000,8 @@ export default function HomePage() {
       <Starfield variant="home" constellationActive={constellation.active} constellationPoints={constellation.points} />
       <StarfieldRewardsLayer userId={dashboardUserId} />
 
+      {milestone && <ScoreMilestone milestone={milestone} onClose={() => setMilestone(null)} />}
+
       {deleteOpen && userEmail && (
         <DeleteAccountModal
           userEmail={userEmail}
@@ -872,10 +1071,6 @@ export default function HomePage() {
             </>
           ) : (
           <>
-        {!userEmail && visibleAssessmentData && (
-          <SaveResultsCard handleSignIn={handleSignIn} />
-        )}
-
         <ScoreStrip
           suiteTestament={suiteTestament}
           currentDisplayScore={currentDisplayScore}
@@ -953,9 +1148,9 @@ export default function HomePage() {
 
         <ReadingLogWidget userId={dashboardUserId} />
 
-        {coverageTree.sections.length > 0 && (
+        {visibleCoverageTree.sections.length > 0 && (
           <CoverageMapSection
-            coverageTree={coverageTree}
+            coverageTree={visibleCoverageTree}
             activeCoverageMapMode={activeCoverageMapMode}
             setCoverageMapMode={setCoverageMapMode}
             suiteTestament={suiteTestament}
@@ -964,6 +1159,7 @@ export default function HomePage() {
             frontier={frontier}
             backendRecommendation={backendRecommendation}
             knowledgeGapEyebrow={knowledgeGapEyebrow}
+            isRecommendationEvidenceBlocked={isRecommendationEvidenceBlocked}
             isBackendRecommendationShown={isBackendRecommendationShown}
             recommendedStudy={recommendedStudy}
             recommendedGuidanceLabel={recommendedGuidanceLabel}
@@ -998,6 +1194,9 @@ export default function HomePage() {
       )}
       {pendingRetestHref && (
         <RetestConfirmModal setPendingRetestHref={setPendingRetestHref} continuePendingRetest={continuePendingRetest} />
+      )}
+      {showSavePromptModal && (
+        <SaveResultsModal handleSignIn={handleSignIn} dismissSavePrompt={dismissSavePrompt} />
       )}
     </>
   );

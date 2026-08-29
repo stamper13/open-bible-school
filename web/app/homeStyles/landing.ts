@@ -47,87 +47,103 @@ export const HOME_LANDING_STYLES = `        /* =================================
         /* ============================================================
            Save-results card (signed-out snapshot prompt)
            ============================================================ */
-        .save-results-card {
-          position: relative; overflow: hidden;
-          background: rgba(255,255,255,.92);
-          border: 1px solid rgba(226,232,240,.92); border-radius: 12px;
-          box-shadow: 0 12px 28px rgba(0,0,0,.14);
-          backdrop-filter: blur(14px);
-          padding: 15px 18px; margin-bottom: 22px;
-          display: grid; grid-template-columns: minmax(0, 1fr) auto;
-          gap: 18px; align-items: center;
+        @keyframes saveResultsGlow { to { transform: rotate(1turn); } }
+        /* ============================================================
+           Save-results popup (the first ask, before the card above)
+           ============================================================ */
+        .save-modal-backdrop {
+          position: fixed; inset: 0; z-index: 90;
+          background: rgba(7,12,28,.66); backdrop-filter: blur(8px);
+          display: grid; place-items: center; padding: 24px;
+          animation: saveModalBackdropIn .18s ease-out both;
         }
-        .save-results-card::before {
-          content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
-          background: linear-gradient(180deg, #0aa3a3, #d4a017);
+        /* A cream card on a dark-space dashboard read as a browser alert
+           dropped onto the page. The dialog now uses the same surface, gold
+           CTA and type as the dashboard behind it, and carries a title, one
+           line and two buttons instead of a kicker, a paragraph and a
+           two-sentence footnote. */
+        .save-modal {
+          width: min(100%, 420px); border-radius: 20px;
+          background: rgba(13,18,36,.97);
+          border: 1px solid rgba(255,255,255,.14);
+          box-shadow: 0 30px 80px rgba(0,0,0,.55);
+          backdrop-filter: blur(14px);
+          padding: 26px 28px 24px;
+          position: relative; overflow: hidden;
+          animation: saveModalIn .2s ease-out both;
+        }
+        .save-modal::before {
+          content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+          background: linear-gradient(90deg, #0aa3a3, #e6ad12);
           pointer-events: none;
         }
-        .save-results-graphic,
-        .save-results-content,
-        .save-results-actions { position: relative; z-index: 1; }
-        .save-results-graphic {
-          display: none;
-          width: 72px; aspect-ratio: 1; border-radius: 50%;
-          border: 1px solid rgba(10,163,163,.22);
-          background:
-            radial-gradient(circle at 50% 50%, rgba(255,246,201,.92) 0 8px, rgba(212,160,23,.95) 9px 15px, transparent 16px),
-            radial-gradient(circle at 74% 28%, rgba(219,255,251,.95) 0 5px, rgba(10,163,163,.90) 6px 10px, transparent 11px),
-            radial-gradient(circle at 28% 75%, rgba(255,255,255,.92) 0 4px, rgba(124,58,237,.82) 5px 8px, transparent 9px),
-            rgba(255,255,255,.46);
-          box-shadow: inset 0 0 30px rgba(10,163,163,.10), 0 14px 30px rgba(27,36,66,.14);
+        .save-modal-close {
+          position: absolute; top: 13px; right: 13px;
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 28px; height: 28px; border-radius: 50%;
+          border: 1px solid rgba(255,255,255,.16);
+          background: rgba(255,255,255,.06);
+          color: rgba(255,255,255,.6); cursor: pointer;
+          transition: color .13s ease, border-color .13s ease, background .13s ease;
         }
-        .save-results-graphic::before,
-        .save-results-graphic::after {
-          content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+        .save-modal-close:hover, .save-modal-close:focus-visible {
+          color: #fff; border-color: rgba(255,255,255,.38);
+          background: rgba(255,255,255,.12); outline: none;
         }
-        .save-results-graphic::before {
-          inset: 13px; border: 1px dashed rgba(10,163,163,.42);
-          transform: rotate(-18deg) scaleX(1.18);
+        .save-modal-badge {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 38px; height: 38px; border-radius: 50%; margin-bottom: 15px;
+          background: rgba(10,163,163,.16);
+          border: 1px solid rgba(10,163,163,.42);
+          color: #6fe0e0;
         }
-        .save-results-graphic::after {
-          right: -3px; bottom: 7px; width: 22px; height: 22px;
-          background: #fff; border: 1px solid rgba(10,163,163,.22);
-          box-shadow: 0 8px 18px rgba(27,36,66,.13);
-        }
-        .save-results-check {
-          position: absolute; right: 3px; bottom: 14px; z-index: 2;
-          width: 11px; height: 7px;
-          border-left: 2px solid #0a6e6e; border-bottom: 2px solid #0a6e6e;
-          transform: rotate(-45deg);
-        }
-        .save-results-kicker {
-          display: inline-flex; align-items: center; gap: 7px;
-          color: #0a6e6e; font-size: 10px; font-weight: 900;
-          letter-spacing: .11em; text-transform: uppercase;
-          margin-bottom: 4px;
-        }
-        .save-results-title {
+        .save-modal-title {
           font-family: var(--font-crimson), Georgia, serif;
-          font-size: 22px; font-weight: 650; line-height: 1.08;
-          color: var(--navy); margin-bottom: 4px;
+          font-size: 26px; line-height: 1.12; font-weight: 650;
+          color: #fff; margin-bottom: 8px; padding-right: 26px;
         }
-        .save-results-copy {
-          color: var(--muted); font-size: 12.5px; line-height: 1.45;
-          max-width: 720px;
+        .save-modal-copy {
+          color: rgba(255,255,255,.68); font-size: 14.5px; line-height: 1.55;
+          margin-bottom: 22px;
         }
-        .save-results-actions {
-          display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+        .save-modal-actions {
+          display: flex; align-items: center; justify-content: flex-end;
+          gap: 10px; flex-wrap: wrap;
         }
-        .save-results-btn {
-          display: inline-flex; align-items: center; justify-content: center; gap: 9px;
-          border: none; border-radius: 999px; padding: 10px 16px;
-          background: var(--navy);
-          color: #fff; font-family: inherit; font-size: 12.5px; font-weight: 850;
-          cursor: pointer; box-shadow: 0 10px 22px rgba(27,36,66,.24);
-          transition: transform .13s ease, box-shadow .15s ease;
-          white-space: nowrap;
+        .save-modal-primary,
+        .save-modal-secondary {
+          border-radius: 999px; padding: 12px 20px; min-height: 44px;
+          font-family: inherit; font-size: 13.5px; font-weight: 800;
+          cursor: pointer;
         }
-        .save-results-btn:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(27,36,66,.30); }
-        .save-results-note {
-          font-size: 11px; color: rgba(86,96,112,.76); font-weight: 650;
-          text-align: right;
+        .save-modal-primary {
+          display: inline-flex; align-items: center; gap: 9px;
+          border: none; color: #141827; background: #e6ad12;
+          box-shadow: 0 12px 28px rgba(230,173,18,.26);
+          transition: transform .13s ease, box-shadow .15s ease, background .13s ease;
         }
-        @keyframes saveResultsGlow { to { transform: rotate(1turn); } }
+        .save-modal-primary:hover {
+          background: #f2ba22; transform: translateY(-1px);
+          box-shadow: 0 16px 32px rgba(230,173,18,.3);
+        }
+        .save-modal-secondary {
+          border: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.8);
+          background: rgba(255,255,255,.05);
+          transition: background .13s ease, color .13s ease;
+        }
+        .save-modal-secondary:hover { background: rgba(255,255,255,.11); color: #fff; }
+        .save-modal-primary:focus-visible,
+        .save-modal-secondary:focus-visible {
+          outline: 2px solid rgba(255,255,255,.7); outline-offset: 3px;
+        }
+        @keyframes saveModalBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes saveModalIn {
+          from { opacity: 0; transform: translateY(10px) scale(.985); }
+          to { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .save-modal-backdrop, .save-modal { animation: none; }
+        }
         /* ============================================================
            First-assessment card & feature grid
            ============================================================ */
@@ -201,7 +217,7 @@ export const HOME_LANDING_STYLES = `        /* =================================
           margin-bottom: 11px; color: #5eead4;
           font-size: 12px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase;
         }
-        .first-assessment-content h2 {
+        .first-assessment-content h1 {
           font-family: var(--font-crimson), Georgia, serif;
           font-size: clamp(36px, 5vw, 58px); line-height: .98; font-weight: 700;
           max-width: 520px; margin-bottom: 16px;
@@ -247,6 +263,16 @@ export const HOME_LANDING_STYLES = `        /* =================================
           border-color: rgba(230,173,18,.48);
           background: rgba(255,255,255,.11);
           outline: none;
+        }
+        .first-assessment-primary.is-disabled,
+        .first-assessment-primary:disabled,
+        .first-assessment-choice.is-disabled {
+          cursor: default; opacity: .62; text-decoration: none; transform: none;
+        }
+        .first-assessment-choice.is-disabled:hover,
+        .first-assessment-choice.is-disabled:focus-visible {
+          transform: none; border-color: rgba(255,255,255,.18);
+          background: rgba(255,255,255,.075);
         }
         .first-assessment-choice strong {
           font-size: 14px; font-weight: 900;

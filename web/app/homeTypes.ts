@@ -18,8 +18,13 @@ export type AssessmentSnapshot = { answered: number; correct: number; bli?: numb
 export type RecommendedStudy = {
   label: string;
   books: string;
-  focus: string;
-  priority: string;
+  /**
+   * Optional because the "not enough evidence yet" recommendation has nothing
+   * useful to put here: its headline already carries the whole message. The
+   * cards skip the element entirely rather than rendering an empty paragraph.
+   */
+  focus?: string;
+  priority?: string;
   actionHref: string;
   actionLabel: string;
 };

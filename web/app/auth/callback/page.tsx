@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Nebula from "@/components/nebula/Nebula";
 import { supabase } from "@/lib/supabase/client";
 import { claimPendingTransfer, clearPendingTransfer } from "@/lib/auth/anonymousTransfer";
 import { useRouter } from "next/navigation";
@@ -150,6 +151,7 @@ export default function AuthCallback() {
 
   return (
     <div className="cb-wrap">
+      <Nebula intensity={0.62} seed={41} />
       <style>{`
         .cb-wrap {
           min-height: 100vh; background: #0b0f1e;
@@ -157,7 +159,8 @@ export default function AuthCallback() {
           padding: 24px;
           font-family: var(--font-inter), Inter, system-ui, sans-serif;
         }
-        .cb-card { text-align: center; max-width: 420px; }
+        /* Above the nebula, which is fixed at z-index 0. */
+        .cb-card { position: relative; z-index: 1; text-align: center; max-width: 420px; }
         .cb-spinner {
           width: 40px; height: 40px; border-radius: 50%;
           border: 3px solid rgba(255,255,255,.1); border-top-color: #0aa3a3;

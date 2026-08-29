@@ -27,6 +27,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  // /about was a second, longer telling of the philosophy write-up. It was
+  // retired in favour of /philosophy (the author's own text) plus /intro (the
+  // visual tour); its two forward-looking sections moved to /credential.
+  // Permanent, because the URL was in the site nav and footer for a while.
+  async redirects() {
+    return [
+      { source: "/about", destination: "/philosophy", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

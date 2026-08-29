@@ -1,0 +1,73 @@
+BEGIN
+SET
+SET
+CREATE TABLE
+INSERT 0 8
+DELETE 4
+DO
+SELECT 1491
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+GRANT
+INSERT 0 12
+INSERT 0 12
+psql:/Users/stamper35/open-bible-school/supabase/verify/launch_assessment_router_profile_simulation.sql:624: ERROR:  canceling statement due to statement timeout
+CONTEXT:  SQL function "canonical_assessment_scope" statement 1
+SQL function "obs_router_scope_baseline_met" statement 1
+SQL function "obs_advanced_dimension_unlocked" statement 1
+SQL function "obs_rank_ot_assessment_candidates_v4" statement 1
+SQL function "obs_rank_ot_assessment_candidates_v5" statement 1
+SQL function "obs_rank_ot_assessment_candidates_v6" statement 1
+SQL statement "select *
+                        from public.obs_rank_ot_assessment_candidates_v6(
+      p_attempt_id, p_user_id, 'V6', null, now(), 25
+    ) ranked
+    where not exists (
+      select 1
+      from public.assessment_answers answer
+      where answer.attempt_id = p_attempt_id
+        and answer.user_id = p_user_id
+        and answer.generated_question_id = ranked.generated_question_id
+    )
+    and (
+      lower(coalesce(ranked.payload->>'question_family', '')) <> 'book_orientation'
+      or v_book_orientation_answered < 7
+    )
+    and (
+      not (
+        ranked.question_type = 'ot_book_section_sort_v1'
+        or coalesce(ranked.payload->>'prompt', ranked.prompt) ~* 'which group consists entirely of books in'
+        or coalesce(ranked.payload->>'prompt', ranked.prompt) ~* 'which book belongs to .+ rather than'
+        or coalesce(ranked.payload->>'prompt', ranked.prompt) ~* 'called the (former prophets|latter prophets|writings)'
+      )
+      or (
+        coalesce(attempt_row.answered_count, 0) >= 16
+        and v_division_taxonomy_answered = 0
+      )
+    )
+    order by ranked.candidate_rank
+    limit 1"
+PL/pgSQL function get_next_assessment_question(uuid,uuid) line 102 at SQL statement
+SQL statement "select
+      adaptive.out_generated_question_id,
+      adaptive.prompt,
+      adaptive.question_type,
+      adaptive.choices,
+      adaptive.event_title,
+      adaptive.book_code,
+      adaptive.importance_tier,
+      adaptive.section
+    from public.get_next_assessment_question(
+      attempt_row.id,
+      attempt_row.user_id
+    ) adaptive
+    limit 1"
+PL/pgSQL function obs_get_next_ot_assessment_question(uuid) line 34 at RETURN QUERY
+SQL statement "select to_jsonb(question_row)
+                                from public.obs_get_next_ot_assessment_question(
+          (v_start->>'attempt_id')::uuid
+        ) question_row"
+PL/pgSQL function inline_code_block line 68 at SQL statement

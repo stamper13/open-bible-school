@@ -1,6 +1,6 @@
 # RPC Contracts
 
-Last reviewed: 2026-08-21  
+Last reviewed: 2026-08-21
 Verified against: Supabase preview branch `backend-cleanup` (`cwsjtlovatphczdvaimb`)
 
 This document is the human-readable contract registry for database functions that
@@ -85,6 +85,7 @@ shape is authenticated plus service role, with no anonymous execute grant.
 | `obs_start_or_resume_ot_scope_assessment` | `p_scope_key text, p_label text, p_target_question_count integer, p_force_new boolean` | Scoped OT assessment startup | `volatile` | Dashboard scoped assessment start. |
 | `obs_submit_nt_assessment_answer` | `p_attempt_id uuid, p_generated_question_id uuid, p_selected_choice_id text` | NT answer submission | `volatile` | NT answer submit contract. |
 | `obs_submit_ot_assessment_response_v2` | `p_attempt_id uuid, p_generated_question_id uuid, p_response text, p_selected_choice_text text, p_displayed_choices jsonb` | Current OT answer submission | `volatile` | Current OT submit contract. |
+| `obs_submit_question_quality_rating` | `p_attempt_id uuid, p_generated_question_id uuid, p_rating smallint, p_feedback_text text, p_selected_choice_id text, p_correct_choice_id text, p_question_prompt text` | Assessment question feedback modal | `volatile` | Stores 1-3 learner quality ratings after validating attempt ownership. |
 
 ## Browser Public-Or-Authenticated Writes
 

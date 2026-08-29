@@ -105,7 +105,13 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
         .map-copy { max-width: 720px; margin: 7px 0 0; color: rgba(237,244,251,.6); font-size: 12.5px; line-height: 1.5; }
         .km-view-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
         .km-view-toggle {
-          position: relative; display: inline-grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+          /* Auto-flow rather than a fixed count: this was pinned at three
+             columns while the bar holds two buttons, leaving a whole empty
+             track of dead space on the right of the pill. Letting the columns
+             follow the buttons means it cannot drift again if a view is added
+             or removed. */
+          position: relative; display: inline-grid;
+          grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
           padding: 4px; border-radius: 999px;
           background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
         }
@@ -114,7 +120,7 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
         }
         .km-view-btn {
           position: relative; z-index: 1; border: 0; background: transparent !important;
-          min-width: 96px; padding: 8px 13px; border-radius: 999px; cursor: pointer;
+          min-width: 96px; min-height: 32px; padding: 8px 13px; border-radius: 999px; cursor: pointer;
           font: inherit; font-size: 12.5px; font-weight: 800; color: rgba(255,255,255,.62);
           transition: color .2s ease, box-shadow .2s ease;
         }
@@ -124,7 +130,7 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
         }
         .km-view-btn.is-active,
         .km-view-btn[aria-selected="true"] {
-          color: #fff !important; background: #0aa3a3 !important;
+          color: #06111f !important; background: #7de5e5 !important;
           box-shadow: 0 4px 12px rgba(0,0,0,.3);
         }
         .km-testament-toggle {
@@ -134,7 +140,7 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
         }
         .km-testament-pill,
         .km-testament-btn {
-          min-width: 42px; border: 0; border-radius: 999px; padding: 8px 13px;
+          min-width: 42px; min-height: 32px; border: 0; border-radius: 999px; padding: 8px 13px;
           font: inherit; font-size: 12.5px; font-weight: 850;
         }
         .km-testament-pill { display: inline-flex; justify-content: center; color: #06111f; background: #d6b857; }
@@ -199,4 +205,26 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
           html { scroll-behavior: auto; }
           *, *::before, *::after { transition: none !important; }
         }
+        /* Shown when the map has structure but no evidence yet, so a blank
+           atlas reads as "not started" rather than "broken". */
+        .km-unassessed {
+          display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+          justify-content: space-between;
+          margin-bottom: 16px; padding: 14px 18px; border-radius: 14px;
+          border: 1px solid rgba(212,160,23,.30);
+          background: rgba(212,160,23,.08);
+        }
+        .km-unassessed p {
+          margin: 0; max-width: 640px;
+          font-size: 13.5px; line-height: 1.6; color: rgba(237,244,251,.78);
+        }
+        .km-unassessed-cta {
+          display: inline-flex; align-items: center; gap: 8px;
+          min-height: 40px; padding: 9px 18px; border-radius: 999px;
+          background: #e6ad12; color: #141827;
+          font-size: 13px; font-weight: 800; text-decoration: none;
+          white-space: nowrap;
+          transition: background .13s ease, transform .13s ease;
+        }
+        .km-unassessed-cta:hover { background: #f2ba22; transform: translateY(-1px); }
 `;

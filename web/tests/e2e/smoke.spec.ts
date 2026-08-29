@@ -50,7 +50,7 @@ test.describe("public routes render", () => {
   test("signed-out knowledge map shows its empty state and CTA", async ({ page }) => {
     await page.goto("/knowledge-map");
     await expect(
-      page.getByText(/Sign in and take an assessment to see where your attention should go next/i),
+      page.getByText(/Nothing is filled in yet\. Answer questions to start coloring the Old Testament map\./i),
     ).toBeVisible();
     await expect(page.getByRole("link", { name: /Get started/i })).toBeVisible();
   });
@@ -63,15 +63,22 @@ test.describe("assessment entry points", () => {
     await expect(page.getByRole("button", { name: /New Testament Assessment/i })).toBeVisible();
   });
 
-  test("New Testament opens the broad NT path, not a pilot chooser", async ({ page }) => {
+  test("New Testament entry matches the current launch state", async ({ page }) => {
     await page.goto("/assess?choose=1");
-    await page.getByRole("button", { name: /New Testament Assessment/i }).click();
+    const ntButton = page.getByRole("button", { name: /New Testament Assessment/i });
+    await expect(ntButton).toBeVisible();
 
-    // The broad path carries scope=NT. An obsolete pilot chooser would send the
-    // user back to ?choose=1 instead.
-    await page.waitForURL(/testament=NT/);
-    expect(page.url()).toContain("scope=NT");
-    expect(page.url()).not.toContain("choose=1");
+    if (await ntButton.isEnabled()) {
+      await ntButton.click();
+      // The broad path carries scope=NT. An obsolete pilot chooser would send the
+      // user back to ?choose=1 instead.
+      await page.waitForURL(/testament=NT/);
+      expect(page.url()).toContain("scope=NT");
+      expect(page.url()).not.toContain("choose=1");
+    } else {
+      await expect(ntButton).toContainText(/Coming soon/i);
+      await expect(ntButton).toContainText(/V7 router/i);
+    }
   });
 });
 

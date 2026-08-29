@@ -27,12 +27,20 @@ fi
 
 mkdir -p "$report_dir"
 
+set +e
 PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-15}" "$psql_bin" "$target_db_url" \
   --set=ON_ERROR_STOP=1 \
   --set=launch_testament="${LAUNCH_TESTAMENT:-ALL}" \
   --set=launch_question_count="${LAUNCH_QUESTION_COUNT:-12}" \
   --set=launch_run_count="${LAUNCH_RUN_COUNT:-1}" \
   --set=launch_statement_timeout="${LAUNCH_STATEMENT_TIMEOUT:-180s}" \
-  --file="$sql_file" | tee "$report_file"
+  --file="$sql_file" 2>&1 | tee "$report_file"
+psql_status="${PIPESTATUS[0]}"
+set -e
+
+if [[ "$psql_status" -ne 0 ]]; then
+  echo "FAIL: launch assessment simulation failed. See $report_file" >&2
+  exit "$psql_status"
+fi
 
 echo "Wrote $report_file"

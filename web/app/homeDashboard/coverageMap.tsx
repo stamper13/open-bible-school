@@ -22,6 +22,7 @@ export function CoverageMapSection({
   frontier,
   backendRecommendation,
   knowledgeGapEyebrow,
+  isRecommendationEvidenceBlocked,
   isBackendRecommendationShown,
   recommendedStudy,
   recommendedGuidanceLabel,
@@ -42,6 +43,7 @@ export function CoverageMapSection({
   frontier: FocusPath;
   backendRecommendation: BackendRecommendation | null;
   knowledgeGapEyebrow: string;
+  isRecommendationEvidenceBlocked: boolean;
   isBackendRecommendationShown: boolean;
   recommendedStudy: RecommendedStudy;
   recommendedGuidanceLabel: string;
@@ -69,7 +71,7 @@ export function CoverageMapSection({
                     {
                       key: "recommended" as const,
                       label: "Recommended",
-                      disabled: !hasReadingRecommendation,
+                      disabled: !hasReadingRecommendation && !isRecommendationEvidenceBlocked,
                       icon: (
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z" />
@@ -133,7 +135,29 @@ export function CoverageMapSection({
               <CoverageLegend hasRecommendation={hasFocusRecommendation(coverageTree)} testament={suiteTestament} />
             </div>
             <div className="coverage-map-card">
-            {suiteTestament === "OT" && activeCoverageMapMode === "recommended" && frontier.focusLeaf && (
+            {suiteTestament === "OT" && activeCoverageMapMode === "recommended" && isRecommendationEvidenceBlocked && (
+              <section className="coverage-focus-card is-skill" aria-label="Recommendations need more evidence">
+                <div>
+                  <p className="coverage-focus-eyebrow">Before recommendations</p>
+                  <h3 className="coverage-focus-title">{recommendedStudy.label}</h3>
+                  <p className="coverage-focus-meta">{recommendedStudy.books}</p>
+                </div>
+                <div className="coverage-focus-actions">
+                  <Link className="coverage-focus-primary" href={recommendedStudy.actionHref} onClick={handleRecommendedAction}>
+                    {recommendedStudy.actionLabel}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14"/><path d="M13 5l7 7-7 7"/>
+                    </svg>
+                  </Link>
+                  {progressHistory[0]?.attempt_id && (
+                    <Link className="recommended-review" href={`/results/${progressHistory[0].attempt_id}`}>
+                      Recent results <span aria-hidden="true">›</span>
+                    </Link>
+                  )}
+                </div>
+              </section>
+            )}
+            {suiteTestament === "OT" && activeCoverageMapMode === "recommended" && !isRecommendationEvidenceBlocked && frontier.focusLeaf && (
               <section className="coverage-focus-card" aria-label="Recommended reading">
                 <div>
                   <p className="coverage-focus-eyebrow">Recommended reading</p>
@@ -188,7 +212,9 @@ export function CoverageMapSection({
                     <h3 className="coverage-focus-title">{recommendedStudy.label}</h3>
                   )}
                   <p className="coverage-focus-meta">{recommendedStudy.books}</p>
-                  <p className="coverage-focus-copy">{recommendedStudy.focus}</p>
+                  {recommendedStudy.focus && (
+                    <p className="coverage-focus-copy">{recommendedStudy.focus}</p>
+                  )}
                   {recommendedGuidanceSteps.length > 0 && (
                     <div className="recommended-guidance">
                       <p className="recommended-guidance-title">{recommendedGuidanceLabel}</p>
@@ -216,7 +242,9 @@ export function CoverageMapSection({
                   )}
                 </div>
                 <div className="coverage-focus-actions">
-                  <p className="coverage-focus-priority">{recommendedStudy.priority}</p>
+                  {recommendedStudy.priority && (
+                    <p className="coverage-focus-priority">{recommendedStudy.priority}</p>
+                  )}
                   {backendRecommendation && isBackendRecommendationShown && (
                     <button
                       type="button"
@@ -264,6 +292,7 @@ export function CoverageMapSection({
               // screen.
               focusChapterRange={
                 suiteTestament === "OT" && activeCoverageMapMode === "recommended"
+                  && !isRecommendationEvidenceBlocked
                   && frontier.focusLeaf?.book_code && frontier.focusLeaf.start_ch !== null
                   ? {
                       bookCode: frontier.focusLeaf.book_code,

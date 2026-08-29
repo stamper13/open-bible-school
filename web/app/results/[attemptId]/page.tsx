@@ -6,6 +6,11 @@ import { useParams } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import { supabase } from "@/lib/supabase/client";
 import {
+  FOLLOWUP_ASSESSMENT_TARGET,
+  NT_PILOT_ENABLED,
+  TOTAL_INITIAL,
+} from "@/app/assess/constants";
+import {
   ATTEMPT_HISTORY_LIMIT,
   deriveAttemptScoreState,
   formatAttemptScore,
@@ -311,10 +316,12 @@ export default function AttemptResultsPage() {
   const continueAssessment = () => {
     if (summary?.testament === "NT") {
       sessionStorage.removeItem("obs_nt_attempt_id");
-      window.location.href = "/assess?testament=NT&scope=NT";
+      window.location.href = NT_PILOT_ENABLED
+        ? `/assess?testament=NT&scope=NT&target=${FOLLOWUP_ASSESSMENT_TARGET}`
+        : "/assess?choose=1";
       return;
     }
-    window.location.href = "/assess";
+    window.location.href = `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}`;
   };
 
   const sessionAccuracy = summary
@@ -334,11 +341,11 @@ export default function AttemptResultsPage() {
   // NOTE: despite the name, obs_get_attempt_summary's `completed_at` is
   // max(answered_at) — the time of the most recent answer, not a real
   // "attempt finished" flag. It's non-null after the very first question, so
-  // it can't be used to gate this page. The standard assessment is 20
-  // questions (TOTAL_INITIAL / NT_PILOT_TARGET in app/assess/page.tsx, same
-  // threshold the dashboard landing uses), so answered count is the only
+  // it can't be used to gate this page. The standard assessment is currently
+  // 25 questions, matching app/assess/constants.ts and the dashboard landing.
+  // Answered count is the only
   // honest signal we have client-side that a real BLI result exists.
-  const ASSESSMENT_COMPLETE_THRESHOLD = 20;
+  const ASSESSMENT_COMPLETE_THRESHOLD = TOTAL_INITIAL;
   const isComplete = Boolean(summary && summary.answered >= ASSESSMENT_COMPLETE_THRESHOLD);
   const questionsRemaining = summary ? Math.max(0, ASSESSMENT_COMPLETE_THRESHOLD - summary.answered) : 0;
 
@@ -410,7 +417,7 @@ export default function AttemptResultsPage() {
                 <p className="summary-copy">
                   {isComplete
                     ? "Review the session below when you want to study specific misses or revisit questions you skipped."
-                    : "Your score and section breakdown are only meaningful once the standard 20-question assessment is complete — finish it to see them."}
+                    : "Your score and section breakdown are only meaningful once the standard 25-question assessment is complete; finish it to see them."}
                 </p>
                 <div className="metric-row">
                   <div className="metric"><strong>{summary.answered}</strong><span>Answered</span></div>

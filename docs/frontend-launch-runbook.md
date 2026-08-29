@@ -20,7 +20,7 @@ names with empty values.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser + server | Yes | Anonymous/publishable key. RLS-restricted. |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | Only for admin console | Bypasses RLS. |
 | `OBS_ADMIN_EMAILS` | Server only | Only for admin console | Comma-separated allowlist for `/admin/questions`. |
-| `NEXT_PUBLIC_NT_PILOT_ENABLED` | Browser | No | Set to `false` to hide the New Testament assessment. Defaults to enabled. |
+| `NEXT_PUBLIC_NT_PILOT_ENABLED` | Browser | No | Set to `true` to show the New Testament assessment. Unset or any other value keeps it hidden. |
 
 ### Service-role key is server-only
 
@@ -60,7 +60,9 @@ npm run test:e2e
 ```
 
 `npm run test:e2e` reuses a dev server on port 3000 if one is running and starts
-one otherwise. Override the port with `PLAYWRIGHT_PORT`.
+one otherwise. Override the port with `PLAYWRIGHT_PORT`. To run against an
+already-deployed preview instead, set `PLAYWRIGHT_BASE_URL`; in that mode the
+suite does not start a local dev server.
 
 Note: the suite targets `http://localhost`, **not** `127.0.0.1`. Next's dev-mode
 cross-origin protection refuses to hydrate the app when the host differs from
@@ -87,7 +89,8 @@ against any environment. It covers:
 - `/`, `/about`, `/knowledge-map`, `/bli` return 200 and log no hydration errors
 - the dashboard and knowledge-map headings render
 - the assessment selector exposes both Old and New Testament entry points
-- New Testament opens the broad `scope=NT` path, not an obsolete pilot chooser
+- New Testament either opens the broad `scope=NT` path when enabled, or clearly
+  shows the current coming-soon state when disabled
 - signed-out users see Sign in and never Sign out
 - reduced motion suppresses long and infinite animations
 - no horizontal overflow at 390px on any public route
@@ -111,7 +114,7 @@ against a **test account**, never a real user's. Do not commit credentials.
       already recorded, so it has been kept." It must not dead-end in an error.
 - [ ] Answer a sequence-ordering question using **only** the keyboard, via the
       ↑/↓ move buttons.
-- [ ] Start an NT assessment and confirm it scores to a separate NT BLI.
+- [ ] If `NEXT_PUBLIC_NT_PILOT_ENABLED=true`, start an NT assessment and confirm it scores to a separate NT BLI.
 - [ ] Open `/results/<attemptId>`; check filters and expandable review rows.
 - [ ] Force an error (pause the Supabase project) and confirm the results page
       and knowledge map both show a "Try again" action that recovers once the
@@ -130,8 +133,6 @@ against a **test account**, never a real user's. Do not commit credentials.
    ```bash
    cd web && PLAYWRIGHT_BASE_URL=<preview-url> npx playwright test
    ```
-   (Set `use.baseURL` from that variable first if you want this wired in; by
-   default the config targets localhost.)
 4. Walk the manual checklist above on the preview URL.
 5. Confirm security headers survive the deploy:
    ```bash

@@ -26,6 +26,7 @@ begin
       ('obs_get_scope_summary'),
       ('obs_get_user_recommendation_v2'),
       ('obs_issue_anonymous_transfer_token'),
+      ('obs_mark_unit_reread'),
       ('obs_record_study_event'),
       ('obs_skip_broken_assessment_question'),
       ('obs_start_nt_assessment'),
@@ -33,6 +34,7 @@ begin
       ('obs_start_or_resume_ot_scope_assessment'),
       ('obs_submit_nt_assessment_answer'),
       ('obs_submit_ot_assessment_response_v2'),
+      ('obs_submit_question_quality_rating'),
       ('obs_submit_section_sort_answers')
   ), live_public_rpc as (
     select distinct p.proname as name
