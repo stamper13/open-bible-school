@@ -1,7 +1,7 @@
 export const HOME_RESPONSIVE_STYLES = `        /* ============================================================
            Responsive: narrow-viewport overrides
            ============================================================ */
-        @media (max-width: 1460px), (max-height: 920px) {
+        @media (max-width: 1680px), (max-height: 980px) {
           .nav { padding: 11px 24px; }
           .nav-brand { font-size: 17px; }
           .nav-btn { padding: 7px 13px; font-size: 12.5px; }
