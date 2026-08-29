@@ -1,6 +1,128 @@
 export const HOME_RESPONSIVE_STYLES = `        /* ============================================================
            Responsive: narrow-viewport overrides
            ============================================================ */
+        @media (max-width: 1380px), (max-height: 820px) {
+          .nav { padding: 11px 24px; }
+          .nav-brand { font-size: 17px; }
+          .nav-btn { padding: 7px 13px; font-size: 12.5px; }
+          .page {
+            max-width: 1060px;
+            padding: 30px 20px 72px;
+          }
+          .page.is-new-assessment-landing {
+            max-width: 1100px;
+            padding-top: 30px;
+          }
+          .page-header { margin-bottom: 24px; }
+          .page-title { font-size: 28px; }
+          .dashboard-subject-row { margin-bottom: 22px; }
+          .page.is-new-assessment-landing .dashboard-subject-row { margin-bottom: 18px; }
+
+          .first-assessment-card {
+            grid-template-columns: minmax(230px, 320px) minmax(0, 1fr);
+            gap: 24px;
+            min-height: 350px;
+            padding: 28px;
+            border-radius: 18px;
+          }
+          .first-assessment-orbit { width: min(100%, 300px); }
+          .first-assessment-orbit::before { inset: 44px; }
+          .first-assessment-orbit::after { inset: 86px; }
+          .first-assessment-sun { width: 78px; height: 78px; }
+          .first-assessment-planet { width: 42px; height: 42px; }
+          .first-assessment-moon { width: 18px; height: 18px; }
+          .first-assessment-kicker { margin-bottom: 8px; }
+          .first-assessment-content h1 {
+            font-size: clamp(40px, 4vw, 48px);
+            max-width: 460px;
+            margin-bottom: 12px;
+          }
+          .first-assessment-content p {
+            font-size: 14.5px;
+            line-height: 1.55;
+            margin-bottom: 18px;
+          }
+          .first-assessment-choice-panel { margin-top: 14px; }
+          .first-assessment-choice {
+            min-height: 78px;
+            padding: 13px;
+          }
+          .first-assessment-steps { margin-top: 20px; }
+          .oba-feature-grid {
+            gap: 12px;
+            margin-top: 24px;
+          }
+          .oba-feature-card {
+            min-height: 198px;
+            padding: 16px;
+            border-radius: 14px;
+          }
+          .oba-feature-graphic {
+            height: 68px;
+            margin-bottom: 12px;
+          }
+          .oba-feature-title { font-size: 20px; }
+          .oba-feature-copy { font-size: 12.5px; line-height: 1.45; }
+
+          .placeholder-dashboard {
+            grid-template-columns: 1fr 190px;
+            gap: 24px;
+            min-height: 360px;
+            padding: 34px 36px;
+          }
+          .placeholder-title { font-size: 32px; }
+          .placeholder-copy { font-size: 14px; line-height: 1.58; }
+          .placeholder-orbit { width: 190px; }
+          .score-strip { margin-bottom: 22px; }
+          .score-block { padding: 24px 32px; }
+          .score-number { font-size: 58px; }
+          .level-block { padding: 24px 28px; gap: 8px; }
+          .conf-block { min-width: 190px; padding: 24px 28px; }
+          .level-desc-empty { font-size: 13.5px; line-height: 1.5; }
+          .verse-of-day-text { font-size: 15.5px; line-height: 1.5; }
+
+          .progress-panel,
+          .knowledge-cone-panel { margin-bottom: 24px; }
+          .progress-card {
+            padding: 22px 24px 18px;
+            border-radius: 16px;
+          }
+          .progress-title,
+          .knowledge-cone-title { font-size: 23px; }
+          .progress-axis,
+          .progress-chart { height: 158px; }
+          .progress-chart { min-width: 580px; }
+          .progress-detail-primary strong { font-size: 18px; }
+
+          .knowledge-cone-card {
+            padding: 24px 28px 26px;
+            border-radius: 16px;
+          }
+          .knowledge-cone-head {
+            margin-bottom: 18px;
+          }
+          .knowledge-cone-score { font-size: 26px; }
+          .knowledge-cone-wrap {
+            min-height: 390px;
+            padding: 18px 20px;
+          }
+          .knowledge-cone {
+            width: min(500px, 100%);
+            height: 338px;
+          }
+
+          .section-eyebrow,
+          .breakdown-head,
+          .coverage-map-section { margin-top: 26px; }
+          .coverage-focus-card {
+            gap: 16px;
+            padding: 18px 20px;
+          }
+          .coverage-focus-title { font-size: 22px; }
+          .coverage-focus-copy { font-size: 12.5px; line-height: 1.46; }
+          .sections-grid { gap: 12px; }
+        }
+
         @media (max-width: 640px) {
           .score-strip { grid-template-columns: 1fr; }
           .score-block { border-right: none; border-bottom: 1px solid rgba(255,255,255,.12); }
