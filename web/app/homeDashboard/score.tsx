@@ -79,7 +79,7 @@ export function ScoreStrip({
               name: "OT BLI", accent: "#d4a017", hasData: otHasData,
               score: currentDisplayScore, level: currentDisplayLevel,
               description: currentDisplayBand.description,
-              emptyDescription: <>Take your first assessment to place your score and get a next step.</>,
+              emptyDescription: <>Take your first assessment to get a baseline score and a next step.</>,
               evidence: bliEvidence,
               tooltip: "Your OT Bible Literacy Index measures Old Testament knowledge across four sections. The NT BLI is scored separately, and the combined score adds both 0-800 indexes for a total up to 1600.",
               range: otHasData ? `${currentDisplayLevel} · 0-800` : "Complete the OT assessment · 0-800",
@@ -89,8 +89,8 @@ export function ScoreStrip({
               score: testamentScores?.nt_display_bli ?? 0, level: ntLevel,
               description: testamentize(ntBand.description, "the New Testament"),
               emptyDescription: NT_PILOT_ENABLED
-                ? <>Take the New Testament assessment to find out where you stand. It builds its own <strong>separate 0-800 score</strong>, distinct from the OT BLI.</>
-                : <>New Testament assessment is <strong>coming soon</strong> after the V7 router is ready for the NT bank.</>,
+                ? <>Take the New Testament assessment to get a separate <strong>0-800 score</strong>.</>
+                : <>New Testament assessment is <strong>coming soon</strong>.</>,
               evidence: ntBliEvidence,
               tooltip: "Your NT Bible Literacy Index measures New Testament knowledge across the Gospels, Acts, the Epistles, and Revelation. It is scored separately from the OT BLI.",
               range: ntHasData ? `${ntLevel} · 0-800` : NT_PILOT_ENABLED ? "Complete the NT assessment · 0-800" : "Coming soon · 0-800",

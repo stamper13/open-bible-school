@@ -28,13 +28,13 @@ export function ModeSelectScreen() {
     <div className="card center-card">
       <p className="pilot-badge">Assessment</p>
       <h1 className="card-heading">What would you like to assess?</h1>
-      <p className="card-sub">Start with the Old Testament. New Testament is coming soon.</p>
+      <p className="card-sub">Choose a section of Scripture to begin.</p>
       <div className="selection-grid">
         <button className="testament-card" type="button" onClick={() => window.location.href = "/assess"}>
           <div className="testament-top">
             <strong className="testament-title">Old Testament Assessment</strong>
           </div>
-          <p className="testament-desc">Adaptive questions across the Old Testament.</p>
+          <p className="testament-desc">Start with questions from Genesis through Malachi.</p>
         </button>
         <button
           className="testament-card"
@@ -50,8 +50,8 @@ export function ModeSelectScreen() {
           </div>
           <p className="testament-desc">
             {NT_PILOT_ENABLED
-              ? "Adaptive questions across all 27 New Testament books, scored as a separate NT BLI."
-              : "Paused while the V7 router is brought over to the New Testament bank."}
+              ? "Questions from Matthew through Revelation, scored separately from the Old Testament."
+              : "Coming soon."}
           </p>
         </button>
       </div>
@@ -98,17 +98,17 @@ export function NtStartingScreen({
         </p>
         <p className="startup-note">
           {isLoadingNextQuestion
-            ? "The assessment is checking your latest answer and choosing the next useful signal."
+            ? "The assessment is checking your latest answer and choosing what to ask next."
             : startupWaitLevel === 0
-            ? "We are preparing an adaptive New Testament sequence and checking your saved progress."
+            ? "We are preparing your New Testament questions and checking your saved progress."
             : startupWaitLevel === 1
-              ? "First-time startup can take a few seconds while the anonymous session and question bank warm up."
+              ? "This can take a few seconds the first time you start."
               : "You can keep waiting, or restart the setup if the connection stalled."}
         </p>
       </div>
       {ntError && <p className="pilot-note">{ntError}</p>}
       {!isLoadingNextQuestion && <div className="spinner" />}
-      <p className="pilot-note">Your NT answers contribute only to the NT BLI, not the OT BLI.</p>
+      <p className="pilot-note">New Testament results are tracked separately from Old Testament results.</p>
       <div className="startup-actions">
         {startupWaitLevel === 2 && (
           <button className="btn-secondary" type="button" onClick={() => window.location.reload()}>
@@ -154,11 +154,11 @@ export function OtStartingScreen({
         </p>
         <p className="startup-note">
           {isLoadingNextQuestion
-            ? "OBA is moving through the question map and finding the next useful signal."
+            ? "The assessment is choosing the next question."
             : startupWaitLevel === 0
             ? "We are checking your session and preparing the next adaptive question."
             : startupWaitLevel === 1
-              ? "First-time startup can take a few seconds while the anonymous session and question bank warm up."
+              ? "This can take a few seconds the first time you start."
               : "You can keep waiting, or start a fresh setup if the connection stalled."}
         </p>
         {startupWaitLevel === 2 && (
@@ -269,10 +269,10 @@ export function NtCompleteScreen({
       <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
       <div className="card-heading">New Testament assessment complete</div>
       <p className="card-sub">You answered {correctCount} of {answeredCount} questions correctly in {ntScope.label}.</p>
-      <p className="pilot-note">Your separate NT BLI snapshot is ready. Review the session for your score and answer history.</p>
+      <p className="pilot-note">Your New Testament result is ready. Review the session for your score and answer history.</p>
       {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
       <button className="btn-primary" type="button" onClick={() => startNtPilot(ntScope)}>Retry same scope</button>
-      <Link className="btn-secondary" href="/">Choose another NT scope from your BLI profile</Link>
+      <Link className="btn-secondary" href="/">Choose another New Testament area</Link>
       <button className="btn-secondary" type="button" onClick={transitionToDashboard}>Back to dashboard</button>
     </div>
   );

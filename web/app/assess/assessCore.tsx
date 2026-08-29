@@ -457,9 +457,9 @@ export function FeedbackPanel({
                       </span>
                       {isTargetedOtAssessment
                         ? isScopeOtAssessment
-                          ? `${otAssessment?.label ?? "Targeted"} test complete. Your BLI has been updated.`
+                          ? `${otAssessment?.label ?? "Targeted"} test complete. Your score has been updated.`
                           : `${otAssessment?.label} retest complete. Your recommendation is being recalculated.`
-                        : "Your BLI snapshot is ready."}
+                        : "Your baseline score is ready."}
                     </span>
                     <span className="milestone-actions">
                       {attemptId && <Link className="milestone-results" href={`/results/${attemptId}`}>See results →</Link>}

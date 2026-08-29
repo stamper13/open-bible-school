@@ -77,7 +77,7 @@ test.describe("assessment entry points", () => {
       expect(page.url()).not.toContain("choose=1");
     } else {
       await expect(ntButton).toContainText(/Coming soon/i);
-      await expect(ntButton).toContainText(/V7 router/i);
+      await expect(ntButton).not.toContainText(/V7 router/i);
     }
   });
 });

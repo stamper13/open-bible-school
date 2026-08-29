@@ -32,7 +32,7 @@ export function FirstAssessmentCard({
                   <p className="first-assessment-kicker">Start here</p>
                   <h1>Take your first Bible assessment</h1>
                   <p>
-                    Answer a short adaptive set. OBA estimates your BLI, maps strengths, and gives one next step.
+                    Answer a short set of Bible questions. You&rsquo;ll get a baseline score, a knowledge map, and one suggested place to study next.
                   </p>
                   <div className="first-assessment-actions">
                     {inProgressTestament ? (
@@ -88,12 +88,12 @@ export function FirstAssessmentCard({
                       aria-label="Choose how to learn more"
                     >
                       <Link className="first-assessment-choice" href="/intro">
-                        <strong>OBA Intro Presentation</strong>
-                        <span>A guided tour of the canon — its sections, books, and passages.</span>
+                        <strong>Intro Presentation</strong>
+                        <span>A visual tour of what the assessment measures.</span>
                       </Link>
                       <Link className="first-assessment-choice" href="/philosophy">
                         <strong>About</strong>
-                        <span>The full write-up behind the project, start to finish.</span>
+                        <span>Why the project exists and how it is being built.</span>
                       </Link>
                     </div>
                   )}
@@ -105,17 +105,17 @@ export function FirstAssessmentCard({
                     >
                       <Link className="first-assessment-choice" href="/assess">
                         <strong>Old Testament</strong>
-                        <span>Genesis through Malachi, scored as its own 0-800 BLI.</span>
+                        <span>Start with Genesis through Malachi.</span>
                       </Link>
                       {NT_PILOT_ENABLED ? (
                         <Link className="first-assessment-choice" href="/assess?testament=NT&scope=NT">
                           <strong>New Testament</strong>
-                          <span>Matthew through Revelation, scored separately from OT.</span>
+                          <span>Assess Matthew through Revelation separately.</span>
                         </Link>
                       ) : (
                         <span className="first-assessment-choice is-disabled" aria-disabled="true">
                           <strong>New Testament</strong>
-                          <span>Coming soon after the V7 router is ready for NT.</span>
+                          <span>Coming soon.</span>
                         </span>
                       )}
                     </div>
@@ -135,7 +135,7 @@ export function FirstAssessmentCard({
                   <p className="oba-feature-kicker">Adaptive</p>
                   <h3 className="oba-feature-title">Follows where you&rsquo;re unsure</h3>
                   <p className="oba-feature-copy">
-                    Central passages count more, and least-tested sections get extra questions.
+                    The assessment adjusts as you answer, so unclear areas get a closer look.
                   </p>
                 </article>
 
@@ -162,7 +162,7 @@ export function FirstAssessmentCard({
                   <p className="oba-feature-kicker">Practical</p>
                   <h3 className="oba-feature-title">Study what helps next</h3>
                   <p className="oba-feature-copy">
-                    After an assessment, OBA gives you a focused place to reread or review instead of a vague study plan.
+                    After an assessment, you get a focused place to reread or review instead of a vague study plan.
                   </p>
                 </article>
               </section>

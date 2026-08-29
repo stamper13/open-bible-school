@@ -97,23 +97,23 @@ export function deriveAssessmentDisplayState({
       ? isScopeOtAssessment
         ? otAssessment?.book_code ? "Book Test" : "Section Test"
         : "Focused Retest"
-      : isSignedIn ? "BLI Baseline" : hasBrowserSavedProgress ? "Saved Baseline" : "Initial Assessment")
-    : (isSignedIn ? "BLI Refinement" : "Browser-Saved Practice");
+      : isSignedIn ? "Baseline Assessment" : hasBrowserSavedProgress ? "Saved Baseline" : "Initial Assessment")
+    : (isSignedIn ? "Score Update" : "Browser-Saved Practice");
   const navSubLabel = isInitialPhase
     ? (isTargetedOtAssessment
       ? `${otAssessment?.label ?? otRequest.label ?? "Targeted assessment"} · ${answeredCount} of ${otTargetCount}`
       : hasBrowserSavedProgress
         ? `${answeredCount} of ${otTargetCount} answered in this browser`
         : scoreEvidence
-          ? `${Math.max(0, otTargetCount - answeredCount)} questions until your BLI updates`
-          : `${Math.max(0, otTargetCount - answeredCount)} questions until first BLI snapshot`)
-    : (isSignedIn ? "Your BLI refines after every answer" : "Sign in to preserve your BLI across devices");
+          ? `${Math.max(0, otTargetCount - answeredCount)} questions until your score updates`
+          : `${Math.max(0, otTargetCount - answeredCount)} questions until your baseline score`)
+    : (isSignedIn ? "Your score updates after every answer" : "Sign in to keep your score across devices");
 
   return {
     accuracy: answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0,
     choiceLabel,
     displayNavPhaseLabel: assessmentMode === "NT" ? "New Testament Assessment" : navPhaseLabel,
-    displayNavSubLabel: assessmentMode === "NT" ? `${ntScope.label} · separate NT BLI` : navSubLabel,
+    displayNavSubLabel: assessmentMode === "NT" ? `${ntScope.label} · separate New Testament score` : navSubLabel,
     displayProgressEnd: assessmentMode === "NT" ? ntProgressEnd : progressEnd,
     displayProgressPct: assessmentMode === "NT" ? ntProgressPct : progressPct,
     isInitialPhase,

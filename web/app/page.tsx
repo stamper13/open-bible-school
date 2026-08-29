@@ -544,7 +544,7 @@ export default function HomePage() {
   const coverageModeCopy = suiteTestament === "NT"
     ? (NT_PILOT_ENABLED
       ? "Every New Testament chapter, ready for NT recommendations when that engine comes online."
-      : "New Testament coverage is coming soon after the V7 router is ready for the NT bank.")
+      : "New Testament coverage is coming soon.")
     : isRecommendationEvidenceBlocked
       ? "Every Old Testament chapter in context."
     : activeCoverageMapMode === "skill"
