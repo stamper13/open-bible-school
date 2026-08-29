@@ -31,9 +31,6 @@ export function FirstAssessmentCard({
                 <div className="first-assessment-content">
                   <p className="first-assessment-kicker">Start here</p>
                   <h1>Take your first Bible assessment</h1>
-                  <p>
-                    Answer a short set of Bible questions. You&rsquo;ll get a baseline score and a knowledge map that becomes more useful as you keep going.
-                  </p>
                   <div className="first-assessment-actions">
                     {inProgressTestament ? (
                       inProgressTestament === "NT" && !NT_PILOT_ENABLED ? (
@@ -133,9 +130,9 @@ export function FirstAssessmentCard({
                     <span className="signal-line" />
                   </div>
                   <p className="oba-feature-kicker">Adaptive</p>
-                  <h3 className="oba-feature-title">Follows where you&rsquo;re unsure</h3>
+                  <h3 className="oba-feature-title">Questions adjust as you answer</h3>
                   <p className="oba-feature-copy">
-                    The assessment adjusts as you answer, so unclear areas get a closer look.
+                    The assessment starts broad, then spends more time where your answers are less certain.
                   </p>
                 </article>
 
@@ -146,9 +143,9 @@ export function FirstAssessmentCard({
                     <span className="map-planet" />
                   </div>
                   <p className="oba-feature-kicker">Visual</p>
-                  <h3 className="oba-feature-title">See the Bible as a map</h3>
+                  <h3 className="oba-feature-title">See your knowledge map</h3>
                   <p className="oba-feature-copy">
-                    See which parts of the Bible you have started to cover, which areas are still untested, and how the sections fit together.
+                    Your results fill in a map of Scripture, showing what has been tested and what still needs coverage.
                   </p>
                 </article>
 
@@ -160,9 +157,9 @@ export function FirstAssessmentCard({
                     <span className="path-step" />
                   </div>
                   <p className="oba-feature-kicker">Practical</p>
-                  <h3 className="oba-feature-title">Study what helps next</h3>
+                  <h3 className="oba-feature-title">Build a clearer study path</h3>
                   <p className="oba-feature-copy">
-                    After an assessment, you get a focused place to reread or review instead of a vague study plan.
+                    As you keep answering and logging reading, your dashboard becomes better at showing what to review next.
                   </p>
                 </article>
               </section>

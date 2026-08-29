@@ -165,4 +165,18 @@ test.describe("mobile layout", () => {
     const box = await signIn.boundingBox();
     expect(box!.height, "sign-in control height").toBeGreaterThanOrEqual(32);
   });
+
+  test("home nav tucks page links into the mobile menu", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: /Take your first Bible assessment/i })).toBeVisible();
+
+    await expect(page.locator(".nav-primary-link").first()).toBeHidden();
+    await page.getByRole("button", { name: /Menu/i }).click();
+
+    const menu = page.getByRole("menu", { name: /Site menu/i });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /Assess/i })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /Knowledge Map/i })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /Reading Log/i })).toBeVisible();
+  });
 });

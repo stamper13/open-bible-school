@@ -104,9 +104,9 @@ export function HomeNavBar({
       <nav className="nav">
         <BrandMark />
         <div className="nav-right">
-          <Link className="nav-btn" href="/assess">Assess</Link>
-          <Link className="nav-btn" href="/knowledge-map">Knowledge Map</Link>
-          <Link className="nav-btn" href="/reading-log">Reading Log</Link>
+          <Link className="nav-btn nav-primary-link" href="/assess">Assess</Link>
+          <Link className="nav-btn nav-primary-link" href="/knowledge-map">Knowledge Map</Link>
+          <Link className="nav-btn nav-primary-link" href="/reading-log">Reading Log</Link>
           <div className="learn-more" ref={learnMoreRef}>
             <button
               type="button"
@@ -118,13 +118,53 @@ export function HomeNavBar({
               aria-haspopup="menu"
               aria-expanded={learnMoreOpen}
             >
-              Learn More
+              <span className="learn-more-label-full">Learn More</span>
+              <span className="learn-more-label-mobile">Menu</span>
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
             </button>
             {learnMoreOpen && (
-              <div className="learn-more-menu" role="menu" aria-label="Learn more pages">
+              <div className="learn-more-menu" role="menu" aria-label="Site menu">
+                <Link
+                  className="learn-more-item mobile-menu-only"
+                  role="menuitem"
+                  href="/assess"
+                  onClick={() => setLearnMoreOpen(false)}
+                  style={{ "--planet-color": "#d4a017" } as CSSProperties}
+                >
+                  <span className="learn-more-planet" aria-hidden="true" />
+                  <span className="learn-more-item-copy">
+                    <span className="learn-more-item-title">Assess</span>
+                    <span>Start or continue an assessment</span>
+                  </span>
+                </Link>
+                <Link
+                  className="learn-more-item mobile-menu-only"
+                  role="menuitem"
+                  href="/knowledge-map"
+                  onClick={() => setLearnMoreOpen(false)}
+                  style={{ "--planet-color": "#4fd6d6" } as CSSProperties}
+                >
+                  <span className="learn-more-planet" aria-hidden="true" />
+                  <span className="learn-more-item-copy">
+                    <span className="learn-more-item-title">Knowledge Map</span>
+                    <span>View your Scripture coverage</span>
+                  </span>
+                </Link>
+                <Link
+                  className="learn-more-item mobile-menu-only"
+                  role="menuitem"
+                  href="/reading-log"
+                  onClick={() => setLearnMoreOpen(false)}
+                  style={{ "--planet-color": "#7c3aed" } as CSSProperties}
+                >
+                  <span className="learn-more-planet" aria-hidden="true" />
+                  <span className="learn-more-item-copy">
+                    <span className="learn-more-item-title">Reading Log</span>
+                    <span>Track what you have read</span>
+                  </span>
+                </Link>
                 <Link
                   className="learn-more-item"
                   role="menuitem"

@@ -191,16 +191,26 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .scope-drawer-head { padding: 22px 20px 17px; }
           .scope-drawer-body { padding: 20px 20px 30px; }
           .scope-focused-action { align-items: flex-start; flex-direction: column; }
-          /* The nav links exceed a phone's width, so let them wrap onto a
-             second row rather than being clipped off the right edge. */
-          .nav { padding: 11px 16px; flex-wrap: wrap; gap: 8px; }
+          .nav { padding: 9px 12px; flex-wrap: nowrap; gap: 8px; }
           /* The beta tooltip is only visually hidden, so it still occupies
              layout and pushed the document 71px wider than the viewport.
              Anchor it to the nav instead of the badge so it can never
              extend past the right edge. */
           .beta-badge { position: static; }
           .beta-tooltip { left: 12px; right: 12px; width: auto; top: calc(100% + 6px); }
-          .nav-right { flex-wrap: wrap; gap: 7px; }
+          .nav .oba-brand-logo-text { display: none; }
+          .nav-right { margin-left: auto; flex-wrap: nowrap; gap: 6px; }
+          .nav-primary-link { display: none !important; }
+          .learn-more-label-full { display: none; }
+          .learn-more-label-mobile { display: inline; }
+          .learn-more .mobile-menu-only { display: flex; }
+          .learn-more-menu {
+            top: calc(100% + 10px);
+            right: 0;
+            width: min(292px, calc(100vw - 24px));
+            max-height: min(76vh, 520px);
+            overflow: auto;
+          }
           /* The reduced padding left these at 30px tall. Hold a 32px floor so
              the primary nav controls stay a usable touch target on a phone. */
           .nav-btn {

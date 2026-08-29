@@ -84,6 +84,8 @@ export const HOME_CHROME_STYLES = `
         }
         .nav-btn:hover { background: rgba(255,255,255,.1); color: #fff; transform: translateY(-1px); }
         .learn-more { position: relative; }
+        .learn-more-label-mobile,
+        .mobile-menu-only { display: none; }
         .learn-more-trigger svg { transition: transform .14s ease; }
         .learn-more-trigger[aria-expanded="true"] {
           background: rgba(255,255,255,.12);
