@@ -185,6 +185,9 @@ export const KNOWLEDGE_MAP_PAGE_STYLES = `
           border: 1px solid rgba(255,255,255,.13); border-radius: 8px;
           color: rgba(237,244,251,.70); background: rgba(4,8,20,.44);
         }
+        .loading {
+          min-height: min(980px, calc(100svh + 120px));
+        }
         .state-line { margin: 0; max-width: 470px; line-height: 1.6; }
         .retry-btn {
           min-height: 44px; padding: 11px 22px; border-radius: 999px; cursor: pointer;
