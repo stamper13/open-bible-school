@@ -212,9 +212,6 @@ export const HOME_RECOMMENDATION_STYLES = `        /* ==========================
         .coverage-legend-rail {
           margin-bottom: 14px;
         }
-        .coverage-map-section.is-recommended .coverage-legend-rail {
-          display: flex; justify-content: flex-end;
-        }
         @media (min-width: 1680px) {
           .coverage-legend-rail {
             position: absolute; top: 58px; right: 100%;
