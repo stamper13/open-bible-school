@@ -77,6 +77,7 @@ import {
   getRecommendedStudy,
   loadDimensionAwareQuestionBank,
 } from "./homeHelpers";
+import { recommendationPassageLabel } from "@/lib/recommendationLabels";
 import {
   ANON_SESSION_ACTIVE_KEY,
   ANON_USER_ID_KEY,
@@ -434,6 +435,7 @@ export default function HomePage() {
       backendRecommendation.dimension_label ??
       (backendRecommendation.dimension_key ? dimensionDisplayName(backendRecommendation.dimension_key) : null);
     const bookName = BOOK_NAMES[backendRecommendation.book_code] ?? backendRecommendation.book_code;
+    const passageLabel = recommendationPassageLabel(backendRecommendation);
     const dimensionGuidance = mergeKnowledgeGapGuidance(
       backendRecommendation.dimension_key,
       backendRecommendation.book_code,
@@ -445,7 +447,7 @@ export default function HomePage() {
       book: backendRecommendation.book_code,
       start: String(backendRecommendation.start_chapter),
       end: String(backendRecommendation.end_chapter),
-      label: backendRecommendation.label,
+      label: passageLabel,
       target: String(backendRecommendation.retest_question_target),
     });
     if (hasDimensionTarget && backendRecommendation.dimension_key) {
@@ -457,13 +459,13 @@ export default function HomePage() {
       // why the dimension is still pending.
       label: hasDimensionTarget && dimensionName
         ? dimensionName
-        : backendRecommendation.label,
+        : passageLabel,
       books: hasDimensionTarget
-        ? `${bookName} · ${backendRecommendation.label}`
+        ? `${bookName} · ${passageLabel}`
         : `${backendRecommendation.section} · dimension pending`,
       focus: hasDimensionTarget
         ? (backendRecommendation.dimension_focus_text
-          ?? `Test ${dimensionName?.toLowerCase() ?? "this dimension"} questions inside ${backendRecommendation.label}. The passage is the context; the gap is the dimension.`)
+          ?? `Test ${dimensionName?.toLowerCase() ?? "this dimension"} questions inside ${passageLabel}. The passage is the context; the gap is the dimension.`)
         : "Answer a short focused set so OBA can name the weakest dimension here.",
       priority: hasDimensionTarget && backendRecommendation.dimension_display_score
         ? `${backendRecommendation.dimension_display_score} BLI · ${backendRecommendation.dimension_answered ?? 0} ${dimensionName ?? "dimension"} answers`
