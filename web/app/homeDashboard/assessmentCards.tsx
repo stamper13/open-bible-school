@@ -32,7 +32,7 @@ export function FirstAssessmentCard({
                   <p className="first-assessment-kicker">Start here</p>
                   <h1>Take your first Bible assessment</h1>
                   <p>
-                    Answer a short set of Bible questions. You&rsquo;ll get a baseline score, a knowledge map, and one suggested place to study next.
+                    Answer a short set of Bible questions. You&rsquo;ll get a baseline score and a knowledge map that becomes more useful as you keep going.
                   </p>
                   <div className="first-assessment-actions">
                     {inProgressTestament ? (
