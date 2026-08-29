@@ -336,11 +336,29 @@ function legendTone(state: FocusState, hue: string): { fill: string; rail: strin
  * this can't drift out of sync with what the boxes actually look like.
  * Column headers still pop a tooltip with the full section name on hover.
  */
-export function CoverageLegend({ hasRecommendation, testament }: { hasRecommendation: boolean; testament: Testament }) {
+export function CoverageLegend({
+  hasRecommendation,
+  testament,
+  view = "overview",
+  focusSectionKey = null,
+}: {
+  hasRecommendation: boolean;
+  testament: Testament;
+  view?: CoverageGridView;
+  focusSectionKey?: string | null;
+}) {
   const sections = SECTION_ORDER_BY_TESTAMENT[testament];
+  const visibleSections = view === "overview"
+    ? sections
+    : view === "recommended" && focusSectionKey
+      ? sections.filter((section) => section.key === focusSectionKey.toUpperCase())
+      : [];
+
+  if (visibleSections.length === 0) return null;
+
   const cells = LEGEND_STATES.flatMap((state) => [
     <div key={`${state}-label`} className="cov-legend-row-head">{STATE_LABELS[state]}</div>,
-    ...sections.map((section) => {
+    ...visibleSections.map((section) => {
       const hue = sectionHue({ node_key: section.key, label: section.label });
       const tone = legendTone(state, hue);
       return (
@@ -358,9 +376,14 @@ export function CoverageLegend({ hasRecommendation, testament }: { hasRecommenda
   return (
     <div className="cov-legend" aria-label="Coverage legend">
       <style>{COVERAGE_GRID_STYLES_2}</style>
-      <div className="cov-legend-grid" role="img" aria-label="Coverage color by section and completion level">
+      <div
+        className="cov-legend-grid"
+        role="img"
+        aria-label="Coverage color by section and completion level"
+        style={{ "--legend-section-count": visibleSections.length } as CSSProperties}
+      >
         <div className="cov-legend-corner" aria-hidden="true" />
-        {sections.map((section) => (
+        {visibleSections.map((section) => (
           <button
             key={section.key}
             type="button"

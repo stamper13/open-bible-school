@@ -249,7 +249,7 @@ export const COVERAGE_GRID_STYLES_1 = `
 export const COVERAGE_GRID_STYLES_2 = `
         .cov-legend { display: flex; flex-direction: column; gap: 10px; }
         .cov-legend-grid {
-          display: grid; grid-template-columns: 74px repeat(4, 1fr);
+          display: grid; grid-template-columns: 74px repeat(var(--legend-section-count, 4), 1fr);
           gap: 6px 7px; align-items: center;
         }
         .cov-legend-corner { width: 100%; height: 100%; }

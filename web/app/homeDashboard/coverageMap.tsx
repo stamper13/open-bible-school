@@ -4,6 +4,7 @@ import { type Dispatch, type MouseEvent, type SetStateAction } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BOOK_NAMES, type Testament as BibleTestament } from "@/lib/bibleTaxonomy";
+import { focusedRecommendationSectionKey } from "@/lib/coverageLegend";
 import { compactReference, passageReference, readableUnitLabel, rereadHref, type ExploreTree, type FocusPath } from "@/lib/focusPath";
 import type { RecommendationInteractionSurface } from "@/lib/recommendationEvents";
 import CoverageGrid, { CoverageLegend, hasFocusRecommendation, type CoverageGridView } from "../knowledge-map/CoverageGrid";
@@ -55,6 +56,9 @@ export function CoverageMapSection({
   handleRecommendedAction: (event: MouseEvent<HTMLAnchorElement>) => void;
   router: ReturnType<typeof useRouter>;
 }) {
+  const recommendationSectionKey = activeCoverageMapMode === "recommended"
+    ? focusedRecommendationSectionKey(coverageTree)
+    : null;
   return (<>
           <section className={`coverage-map-section is-${activeCoverageMapMode}`} aria-labelledby="coverage-map-title">
             <div className="coverage-map-head">
@@ -132,7 +136,12 @@ export function CoverageMapSection({
               )}
             </div>
             <div className="coverage-legend-rail">
-              <CoverageLegend hasRecommendation={hasFocusRecommendation(coverageTree)} testament={suiteTestament} />
+              <CoverageLegend
+                hasRecommendation={hasFocusRecommendation(coverageTree)}
+                testament={suiteTestament}
+                view={activeCoverageMapMode}
+                focusSectionKey={recommendationSectionKey}
+              />
             </div>
             <div className="coverage-map-card">
             {suiteTestament === "OT" && activeCoverageMapMode === "recommended" && isRecommendationEvidenceBlocked && (
