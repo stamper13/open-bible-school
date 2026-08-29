@@ -252,7 +252,7 @@ export const COVERAGE_GRID_STYLES_2 = `
           width: fit-content; max-width: 100%;
         }
         .cov-legend-grid {
-          display: grid; grid-template-columns: 74px repeat(var(--legend-section-count, 4), 28px);
+          display: grid;
           width: fit-content; max-width: 100%;
           gap: 6px 7px; align-items: center;
         }

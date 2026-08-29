@@ -380,7 +380,7 @@ export function CoverageLegend({
         className="cov-legend-grid"
         role="img"
         aria-label="Coverage color by section and completion level"
-        style={{ "--legend-section-count": visibleSections.length } as CSSProperties}
+        style={{ gridTemplateColumns: `74px repeat(${visibleSections.length}, 28px)` }}
       >
         <div className="cov-legend-corner" aria-hidden="true" />
         {visibleSections.map((section) => (
