@@ -59,6 +59,7 @@ export function CoverageMapSection({
   const recommendationSectionKey = activeCoverageMapMode === "recommended"
     ? focusedRecommendationSectionKey(coverageTree)
     : null;
+  const showCoverageLegend = activeCoverageMapMode === "overview" || Boolean(recommendationSectionKey);
   return (<>
           <section className={`coverage-map-section is-${activeCoverageMapMode}`} aria-labelledby="coverage-map-title">
             <div className="coverage-map-head">
@@ -135,14 +136,16 @@ export function CoverageMapSection({
                 </div>
               )}
             </div>
-            <div className="coverage-legend-rail">
-              <CoverageLegend
-                hasRecommendation={hasFocusRecommendation(coverageTree)}
-                testament={suiteTestament}
-                view={activeCoverageMapMode}
-                focusSectionKey={recommendationSectionKey}
-              />
-            </div>
+            {showCoverageLegend && (
+              <div className="coverage-legend-rail">
+                <CoverageLegend
+                  hasRecommendation={hasFocusRecommendation(coverageTree)}
+                  testament={suiteTestament}
+                  view={activeCoverageMapMode}
+                  focusSectionKey={recommendationSectionKey}
+                />
+              </div>
+            )}
             <div className="coverage-map-card">
             {suiteTestament === "OT" && activeCoverageMapMode === "recommended" && isRecommendationEvidenceBlocked && (
               <section className="coverage-focus-card is-skill" aria-label="Recommendations need more evidence">
