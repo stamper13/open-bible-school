@@ -46,6 +46,9 @@ export const HOME_CHROME_STYLES = `
            ============================================================ */
         .nav {
           position: sticky; top: 0; z-index: 20;
+          /* Also the containing block for the phone subject menu, which spans
+             the header rather than hanging off its trigger — see .nav-subject
+             in homeStyles/responsive.ts. */
           display: flex; align-items: center; justify-content: space-between;
           padding: 13px 32px;
           background: rgba(11,15,30,.80);
@@ -101,12 +104,10 @@ export const HOME_CHROME_STYLES = `
         .learn-more { position: relative; }
         .learn-more-label-mobile,
         .mobile-menu-only { display: none; }
-        /* Sets the phone-only subject group off from the navigation links
-           beneath it, so the menu reads as "which subject" then "where to". */
-        .learn-more-group {
-          gap: 2px; padding-bottom: 6px; margin-bottom: 6px;
-          border-bottom: 1px solid rgba(255,255,255,.1);
-        }
+        /* The nav-bar subject picker is desktop-hidden: up there the in-page
+           .dashboard-subject-row carries it. Phones get this one instead. */
+        .nav-subject { display: none; }
+        .subject-trigger-label-short { display: none; }
         .learn-more-trigger svg { transition: transform .14s ease; }
         .learn-more-trigger[aria-expanded="true"] {
           background: rgba(255,255,255,.12);

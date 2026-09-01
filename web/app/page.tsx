@@ -163,6 +163,9 @@ export default function HomePage() {
     subjectMenuOpen,
     setSubjectMenuOpen,
     subjectMenuRef,
+    navSubjectMenuOpen,
+    setNavSubjectMenuOpen,
+    navSubjectMenuRef,
   } = useNavMenus();
   const [firstAssessmentChooserOpen, setFirstAssessmentChooserOpen] = useState(false);
   const [dashboardHydrated, setDashboardHydrated] = useState(false);
@@ -1030,6 +1033,9 @@ export default function HomePage() {
           onDeleteAccountRequest={handleDeleteAccountRequest}
           activeDashboardTab={activeDashboardTab}
           setActiveDashboardTab={setActiveDashboardTab}
+          navSubjectMenuOpen={navSubjectMenuOpen}
+          setNavSubjectMenuOpen={setNavSubjectMenuOpen}
+          navSubjectMenuRef={navSubjectMenuRef}
         />
 
         <main className={`page ${isNewAssessmentLanding ? "is-new-assessment-landing" : ""} ${isDashboardLoading ? "is-dashboard-loading" : ""}`}>

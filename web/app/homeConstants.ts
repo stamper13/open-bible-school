@@ -37,8 +37,10 @@ export const DASHBOARD_SUBJECTS: Array<{
   subtitle: string;
   color: string;
   soon: boolean;
+  /** Trigger label for narrow headers, where the full name will not fit. */
+  short: string;
 }> = [
-  { id: "bli", label: "Bible Assessment", subtitle: "OT, NT, and combined literacy", color: "#0aa3a3", soon: false },
-  { id: "church-history", label: "Church History", subtitle: "Coming soon", color: "#d4a017", soon: true },
-  { id: "biblical-languages", label: "Biblical Languages", subtitle: "Coming soon", color: "#7c3aed", soon: true },
+  { id: "bli", label: "Bible Assessment", subtitle: "OT, NT, and combined literacy", color: "#0aa3a3", soon: false, short: "Bible" },
+  { id: "church-history", label: "Church History", subtitle: "Coming soon", color: "#d4a017", soon: true, short: "History" },
+  { id: "biblical-languages", label: "Biblical Languages", subtitle: "Coming soon", color: "#7c3aed", soon: true, short: "Languages" },
 ];

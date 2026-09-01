@@ -135,12 +135,50 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .learn-more-label-full { display: none; }
           .learn-more-label-mobile { display: inline; }
           .learn-more .mobile-menu-only { display: flex; }
-          /* The subject picker rides along into the Menu dropdown: below this
-             width its standalone pill goes away and the row it sat in with it,
-             which on a 375pt screen was ~60px of the fold. */
-          .learn-more-group.mobile-menu-only { display: flex; flex-direction: column; }
+          /* The subject picker moves up into the header as its own dropdown,
+             left of centre beside the brand, and its in-page pill goes away
+             with the row it sat in — ~60px of the fold on a 375pt screen. */
+          .nav-subject { display: block; margin-right: auto; }
           .dashboard-subject-row,
           .page.is-new-assessment-landing .dashboard-subject-row { display: none; }
+          .nav-subject .subject-trigger {
+            padding: 7px 10px; font-size: 12px; gap: 6px;
+          }
+          /* Anchored to the nav, not to the trigger. The trigger sits ~117px
+             in, so a menu hung off its own left edge ran past the right edge
+             of a 375px screen. Making the switcher static hands the menu's
+             containing block to .nav, which is already sticky-positioned, and
+             it can then span the header full width. */
+          .nav-subject .subject-switcher { position: static; }
+          .nav-subject .subject-menu {
+            left: 12px; right: 12px; width: auto;
+            top: calc(100% + 6px);
+          }
+        }
+
+        /* Under 430px the header cannot hold "Bible Assessment" alongside Menu
+           and Sign in, so the trigger falls back to the short name. The dot
+           still carries the subject colour and the button keeps an aria-label
+           with the full name. */
+        @media (max-width: 430px) {
+          .nav-subject .subject-trigger-label-full { display: none; }
+          .nav-subject .subject-trigger-label-short { display: inline; }
+          .nav-subject .subject-trigger { padding: 7px 9px; }
+        }
+
+        /* At 320px even the short name will not fit beside Menu and Sign in —
+           the row overflowed by 21px. The dot and chevron carry it there; the
+           button keeps its aria-label, and the open menu names every subject
+           in full. */
+        @media (max-width: 360px) {
+          .nav-subject .subject-trigger-label-short { display: none; }
+          .nav-subject .subject-trigger { padding: 7px 8px; gap: 4px; }
+          /* The subject control costs just enough width that "Sign in" broke
+             onto two lines here. The BETA badge is the least load-bearing
+             thing in the row, so it gives up its ~68px on the smallest
+             phones and the buttons stay on one line. */
+          .beta-badge { display: none; }
+          .nav-btn { white-space: nowrap; }
         }
 
         @media (max-width: 640px) {

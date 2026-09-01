@@ -42,10 +42,12 @@ export function SubjectSwitcher({
         className="subject-trigger"
         onClick={() => setSubjectMenuOpen(open => !open)}
         aria-haspopup="menu"
+        aria-label={`Subject: ${active?.label}`}
         aria-expanded={subjectMenuOpen}
       >
         <span className="subject-trigger-dot" style={{ background: active?.color }} aria-hidden="true" />
-        {active?.label}
+        <span className="subject-trigger-label-full">{active?.label}</span>
+        <span className="subject-trigger-label-short">{active?.short}</span>
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -90,6 +92,9 @@ export function HomeNavBar({
   onDeleteAccountRequest,
   activeDashboardTab,
   setActiveDashboardTab,
+  navSubjectMenuOpen,
+  setNavSubjectMenuOpen,
+  navSubjectMenuRef,
 }: {
   userEmail: string | null;
   accountMenuOpen: boolean;
@@ -103,10 +108,28 @@ export function HomeNavBar({
   onDeleteAccountRequest: () => void;
   activeDashboardTab: DashboardTab;
   setActiveDashboardTab: Dispatch<SetStateAction<DashboardTab>>;
+  navSubjectMenuOpen: boolean;
+  setNavSubjectMenuOpen: Dispatch<SetStateAction<boolean>>;
+  navSubjectMenuRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
       <nav className="nav">
         <BrandMark />
+        {/* The subject picker as its own dropdown, on the left beside the
+            brand. Phones only: below 767px the in-page .dashboard-subject-row
+            is hidden, so this is the one subject control on screen, and it
+            keeps its own menu rather than being folded into Menu. It carries
+            its own open flag and ref because the in-page instance is still
+            mounted at desktop widths. */}
+        <div className="nav-subject">
+          <SubjectSwitcher
+            activeDashboardTab={activeDashboardTab}
+            setActiveDashboardTab={setActiveDashboardTab}
+            subjectMenuOpen={navSubjectMenuOpen}
+            setSubjectMenuOpen={setNavSubjectMenuOpen}
+            subjectMenuRef={navSubjectMenuRef}
+          />
+        </div>
         <div className="nav-right">
           <Link className="nav-btn nav-primary-link" href="/assess">Assess</Link>
           <Link className="nav-btn nav-primary-link" href="/knowledge-map">Knowledge Map</Link>
@@ -130,31 +153,6 @@ export function HomeNavBar({
             </button>
             {learnMoreOpen && (
               <div className="learn-more-menu" role="menu" aria-label="Site menu">
-                {/* The subject picker lives here on phones. As its own pill
-                    below the header it cost a whole row of vertical space on
-                    a 375pt screen, which is the row the hero card needed.
-                    Same treatment the nav links already get: hidden here on
-                    desktop, where .dashboard-subject-row shows instead, so
-                    exactly one subject control is ever visible. */}
-                <div className="learn-more-group mobile-menu-only" role="group" aria-label="Subject">
-                  {DASHBOARD_SUBJECTS.map(subject => (
-                    <button
-                      type="button"
-                      key={subject.id}
-                      role="menuitemradio"
-                      aria-checked={activeDashboardTab === subject.id}
-                      className={`learn-more-item subject-menu-item ${activeDashboardTab === subject.id ? "is-active" : ""}`}
-                      onClick={() => { setActiveDashboardTab(subject.id); setLearnMoreOpen(false); }}
-                      style={{ "--planet-color": subject.color } as CSSProperties}
-                    >
-                      <span className="learn-more-planet" aria-hidden="true" />
-                      <span className="learn-more-item-copy">
-                        <span className="learn-more-item-title">{subject.label}</span>
-                        <span>{subject.subtitle}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
                 <Link
                   className="learn-more-item mobile-menu-only"
                   role="menuitem"

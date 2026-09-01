@@ -18,10 +18,16 @@ export function useNavMenus() {
   const learnMoreRef = useRef<HTMLDivElement>(null);
   const [subjectMenuOpen, setSubjectMenuOpen] = useState(false);
   const subjectMenuRef = useRef<HTMLDivElement>(null);
+  /* The nav bar's subject picker is a second instance of the same control,
+     shown on phones where the in-page one is hidden. It needs its own ref and
+     open flag rather than sharing: a single ref can only point at one node, so
+     with both mounted the outside-click check would test the wrong element. */
+  const [navSubjectMenuOpen, setNavSubjectMenuOpen] = useState(false);
+  const navSubjectMenuRef = useRef<HTMLDivElement>(null);
 
   // Close open nav menus on an outside click or Escape.
   useEffect(() => {
-    if (!accountMenuOpen && !learnMoreOpen && !subjectMenuOpen) return;
+    if (!accountMenuOpen && !learnMoreOpen && !subjectMenuOpen && !navSubjectMenuOpen) return;
     const onPointer = (event: globalThis.MouseEvent) => {
       if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
         setAccountMenuOpen(false);
@@ -32,12 +38,16 @@ export function useNavMenus() {
       if (subjectMenuRef.current && !subjectMenuRef.current.contains(event.target as Node)) {
         setSubjectMenuOpen(false);
       }
+      if (navSubjectMenuRef.current && !navSubjectMenuRef.current.contains(event.target as Node)) {
+        setNavSubjectMenuOpen(false);
+      }
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setAccountMenuOpen(false);
         setLearnMoreOpen(false);
         setSubjectMenuOpen(false);
+        setNavSubjectMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", onPointer);
@@ -46,12 +56,15 @@ export function useNavMenus() {
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [accountMenuOpen, learnMoreOpen, subjectMenuOpen]);
+  }, [accountMenuOpen, learnMoreOpen, subjectMenuOpen, navSubjectMenuOpen]);
 
   return {
     accountMenuOpen,
     setAccountMenuOpen,
     accountMenuRef,
+    navSubjectMenuOpen,
+    setNavSubjectMenuOpen,
+    navSubjectMenuRef,
     learnMoreOpen,
     setLearnMoreOpen,
     learnMoreRef,
