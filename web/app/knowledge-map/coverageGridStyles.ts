@@ -130,9 +130,46 @@ export const COVERAGE_GRID_STYLES_1 = `
         .cov-unit-group.is-single {
           padding: 0; border-color: transparent; background: transparent;
         }
+        /* The recommendation lives on the tray, not on the chapters. Every
+           hue is spoken for by some section (gold, green, blue, magenta,
+           teal, orange, lime, rose), so a coloured highlight always ends up
+           impersonating one — the orange this replaced was nearly Pauline's
+           own #ea580c. Silver belongs to no section and never will: it is
+           the one finish that reads as "singled out" rather than as a
+           verdict, and it leaves every square saying exactly what the
+           legend says it says. Painted as backgrounds rather than a
+           pseudo-element so it always sits behind the chapter boxes. */
         .cov-unit-group.is-focus {
-          border-color: #ffcf5c;
-          box-shadow: 0 0 0 2px rgba(255,207,92,.14);
+          border-color: #cbd5e1;
+          box-shadow: 0 0 0 2px rgba(203,213,225,.3), 0 2px 12px rgba(148,163,184,.35);
+          background-color: #eef2f7;
+          background-image:
+            radial-gradient(circle at 18% 28%, rgba(255,255,255,.98) 0 1.3px, transparent 1.9px),
+            radial-gradient(circle at 72% 74%, rgba(255,255,255,.95) 0 1.1px, transparent 1.7px),
+            radial-gradient(circle at 46% 12%, rgba(255,255,255,.92) 0 1px, transparent 1.5px),
+            linear-gradient(112deg,
+              #dfe5ee 0%, #ffffff 14%, #ccd5e3 26%, #ffffff 40%,
+              #d9e0ea 54%, #ffffff 68%, #cfd8e5 82%, #ffffff 94%, #dfe5ee 100%);
+          background-size: 58px 44px, 83px 61px, 71px 39px, 220% 100%;
+          background-repeat: repeat, repeat, repeat, no-repeat;
+          animation: covSilverSheen 5.5s linear infinite, covSilverGlint 2.6s ease-in-out infinite alternate;
+        }
+        /* A single-chapter unit normally has no tray at all, so give it one
+           back when it is the recommendation — otherwise the silver has
+           nowhere to show. */
+        .cov-unit-group.is-single.is-focus {
+          padding: 8px;
+        }
+        @keyframes covSilverSheen {
+          from { background-position: 0 0, 0 0, 0 0, 100% 0; }
+          to   { background-position: 58px -44px, -83px 61px, 71px 39px, -100% 0; }
+        }
+        @keyframes covSilverGlint {
+          from { box-shadow: 0 0 0 2px rgba(203,213,225,.3), 0 2px 12px rgba(148,163,184,.35); }
+          to   { box-shadow: 0 0 0 2px rgba(226,232,240,.62), 0 2px 18px rgba(203,213,225,.6); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cov-unit-group.is-focus { animation: none; }
         }
         .cov-box {
           appearance: none; position: relative; flex: 0 0 auto;
@@ -175,15 +212,9 @@ export const COVERAGE_GRID_STYLES_1 = `
            i.e. 15), solid after. Same information, no colour distortion. */
         .cov-box.evidence-none,
         .cov-box.evidence-low { border-style: dashed; }
-        .cov-box.is-focus::after {
-          content: ""; position: absolute; inset: -4px; border-radius: 8px;
-          border: 2px solid #ffcf5c; pointer-events: none;
-          box-shadow: 0 0 0 2px rgba(255,207,92,.16);
-        }
-        /* Every chapter in a gold-ringed unit gets that same ::after ring
-           (is-focus is set per-unit, not per-chapter) — so within a wide
-           unit like Genesis 12-50, nothing marks which chapters the current
-           "Recommended reading" card is actually pointing at. A pure
+        /* The silver tray marks the whole learning range, so within a wide
+           unit like Genesis 12-50 nothing yet marks which chapters the
+           current "Recommended reading" card is actually pointing at. A pure
            motion-only cue (no fill) turned out too easy to miss, so this
            now DOES override background/border with a color, but one no
            section owns: orange sits in the one real gap in the section
@@ -193,19 +224,22 @@ export const COVERAGE_GRID_STYLES_1 = `
            fill could for Torah. The rotating sparkle ring from before sits
            on its own slightly wider orbit (-7px vs is-focus's -4px) so the
            two rings read as concentric halos instead of overlapping. */
+        /* No fill change any more — the silver tray above carries the
+           recommendation, and repainting the chapter was what made a
+           recommended box unreadable against the legend. The rotating
+           sparkle below is left to mark the exact chapters the Recommended
+           Reading card points at, when that is narrower than the range. */
         .cov-box.is-focus-chapter {
-          background: #fed7aa; border-color: #f97316; color: #7c2d12;
-          box-shadow: 0 0 10px 1px rgba(249,115,22,.5);
           z-index: 3;
         }
         .cov-box.is-focus-chapter::before {
           content: ""; position: absolute; inset: -7px; border-radius: 9px;
           padding: 2px; pointer-events: none; z-index: 4;
           background: conic-gradient(from 0deg,
-            transparent 0deg, rgba(255,255,255,.95) 10deg, transparent 24deg,
-            transparent 96deg, rgba(255,255,255,.95) 106deg, transparent 120deg,
-            transparent 192deg, rgba(255,255,255,.95) 202deg, transparent 216deg,
-            transparent 288deg, rgba(255,255,255,.95) 298deg, transparent 312deg,
+            transparent 0deg, rgba(71,85,105,.85) 10deg, transparent 24deg,
+            transparent 96deg, rgba(71,85,105,.85) 106deg, transparent 120deg,
+            transparent 192deg, rgba(71,85,105,.85) 202deg, transparent 216deg,
+            transparent 288deg, rgba(71,85,105,.85) 298deg, transparent 312deg,
             transparent 360deg);
           -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
           -webkit-mask-composite: xor;
@@ -332,6 +366,6 @@ export const COVERAGE_GRID_STYLES_2 = `
           padding: 3px 0 3px 8px;
           color: rgba(255,255,255,.74); font-size: 11px; font-weight: 800;
         }
-        .cov-legend-item.is-gold { color: #f0c674; }
+        .cov-legend-item.is-recommended { color: #cbd5e1; }
         .cov-legend .cov-box { pointer-events: none; }
 `;

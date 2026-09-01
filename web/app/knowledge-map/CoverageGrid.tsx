@@ -235,6 +235,13 @@ export default function CoverageGrid({
                       const reference = unitRef(book, unit);
                       const chapterList = chapters.length > 0 ? chapters : [null];
                       const isSingle = chapterList.length === 1;
+                      const rangeCoversUnit = Boolean(
+                        focusChapterRange
+                        && book.bookCode === focusChapterRange.bookCode
+                        && chapters.length > 0
+                        && focusChapterRange.startCh <= chapters[0]
+                        && focusChapterRange.endCh >= chapters[chapters.length - 1],
+                      );
                       return (
                         <span
                           key={unit.unitKey}
@@ -242,15 +249,22 @@ export default function CoverageGrid({
                           style={{ "--fill": unitTone.fill, "--rail": unitTone.rail } as CSSProperties}
                           title={`${reference}: ${readableUnitLabel(unit.label)}. ${STATE_LABELS[unit.state]}, ${unit.answered} answered, ${evidenceLabel(unit.answered)}.`}
                         >
+                          {/* When the recommended range covers the whole unit,
+                              the silver tray already says so and marking every
+                              chapter inside it just adds noise. The per-chapter
+                              sparkle exists for the other case — a wide unit
+                              like Genesis 12-50 where the card points at 20-22 —
+                              so it only fires when it actually narrows things. */}
                           {chapterList.map((chapter) => {
                             const chapterRef = chapter === null ? reference : bookPassage(book.bookName, chapter, chapter);
-                            const isFocusChapter = Boolean(
+                            const inFocusRange = Boolean(
                               focusChapterRange
                               && chapter !== null
                               && book.bookCode === focusChapterRange.bookCode
                               && chapter >= focusChapterRange.startCh
                               && chapter <= focusChapterRange.endCh,
                             );
+                            const isFocusChapter = inFocusRange && !rangeCoversUnit;
                             return (
                               <button
                                 key={`${unit.unitKey}-${chapter ?? "unit"}`}
@@ -412,17 +426,16 @@ export function CoverageLegend({
       </div>
       {focusState && (
         <>
-          <span className="cov-legend-item is-gold">
-            {/* chipTone even though is-focus-chapter repaints both colours:
-                .cov-box's `border: 1.5px solid var(--rail)` is invalid at
-                computed-value time without it, which drops border-style to
-                none and the chip loses its outline entirely. */}
-            <span className="cov-box is-focus is-focus-chapter" style={chipTone} aria-hidden="true" />
+          <span className="cov-legend-item is-recommended">
+            {/* A tray, not a box: the recommendation is a property of the
+                learning range now, so the chip has to be the same shape as
+                the thing it explains. The box inside keeps the recommended
+                unit's own colour, which is the whole point of moving the
+                highlight off the chapters. */}
+            <span className="cov-unit-group is-focus" aria-hidden="true">
+              <span className="cov-box" style={chipTone} />
+            </span>
             Recommended reading
-          </span>
-          <span className="cov-legend-item">
-            <span className="cov-box is-focus" style={chipTone} aria-hidden="true" />
-            Rest of that range
           </span>
         </>
       )}
