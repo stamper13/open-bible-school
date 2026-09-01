@@ -56,8 +56,14 @@ export function CoverageMapSection({
   handleRecommendedAction: (event: MouseEvent<HTMLAnchorElement>) => void;
   router: ReturnType<typeof useRouter>;
 }) {
+  /* Which section the router is pointing at, regardless of tab. The legend
+     needs it in every mode so its "Recommended reading" chip can wear that
+     section's colour; recommendationSectionKey stays gated to the
+     recommended tab because it also decides whether the legend renders at
+     all, and widening it would surface the legend in Knowledge Gap mode. */
+  const focusSectionKey = focusedRecommendationSectionKey(coverageTree);
   const recommendationSectionKey = activeCoverageMapMode === "recommended"
-    ? focusedRecommendationSectionKey(coverageTree)
+    ? focusSectionKey
     : null;
   const showCoverageLegend = activeCoverageMapMode === "overview" || Boolean(recommendationSectionKey);
   return (<>
@@ -142,7 +148,7 @@ export function CoverageMapSection({
                   focusState={focusRecommendationState(coverageTree)}
                   testament={suiteTestament}
                   view={activeCoverageMapMode}
-                  focusSectionKey={recommendationSectionKey}
+                  focusSectionKey={focusSectionKey}
                 />
               </div>
             )}

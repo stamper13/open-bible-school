@@ -394,9 +394,16 @@ export function CoverageLegend({
      rest of the gold-ringed learning range around it — so both get a chip.
      chipTone is the recommended unit's own state, so the ring sits on the
      colour those chapters actually are. */
+  /* On the recommended tab the legend has narrowed to one column, so the
+     first visible section is the recommended one. In overview all four are
+     showing and the first is simply Torah, which would have the chip wearing
+     Torah's gold while the router points at Former Prophets — so resolve the
+     section by key and fall back only when there is no recommendation. */
+  const chipSection = sections.find((section) => section.key === focusSectionKey?.toUpperCase())
+    ?? visibleSections[0];
   const chipLeaf = leafTone(focusState ?? "sufficient", sectionHue({
-    node_key: visibleSections[0].key,
-    label: visibleSections[0].label,
+    node_key: chipSection.key,
+    label: chipSection.label,
   }));
   const chipTone = { "--fill": chipLeaf.fill, "--rail": chipLeaf.rail } as CSSProperties;
 
