@@ -293,14 +293,22 @@ export default function CoverageGrid({
   );
 }
 
-/** Whether any unit anywhere in the tree is the router's current pick — the
- *  same check CoverageGrid does internally, exposed standalone so
- *  CoverageLegend can be rendered apart from the grid (see app/page.tsx,
- *  where it floats outside the coverage-map-card into the page margin). */
-export function hasFocusRecommendation(tree: ExploreTree): boolean {
-  return tree.sections.some((section) => (
-    section.books.some((book) => book.units.some((unit) => unit.isFocus))
-  ));
+/** The state of the unit the router is currently pointing at, or null when
+ *  nothing is picked — the same check CoverageGrid does internally, exposed
+ *  standalone so CoverageLegend can be rendered apart from the grid (see
+ *  app/page.tsx, where it floats outside the coverage-map-card into the page
+ *  margin). It returns the state rather than a bare boolean because the
+ *  legend's recommendation chips wear the ring over that unit's real colour;
+ *  guessing "sufficient" there would put a strong swatch next to the pale
+ *  boxes of a below-baseline range. */
+export function focusRecommendationState(tree: ExploreTree): FocusState | null {
+  for (const section of tree.sections) {
+    for (const book of section.books) {
+      const focus = book.units.find((unit) => unit.isFocus);
+      if (focus) return focus.state;
+    }
+  }
+  return null;
 }
 
 const LEGEND_STATES: FocusState[] = ["sufficient", "below_baseline", "insufficient_evidence"];
@@ -324,12 +332,14 @@ const LEGEND_STATES: FocusState[] = ["sufficient", "below_baseline", "insufficie
  * Column headers still pop a tooltip with the full section name on hover.
  */
 export function CoverageLegend({
-  hasRecommendation,
+  focusState,
   testament,
   view = "overview",
   focusSectionKey = null,
 }: {
-  hasRecommendation: boolean;
+  /** State of the currently recommended unit, or null when nothing is
+   *  recommended — see focusRecommendationState above. */
+  focusState: FocusState | null;
   testament: Testament;
   view?: CoverageGridView;
   focusSectionKey?: string | null;
@@ -360,14 +370,21 @@ export function CoverageLegend({
     }),
   ]);
 
-  /* The ring/dash chips ride on the first column's "sufficient" tone rather
-     than a neutral, so they read as modifiers on a real verdict — a unit can
-     be plainly sufficient and still be provisional. */
-  const chipSufficient = leafTone("sufficient", sectionHue({
+  /* The chips below are real .cov-box elements carrying the real modifier
+     classes, so they render through the grid's own rules rather than a
+     legend-side imitation of them. That matters most for the recommendation:
+     a chapter in the recommended range is repainted orange by
+     .cov-box.is-focus-chapter, which a gold-ringed section-coloured swatch
+     did not resemble at all. The two recommendation states are distinct and
+     both appear on screen — the orange slice the card points at, and the
+     rest of the gold-ringed learning range around it — so both get a chip.
+     chipTone is the recommended unit's own state, so the ring sits on the
+     colour those chapters actually are. */
+  const chipLeaf = leafTone(focusState ?? "sufficient", sectionHue({
     node_key: visibleSections[0].key,
     label: visibleSections[0].label,
   }));
-  const chipTone = { "--fill": chipSufficient.fill, "--rail": chipSufficient.rail } as CSSProperties;
+  const chipTone = { "--fill": chipLeaf.fill, "--rail": chipLeaf.rail } as CSSProperties;
 
   return (
     <div className="cov-legend" aria-label="Coverage legend">
@@ -393,15 +410,25 @@ export function CoverageLegend({
         ))}
         {cells}
       </div>
-      {hasRecommendation && (
-        <span className="cov-legend-item is-gold">
-          <span className="cov-legend-swatch is-focus" style={chipTone} />
-          Recommended next
-        </span>
+      {focusState && (
+        <>
+          <span className="cov-legend-item is-gold">
+            {/* chipTone even though is-focus-chapter repaints both colours:
+                .cov-box's `border: 1.5px solid var(--rail)` is invalid at
+                computed-value time without it, which drops border-style to
+                none and the chip loses its outline entirely. */}
+            <span className="cov-box is-focus is-focus-chapter" style={chipTone} aria-hidden="true" />
+            Recommended reading
+          </span>
+          <span className="cov-legend-item">
+            <span className="cov-box is-focus" style={chipTone} aria-hidden="true" />
+            Rest of that range
+          </span>
+        </>
       )}
       <span className="cov-legend-item">
-        <span className="cov-legend-swatch is-provisional" style={chipTone} />
-        Dashed = under 15 answers
+        <span className="cov-box evidence-low" style={chipTone} aria-hidden="true" />
+        Under 15 answers
       </span>
     </div>
   );

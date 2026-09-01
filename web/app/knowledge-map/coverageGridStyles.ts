@@ -320,22 +320,18 @@ export const COVERAGE_GRID_STYLES_2 = `
           width: 27px; height: 27px; border-radius: 5px;
           background: var(--fill); border: 1.5px solid var(--rail);
         }
-        /* The ring and the dash are the two things the matrix above can't
-           show, since neither is a colour. Both chips are real boxes with
-           the real modifier on them, for the same reason the swatches are
-           real boxes: nothing in here is a drawing of the grid, it is the
-           grid. padding-left leaves room for the ring's -4px outset. */
+        /* The chips carry what the matrix above can't, since none of it is a
+           colour: the recommended slice, the range around it, the dashed
+           rail. Each one is a real .cov-box wearing the real modifier class,
+           so they render through the grid's own rules — no legend-side copy
+           to fall out of step. The padding leaves room for is-focus's -4px
+           ring and is-focus-chapter's -7px sparkle orbit; pointer-events
+           keeps a chip from lifting on hover the way a real box does. */
         .cov-legend-item {
-          display: inline-flex; align-items: center; gap: 11px;
-          padding-left: 4px;
+          display: inline-flex; align-items: center; gap: 14px;
+          padding: 3px 0 3px 8px;
           color: rgba(255,255,255,.74); font-size: 11px; font-weight: 800;
         }
         .cov-legend-item.is-gold { color: #f0c674; }
-        .cov-legend-swatch.is-focus { position: relative; }
-        .cov-legend-swatch.is-focus::after {
-          content: ""; position: absolute; inset: -4px; border-radius: 8px;
-          border: 2px solid #ffcf5c; pointer-events: none;
-          box-shadow: 0 0 0 2px rgba(255,207,92,.16);
-        }
-        .cov-legend-swatch.is-provisional { border-style: dashed; }
+        .cov-legend .cov-box { pointer-events: none; }
 `;

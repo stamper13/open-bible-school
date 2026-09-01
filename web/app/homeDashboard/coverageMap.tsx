@@ -7,7 +7,7 @@ import { BOOK_NAMES, type Testament as BibleTestament } from "@/lib/bibleTaxonom
 import { focusedRecommendationSectionKey } from "@/lib/coverageLegend";
 import { compactReference, passageReference, readableUnitLabel, rereadHref, type ExploreTree, type FocusPath } from "@/lib/focusPath";
 import type { RecommendationInteractionSurface } from "@/lib/recommendationEvents";
-import CoverageGrid, { CoverageLegend, hasFocusRecommendation, type CoverageGridView } from "../knowledge-map/CoverageGrid";
+import CoverageGrid, { CoverageLegend, focusRecommendationState, type CoverageGridView } from "../knowledge-map/CoverageGrid";
 import { dimensionDisplayName } from "../homeHelpers";
 import type { BackendRecommendation, ProgressPoint, RecommendedStudy, ScopeDetailTarget } from "../homeTypes";
 
@@ -139,7 +139,7 @@ export function CoverageMapSection({
             {showCoverageLegend && (
               <div className="coverage-legend-rail">
                 <CoverageLegend
-                  hasRecommendation={hasFocusRecommendation(coverageTree)}
+                  focusState={focusRecommendationState(coverageTree)}
                   testament={suiteTestament}
                   view={activeCoverageMapMode}
                   focusSectionKey={recommendationSectionKey}
