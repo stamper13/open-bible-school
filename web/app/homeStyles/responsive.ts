@@ -123,6 +123,26 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .sections-grid { gap: 12px; }
         }
 
+        /* The navigation collapses at 767px, not 640px, because that is where
+           it actually stops fitting rather than where phones end. Laid out in
+           full the nav needs 722px, so from 641px to 739px the row overflowed
+           and pushed Sign in clean off the right edge — which is every iPhone
+           SE, 6, 7 and 8 held in landscape (667px), plus any split-screen or
+           part-width window in that band. Only the rules that collapse the
+           nav live here; everything else phone-shaped stays at 640px. */
+        @media (max-width: 767px) {
+          .nav-primary-link { display: none !important; }
+          .learn-more-label-full { display: none; }
+          .learn-more-label-mobile { display: inline; }
+          .learn-more .mobile-menu-only { display: flex; }
+          /* The subject picker rides along into the Menu dropdown: below this
+             width its standalone pill goes away and the row it sat in with it,
+             which on a 375pt screen was ~60px of the fold. */
+          .learn-more-group.mobile-menu-only { display: flex; flex-direction: column; }
+          .dashboard-subject-row,
+          .page.is-new-assessment-landing .dashboard-subject-row { display: none; }
+        }
+
         @media (max-width: 640px) {
           .score-strip { grid-template-columns: 1fr; }
           .score-block { border-right: none; border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -152,9 +172,23 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .save-modal-primary,
           .save-modal-secondary { width: 100%; }
           .save-modal-note { text-align: center; }
-          .first-assessment-card { grid-template-columns: 1fr; padding: 28px 20px; min-height: auto; }
-          .first-assessment-orbit { width: min(100%, 280px); }
-          .first-assessment-content h1 { font-size: 36px; }
+          /* Trimmed for phones. At 280px the orbit alone was 280px tall and
+             the whole card ran to 585px on a 667px screen, so the heading and
+             the button sat below the fold on the smallest phones. The orbit is
+             decoration; the heading and the call to action are the point. */
+          .first-assessment-card {
+            grid-template-columns: 1fr;
+            gap: 16px;
+            padding: 20px 16px;
+            min-height: auto;
+          }
+          .first-assessment-orbit { width: min(62vw, 172px); }
+          .first-assessment-orbit::before { inset: 26px; }
+          .first-assessment-orbit::after { inset: 52px; }
+          .first-assessment-sun { width: 46px; height: 46px; }
+          .first-assessment-planet { width: 25px; height: 25px; }
+          .first-assessment-moon { width: 11px; height: 11px; }
+          .first-assessment-content h1 { font-size: 26px; line-height: 1.12; }
           .first-assessment-primary,
           .first-assessment-secondary { width: 100%; }
           .first-assessment-choice-panel { grid-template-columns: 1fr; }
@@ -200,10 +234,6 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .beta-tooltip { left: 12px; right: 12px; width: auto; top: calc(100% + 6px); }
           .nav .oba-brand-logo-text { display: none; }
           .nav-right { margin-left: auto; flex-wrap: nowrap; gap: 6px; }
-          .nav-primary-link { display: none !important; }
-          .learn-more-label-full { display: none; }
-          .learn-more-label-mobile { display: inline; }
-          .learn-more .mobile-menu-only { display: flex; }
           .learn-more-menu {
             top: calc(100% + 10px);
             right: 0;

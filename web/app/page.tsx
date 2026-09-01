@@ -1016,20 +1016,23 @@ export default function HomePage() {
         />
       )}
 
-      <HomeNavBar
-        userEmail={userEmail}
-        accountMenuOpen={accountMenuOpen}
-        accountMenuRef={accountMenuRef}
-        setAccountMenuOpen={setAccountMenuOpen}
-        learnMoreOpen={learnMoreOpen}
-        learnMoreRef={learnMoreRef}
-        setLearnMoreOpen={setLearnMoreOpen}
-        handleSignIn={handleSignIn}
-        onSignOut={handleSignOut}
-        onDeleteAccountRequest={handleDeleteAccountRequest}
-      />
+      <div className="home-shell">
+        <HomeNavBar
+          userEmail={userEmail}
+          accountMenuOpen={accountMenuOpen}
+          accountMenuRef={accountMenuRef}
+          setAccountMenuOpen={setAccountMenuOpen}
+          learnMoreOpen={learnMoreOpen}
+          learnMoreRef={learnMoreRef}
+          setLearnMoreOpen={setLearnMoreOpen}
+          handleSignIn={handleSignIn}
+          onSignOut={handleSignOut}
+          onDeleteAccountRequest={handleDeleteAccountRequest}
+          activeDashboardTab={activeDashboardTab}
+          setActiveDashboardTab={setActiveDashboardTab}
+        />
 
-      <main className={`page ${isNewAssessmentLanding ? "is-new-assessment-landing" : ""} ${isDashboardLoading ? "is-dashboard-loading" : ""}`}>
+        <main className={`page ${isNewAssessmentLanding ? "is-new-assessment-landing" : ""} ${isDashboardLoading ? "is-dashboard-loading" : ""}`}>
         {!isNewAssessmentLanding && !isDashboardLoading && (
           <DashboardHeader
             activeDashboardTab={activeDashboardTab}
@@ -1180,8 +1183,9 @@ export default function HomePage() {
         ) : (
           <PlaceholderDashboard activeDashboardTab={activeDashboardTab} />
         )}
-      </main>
-      <SiteFooter />
+        </main>
+        <SiteFooter />
+      </div>
       {scopeDetailTarget && (
         <ScopeDetailDrawer
           scopeDetailTarget={scopeDetailTarget}

@@ -88,6 +88,8 @@ export function HomeNavBar({
   handleSignIn,
   onSignOut,
   onDeleteAccountRequest,
+  activeDashboardTab,
+  setActiveDashboardTab,
 }: {
   userEmail: string | null;
   accountMenuOpen: boolean;
@@ -99,6 +101,8 @@ export function HomeNavBar({
   handleSignIn: () => Promise<void>;
   onSignOut: () => Promise<void>;
   onDeleteAccountRequest: () => void;
+  activeDashboardTab: DashboardTab;
+  setActiveDashboardTab: Dispatch<SetStateAction<DashboardTab>>;
 }) {
   return (
       <nav className="nav">
@@ -126,6 +130,31 @@ export function HomeNavBar({
             </button>
             {learnMoreOpen && (
               <div className="learn-more-menu" role="menu" aria-label="Site menu">
+                {/* The subject picker lives here on phones. As its own pill
+                    below the header it cost a whole row of vertical space on
+                    a 375pt screen, which is the row the hero card needed.
+                    Same treatment the nav links already get: hidden here on
+                    desktop, where .dashboard-subject-row shows instead, so
+                    exactly one subject control is ever visible. */}
+                <div className="learn-more-group mobile-menu-only" role="group" aria-label="Subject">
+                  {DASHBOARD_SUBJECTS.map(subject => (
+                    <button
+                      type="button"
+                      key={subject.id}
+                      role="menuitemradio"
+                      aria-checked={activeDashboardTab === subject.id}
+                      className={`learn-more-item subject-menu-item ${activeDashboardTab === subject.id ? "is-active" : ""}`}
+                      onClick={() => { setActiveDashboardTab(subject.id); setLearnMoreOpen(false); }}
+                      style={{ "--planet-color": subject.color } as CSSProperties}
+                    >
+                      <span className="learn-more-planet" aria-hidden="true" />
+                      <span className="learn-more-item-copy">
+                        <span className="learn-more-item-title">{subject.label}</span>
+                        <span>{subject.subtitle}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
                 <Link
                   className="learn-more-item mobile-menu-only"
                   role="menuitem"

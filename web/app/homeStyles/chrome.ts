@@ -21,10 +21,25 @@ export const HOME_CHROME_STYLES = `
           font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
           color: var(--ink); min-height: 100vh;
           background: #0b0f1e;
+          /* Column flex so the footer can be pushed to the bottom. min-height
+             alone only guaranteed the body filled the viewport, not that the
+             footer sat at the end of it: on a tall window the content ran out
+             and the footer stopped wherever the last card did, leaving a strip
+             of starfield beneath it. */
+          display: flex;
+          flex-direction: column;
         }
         canvas.stars {
           position: fixed; left: 50%; top: 50%; z-index: 0; pointer-events: none;
           transform-origin: 50% 50%; transform: translate3d(-50%,-50%,0) rotate(var(--sky-start-rotation, 0deg));
+        }
+        .home-shell {
+          position: relative;
+          z-index: 1;
+          min-height: 100vh;
+          flex: 1 0 auto;
+          display: flex;
+          flex-direction: column;
         }
         /* ============================================================
            Nav bar (brand, links, Learn More menu, account menu)
@@ -86,6 +101,12 @@ export const HOME_CHROME_STYLES = `
         .learn-more { position: relative; }
         .learn-more-label-mobile,
         .mobile-menu-only { display: none; }
+        /* Sets the phone-only subject group off from the navigation links
+           beneath it, so the menu reads as "which subject" then "where to". */
+        .learn-more-group {
+          gap: 2px; padding-bottom: 6px; margin-bottom: 6px;
+          border-bottom: 1px solid rgba(255,255,255,.1);
+        }
         .learn-more-trigger svg { transition: transform .14s ease; }
         .learn-more-trigger[aria-expanded="true"] {
           background: rgba(255,255,255,.12);
@@ -188,6 +209,9 @@ export const HOME_CHROME_STYLES = `
            Page shell & dashboard header (title, subject switcher, OT/NT toggle)
            ============================================================ */
         .page {
+          /* Grows to take the slack, which is what pushes the footer down.
+             Never shrinks, so short viewports still scroll normally. */
+          flex: 1 0 auto;
           max-width: 1180px; margin: 0 auto; padding: 44px 24px 88px; position: relative; z-index: 1;
           /* backwards (not both): holds the "from" state during the .08s
              delay so there's no flash-before-fade-in, but — critically —
