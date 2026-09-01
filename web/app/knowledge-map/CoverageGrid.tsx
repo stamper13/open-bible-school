@@ -432,8 +432,10 @@ export function CoverageLegend({
                 the thing it explains. The box inside keeps the recommended
                 unit's own colour, which is the whole point of moving the
                 highlight off the chapters. */}
-            <span className="cov-unit-group is-focus" aria-hidden="true">
-              <span className="cov-box" style={chipTone} />
+            <span className="cov-legend-chip-card" aria-hidden="true">
+              <span className="cov-unit-group is-focus">
+                <span className="cov-box" style={chipTone} />
+              </span>
             </span>
             Recommended reading
           </span>

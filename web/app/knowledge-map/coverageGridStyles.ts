@@ -131,42 +131,50 @@ export const COVERAGE_GRID_STYLES_1 = `
           padding: 0; border-color: transparent; background: transparent;
         }
         /* The recommendation lives on the tray, not on the chapters. Every
-           hue is spoken for by some section (gold, green, blue, magenta,
-           teal, orange, lime, rose), so a coloured highlight always ends up
+           hue belongs to some section (gold, green, blue, magenta, teal,
+           orange, lime, rose), so a coloured highlight always ends up
            impersonating one — the orange this replaced was nearly Pauline's
-           own #ea580c. Silver belongs to no section and never will: it is
-           the one finish that reads as "singled out" rather than as a
-           verdict, and it leaves every square saying exactly what the
-           legend says it says. Painted as backgrounds rather than a
-           pseudo-element so it always sits behind the chapter boxes. */
+           own #ea580c.
+
+           The tray reads as a window cut through the white card onto the
+           starfield behind it. It is painted, not actually transparent: an
+           element cannot reveal what sits behind an opaque ancestor, so the
+           values here are copied from the real sky in
+           components/starfield/HomeStarfield.tsx — the same #0b0f1e →
+           #111827 → #0d1530 gradient, and white stars in its 0.5-2.3px
+           range. If that backdrop is ever retuned, retune these with it.
+           Painted as backgrounds rather than a pseudo-element so the sky
+           always sits behind the chapter boxes, and drifted rather than
+           filtered because a filter would dim the boxes along with it. */
         .cov-unit-group.is-focus {
-          border-color: #cbd5e1;
-          box-shadow: 0 0 0 2px rgba(203,213,225,.3), 0 2px 12px rgba(148,163,184,.35);
-          background-color: #eef2f7;
+          border-color: rgba(148,163,184,.5);
+          box-shadow:
+            inset 0 2px 10px rgba(0,0,0,.55),
+            0 0 0 1.5px rgba(255,255,255,.9),
+            0 2px 10px rgba(13,18,38,.3);
+          background-color: #0d1226;
           background-image:
-            radial-gradient(circle at 18% 28%, rgba(255,255,255,.98) 0 1.3px, transparent 1.9px),
-            radial-gradient(circle at 72% 74%, rgba(255,255,255,.95) 0 1.1px, transparent 1.7px),
-            radial-gradient(circle at 46% 12%, rgba(255,255,255,.92) 0 1px, transparent 1.5px),
-            linear-gradient(112deg,
-              #dfe5ee 0%, #ffffff 14%, #ccd5e3 26%, #ffffff 40%,
-              #d9e0ea 54%, #ffffff 68%, #cfd8e5 82%, #ffffff 94%, #dfe5ee 100%);
-          background-size: 58px 44px, 83px 61px, 71px 39px, 220% 100%;
-          background-repeat: repeat, repeat, repeat, no-repeat;
-          animation: covSilverSheen 5.5s linear infinite, covSilverGlint 2.6s ease-in-out infinite alternate;
+            radial-gradient(circle at 18% 26%, rgba(255,255,255,.95) 0 1.1px, transparent 1.7px),
+            radial-gradient(circle at 64% 71%, rgba(255,255,255,.8) 0 .85px, transparent 1.4px),
+            radial-gradient(circle at 87% 19%, rgba(255,255,255,.7) 0 1.2px, transparent 1.8px),
+            radial-gradient(circle at 38% 82%, rgba(255,255,255,.62) 0 .75px, transparent 1.2px),
+            radial-gradient(circle at 9% 63%, rgba(255,255,255,.5) 0 .7px, transparent 1.1px),
+            linear-gradient(180deg, #0b0f1e 0%, #111827 55%, #0d1530 100%);
+          background-size: 47px 33px, 63px 41px, 71px 29px, 39px 37px, 55px 45px, 100% 100%;
+          background-repeat: repeat, repeat, repeat, repeat, repeat, no-repeat;
+          animation: covSkyDrift 26s linear infinite;
         }
         /* A single-chapter unit normally has no tray at all, so give it one
-           back when it is the recommendation — otherwise the silver has
+           back when it is the recommendation — otherwise the sky would have
            nowhere to show. */
         .cov-unit-group.is-single.is-focus {
           padding: 8px;
         }
-        @keyframes covSilverSheen {
-          from { background-position: 0 0, 0 0, 0 0, 100% 0; }
-          to   { background-position: 58px -44px, -83px 61px, 71px 39px, -100% 0; }
-        }
-        @keyframes covSilverGlint {
-          from { box-shadow: 0 0 0 2px rgba(203,213,225,.3), 0 2px 12px rgba(148,163,184,.35); }
-          to   { box-shadow: 0 0 0 2px rgba(226,232,240,.62), 0 2px 18px rgba(203,213,225,.6); }
+        /* Each layer moves by exactly one of its own tiles, so the sky loops
+           without a seam; the differing tile sizes give it a slow parallax. */
+        @keyframes covSkyDrift {
+          from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+          to   { background-position: 47px 33px, -63px 41px, 71px -29px, -39px 37px, 55px 45px, 0 0; }
         }
         @media (prefers-reduced-motion: reduce) {
           .cov-unit-group.is-focus { animation: none; }
@@ -236,10 +244,10 @@ export const COVERAGE_GRID_STYLES_1 = `
           content: ""; position: absolute; inset: -7px; border-radius: 9px;
           padding: 2px; pointer-events: none; z-index: 4;
           background: conic-gradient(from 0deg,
-            transparent 0deg, rgba(71,85,105,.85) 10deg, transparent 24deg,
-            transparent 96deg, rgba(71,85,105,.85) 106deg, transparent 120deg,
-            transparent 192deg, rgba(71,85,105,.85) 202deg, transparent 216deg,
-            transparent 288deg, rgba(71,85,105,.85) 298deg, transparent 312deg,
+            transparent 0deg, rgba(255,255,255,.95) 10deg, transparent 24deg,
+            transparent 96deg, rgba(255,255,255,.95) 106deg, transparent 120deg,
+            transparent 192deg, rgba(255,255,255,.95) 202deg, transparent 216deg,
+            transparent 288deg, rgba(255,255,255,.95) 298deg, transparent 312deg,
             transparent 360deg);
           -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
           -webkit-mask-composite: xor;
@@ -367,5 +375,12 @@ export const COVERAGE_GRID_STYLES_2 = `
           color: rgba(255,255,255,.74); font-size: 11px; font-weight: 800;
         }
         .cov-legend-item.is-recommended { color: #cbd5e1; }
+        /* The chip's tray is a hole in the white card, so on the bare
+           starfield it would vanish into the backdrop it is imitating. This
+           gives it the scrap of card it needs to read as a window. */
+        .cov-legend-chip-card {
+          display: inline-flex; padding: 5px; border-radius: 10px;
+          background: rgba(255,255,255,.97);
+        }
         .cov-legend .cov-box { pointer-events: none; }
 `;
