@@ -114,11 +114,18 @@ export const COVERAGE_GRID_STYLES_1 = `
           display: flex; align-items: center; flex-wrap: wrap;
           gap: 7px 9px;
         }
+        /* The tray marks where one learning range ends and the next begins.
+           Its outline is enough to do that, and the tint it used to carry —
+           36% of the box's own fill — actively worked against the legend: it
+           wrapped every box in a pale wash of its own hue, so the same
+           colour read lighter here than on the legend's white plate. Boxes
+           now sit on the card itself, exactly as the swatches sit on theirs.
+           Anything added back here must stay hueless for that reason. */
         .cov-unit-group {
           display: inline-flex; align-items: center; flex-wrap: wrap;
           gap: 5px; padding: 8px; border-radius: 9px;
           border: 1.5px solid color-mix(in srgb, var(--rail) 55%, #64748b);
-          background: color-mix(in srgb, var(--fill) 36%, transparent);
+          background: transparent;
         }
         .cov-unit-group.is-single {
           padding: 0; border-color: transparent; background: transparent;
