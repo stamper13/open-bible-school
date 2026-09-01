@@ -306,22 +306,6 @@ export function hasFocusRecommendation(tree: ExploreTree): boolean {
 const LEGEND_STATES: FocusState[] = ["sufficient", "below_baseline", "insufficient_evidence"];
 
 /**
- * Legend-only tone, deliberately NOT leafTone. leafTone's fill goes from a
- * 20%-hue mix (sufficient) to a 12%-hue mix (below baseline) — an 8-point
- * difference that's meant to read alongside a much bigger, thicker-bordered
- * 27px grid box. Shrunk down to a 20px legend swatch, "20% vs 12% white"
- * is close enough to invisible — the whole point of the legend (distinct
- * shading per row) was getting lost. This spreads the same three states
- * across a much wider, unmistakable range instead: solid hue, a 50/50
- * blend, then empty.
- */
-function legendTone(state: FocusState, hue: string): { fill: string; rail: string } {
-  if (state === "sufficient") return { fill: hue, rail: hue };
-  if (state === "below_baseline") return { fill: `color-mix(in srgb, ${hue} 50%, #ffffff)`, rail: hue };
-  return { fill: "#ffffff", rail: `color-mix(in srgb, ${hue} 55%, #ffffff)` };
-}
-
-/**
  * The coverage legend, split out from CoverageGrid so it can render outside
  * the white coverage-map-card entirely (see .coverage-legend-rail in
  * app/page.tsx). No box of its own by design — it's meant to sit directly on
@@ -331,9 +315,12 @@ function legendTone(state: FocusState, hue: string): { fill: string; rail: strin
  * variant rather than a shared default.
  *
  * A real section × evidence-level matrix: one letter column per section
- * (x-axis) and one row per completion level (y-axis), each box colored via
- * sectionHue/leafTone — the exact same functions the grid itself uses, so
- * this can't drift out of sync with what the boxes actually look like.
+ * (x-axis) and one row per completion level (y-axis). Each swatch is a
+ * literal replica of a grid box — same sectionHue/leafTone call, same 27px
+ * footprint, same 1.5px rail — so a reader can match a swatch to a box in
+ * the grid by eye, and the two can't drift apart. Resist the temptation to
+ * "punch up" the swatch colours for readability: a legend that's easier to
+ * read than the thing it describes is describing something else.
  * Column headers still pop a tooltip with the full section name on hover.
  */
 export function CoverageLegend({
@@ -360,11 +347,11 @@ export function CoverageLegend({
     <div key={`${state}-label`} className="cov-legend-row-head">{STATE_LABELS[state]}</div>,
     ...visibleSections.map((section) => {
       const hue = sectionHue({ node_key: section.key, label: section.label });
-      const tone = legendTone(state, hue);
+      const tone = leafTone(state, hue);
       return (
         <div key={`${state}-${section.key}`} className="cov-legend-cell">
           <span
-            className={`cov-legend-swatch ${state === "insufficient_evidence" ? "is-empty" : ""}`}
+            className="cov-legend-swatch"
             style={{ "--fill": tone.fill, "--rail": tone.rail } as CSSProperties}
             title={`${section.label}: ${STATE_LABELS[state]}`}
           />
@@ -372,6 +359,15 @@ export function CoverageLegend({
       );
     }),
   ]);
+
+  /* The ring/dash chips ride on the first column's "sufficient" tone rather
+     than a neutral, so they read as modifiers on a real verdict — a unit can
+     be plainly sufficient and still be provisional. */
+  const chipSufficient = leafTone("sufficient", sectionHue({
+    node_key: visibleSections[0].key,
+    label: visibleSections[0].label,
+  }));
+  const chipTone = { "--fill": chipSufficient.fill, "--rail": chipSufficient.rail } as CSSProperties;
 
   return (
     <div className="cov-legend" aria-label="Coverage legend">
@@ -397,7 +393,16 @@ export function CoverageLegend({
         ))}
         {cells}
       </div>
-      {hasRecommendation && <span className="cov-legend-item is-gold">Gold ring = recommended</span>}
+      {hasRecommendation && (
+        <span className="cov-legend-item is-gold">
+          <span className="cov-legend-swatch is-focus" style={chipTone} />
+          Recommended next
+        </span>
+      )}
+      <span className="cov-legend-item">
+        <span className="cov-legend-swatch is-provisional" style={chipTone} />
+        Dashed = under 15 answers
+      </span>
     </div>
   );
 }

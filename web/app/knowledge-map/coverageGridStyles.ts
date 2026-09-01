@@ -152,13 +152,22 @@ export const COVERAGE_GRID_STYLES_1 = `
           border-color: var(--rail);
           box-shadow: none;
         }
+        /* Only the text colour: the white fill and neutral slate rail come
+           from leafTone (lib/focusPath.ts), so the legend swatches — which
+           call the same function — show exactly this. */
         .cov-box.is-insufficient-evidence {
-          border-style: solid; border-color: #94a3b8; background: #fff; color: #64748b;
+          color: #64748b;
         }
-        .cov-box.evidence-none { opacity: .58; }
-        .cov-box.evidence-low { opacity: .72; }
-        .cov-box.evidence-moderate { opacity: .88; }
-        .cov-box.evidence-high { opacity: 1; }
+        /* Evidence confidence used to fade the whole box (.58 to 1), which
+           quietly wrecked the legend: a fill is opaque, so a faded box is a
+           different colour than its swatch, and in practice almost every
+           box is faded — a learning unit rarely carries the 30 answers that
+           earn full opacity. Evidence now rides on the border style, which
+           leaves the fill exactly as leafTone painted it: dashed until a
+           unit has enough answers to interpret (sectionEvidence().canInterpret,
+           i.e. 15), solid after. Same information, no colour distortion. */
+        .cov-box.evidence-none,
+        .cov-box.evidence-low { border-style: dashed; }
         .cov-box.is-focus::after {
           content: ""; position: absolute; inset: -4px; border-radius: 8px;
           border: 2px solid #ffcf5c; pointer-events: none;
@@ -247,9 +256,19 @@ export const COVERAGE_GRID_STYLES_1 = `
 `;
 
 export const COVERAGE_GRID_STYLES_2 = `
+        /* Deliberately the same white plate as .coverage-map-card (see
+           app/homeStyles/recommendations.ts). The legend used to sit bare on
+           the dark starfield, and a swatch on navy reads as a different
+           colour than the identical box on a white card — same pixels,
+           different surround. Matching the ground is what makes "this
+           swatch is that box" literally true rather than nearly true. */
         .cov-legend {
-          display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+          display: flex; flex-direction: column; align-items: flex-start; gap: 11px;
           width: fit-content; max-width: 100%;
+          padding: 14px 16px;
+          border-radius: 10px; border: 1px solid rgba(226,232,240,.95);
+          background: rgba(255,255,255,.97);
+          box-shadow: 0 20px 48px rgba(0,0,0,.20);
         }
         .cov-legend-grid {
           display: grid;
@@ -285,18 +304,33 @@ export const COVERAGE_GRID_STYLES_2 = `
           opacity: 1; visibility: visible; transform: translate(-50%, 0);
         }
         .cov-legend-row-head {
-          font-size: 10.5px; font-weight: 800; color: rgba(255,255,255,.68);
+          font-size: 10.5px; font-weight: 800; color: #64748b;
           line-height: 1.2;
         }
         .cov-legend-cell { display: flex; justify-content: center; width: 28px; }
+        /* Same geometry as .cov-box above (27px, 1.5px rail, 5px radius) so
+           a swatch and the chapter box it explains are the same object at
+           the same size — the 28px column exists to hold exactly this. */
         .cov-legend-swatch {
-          width: 20px; height: 20px; border-radius: 5px;
-          background: var(--fill); border: 2px solid var(--rail);
+          width: 27px; height: 27px; border-radius: 5px;
+          background: var(--fill); border: 1.5px solid var(--rail);
         }
-        .cov-legend-swatch.is-empty { background: var(--fill, #fff); }
+        /* The ring and the dash are the two things the matrix above can't
+           show, since neither is a colour. Both chips are real boxes with
+           the real modifier on them, for the same reason the swatches are
+           real boxes: nothing in here is a drawing of the grid, it is the
+           grid. padding-left leaves room for the ring's -4px outset. */
         .cov-legend-item {
-          display: inline-flex; align-items: center; gap: 8px;
-          color: rgba(255,255,255,.74); font-size: 12px; font-weight: 800;
+          display: inline-flex; align-items: center; gap: 11px;
+          padding-left: 4px;
+          color: #64748b; font-size: 11px; font-weight: 800;
         }
-        .cov-legend-item.is-gold { color: #f0c674; }
+        .cov-legend-item.is-gold { color: #a16207; }
+        .cov-legend-swatch.is-focus { position: relative; }
+        .cov-legend-swatch.is-focus::after {
+          content: ""; position: absolute; inset: -4px; border-radius: 8px;
+          border: 2px solid #ffcf5c; pointer-events: none;
+          box-shadow: 0 0 0 2px rgba(255,207,92,.16);
+        }
+        .cov-legend-swatch.is-provisional { border-style: dashed; }
 `;

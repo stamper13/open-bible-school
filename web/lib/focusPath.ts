@@ -145,11 +145,31 @@ export type LeafTone = {
   dashed: boolean;
 };
 
+/**
+ * The one place a coverage box's colour is decided. Both the grid boxes and
+ * the legend swatches in app/knowledge-map/CoverageGrid.tsx read from here,
+ * so the legend can't describe a colour the grid doesn't actually paint —
+ * which is the entire point of having a legend. Anything that wants a box
+ * to look different (evidence dimming, the gold recommendation ring) layers
+ * on top in CSS rather than substituting its own tone.
+ *
+ * "Not enough evidence" deliberately drops the section hue for a neutral
+ * slate outline: an unmeasured chapter hasn't earned a colour yet, and the
+ * legend says so by showing that row identical across all four sections.
+ *
+ * The gap between sufficient (44%) and below baseline (12%) is wide on
+ * purpose. It used to be 20% vs 12%, which was too close to call at 27px —
+ * and worse, .cov-box dims by evidence confidence down to .58 opacity, so a
+ * sufficient chapter with thin evidence landed on ~11.6% hue: the exact
+ * shade of a full-evidence below-baseline chapter, meaning two opposite
+ * verdicts rendered identically. 44% survives that dimming with room to
+ * spare while staying light enough for the dark chapter numerals to read.
+ */
 export function leafTone(state: FocusState, hue: string): LeafTone {
   if (state === "sufficient") {
     return {
       rail: hue,
-      fill: `color-mix(in srgb, ${hue} 20%, #ffffff)`,
+      fill: `color-mix(in srgb, ${hue} 44%, #ffffff)`,
       dashed: false,
     };
   }
@@ -161,7 +181,7 @@ export function leafTone(state: FocusState, hue: string): LeafTone {
     };
   }
   return {
-    rail: `color-mix(in srgb, ${hue} 36%, #ffffff)`,
+    rail: "#94a3b8",
     fill: "#ffffff",
     dashed: true,
   };
