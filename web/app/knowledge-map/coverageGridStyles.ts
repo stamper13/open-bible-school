@@ -263,19 +263,17 @@ export const COVERAGE_GRID_STYLES_1 = `
 `;
 
 export const COVERAGE_GRID_STYLES_2 = `
-        /* Deliberately the same white plate as .coverage-map-card (see
-           app/homeStyles/recommendations.ts). The legend used to sit bare on
-           the dark starfield, and a swatch on navy reads as a different
-           colour than the identical box on a white card — same pixels,
-           different surround. Matching the ground is what makes "this
-           swatch is that box" literally true rather than nearly true. */
+        /* No plate: the legend sits directly on the dark starfield, which is
+           a deliberate look rather than an oversight. It does cost a little
+           fidelity — a swatch on navy reads slightly deeper than the
+           identical box on the white card, since a colour takes its
+           apparent value partly from its surround — so the swatches carry
+           the grid's exact colours and lose only that surround. If the two
+           ever need to be compared side by side down to the shade, the plate
+           to restore is the same one .coverage-map-card uses. */
         .cov-legend {
           display: flex; flex-direction: column; align-items: flex-start; gap: 11px;
           width: fit-content; max-width: 100%;
-          padding: 14px 16px;
-          border-radius: 10px; border: 1px solid rgba(226,232,240,.95);
-          background: rgba(255,255,255,.97);
-          box-shadow: 0 20px 48px rgba(0,0,0,.20);
         }
         .cov-legend-grid {
           display: grid;
@@ -311,7 +309,7 @@ export const COVERAGE_GRID_STYLES_2 = `
           opacity: 1; visibility: visible; transform: translate(-50%, 0);
         }
         .cov-legend-row-head {
-          font-size: 10.5px; font-weight: 800; color: #64748b;
+          font-size: 10.5px; font-weight: 800; color: rgba(255,255,255,.68);
           line-height: 1.2;
         }
         .cov-legend-cell { display: flex; justify-content: center; width: 28px; }
@@ -330,9 +328,9 @@ export const COVERAGE_GRID_STYLES_2 = `
         .cov-legend-item {
           display: inline-flex; align-items: center; gap: 11px;
           padding-left: 4px;
-          color: #64748b; font-size: 11px; font-weight: 800;
+          color: rgba(255,255,255,.74); font-size: 11px; font-weight: 800;
         }
-        .cov-legend-item.is-gold { color: #a16207; }
+        .cov-legend-item.is-gold { color: #f0c674; }
         .cov-legend-swatch.is-focus { position: relative; }
         .cov-legend-swatch.is-focus::after {
           content: ""; position: absolute; inset: -4px; border-radius: 8px;
