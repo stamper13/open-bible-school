@@ -355,6 +355,10 @@ export const COVERAGE_GRID_STYLES_2 = `
           line-height: 1.2;
         }
         .cov-legend-cell { display: flex; justify-content: center; width: 28px; }
+        /* Spans the whole row for a state that is identical in every
+           section; the swatch stretches with it but keeps a box's height. */
+        .cov-legend-cell.is-span { width: auto; }
+        .cov-legend-swatch.is-wide { width: 100%; }
         /* Same geometry as .cov-box above (27px, 1.5px rail, 5px radius) so
            a swatch and the chapter box it explains are the same object at
            the same size — the 28px column exists to hold exactly this. */

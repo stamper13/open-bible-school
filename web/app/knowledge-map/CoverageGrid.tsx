@@ -327,6 +327,12 @@ export function focusRecommendationState(tree: ExploreTree): FocusState | null {
 
 const LEGEND_STATES: FocusState[] = ["sufficient", "below_baseline", "insufficient_evidence"];
 
+/** Any hue does for the "not enough evidence" swatch — leafTone discards it
+ *  and returns the neutral slate for that state whatever it is given. Naming
+ *  it here beats passing an arbitrary section's colour and leaving the next
+ *  reader to work out why it makes no difference. */
+const NEUTRAL_LEGEND_HUE = "#94a3b8";
+
 /**
  * The coverage legend, split out from CoverageGrid so it can render outside
  * the white coverage-map-card entirely (see .coverage-legend-rail in
@@ -367,22 +373,49 @@ export function CoverageLegend({
 
   if (visibleSections.length === 0) return null;
 
-  const cells = LEGEND_STATES.flatMap((state) => [
-    <div key={`${state}-label`} className="cov-legend-row-head">{STATE_LABELS[state]}</div>,
-    ...visibleSections.map((section) => {
-      const hue = sectionHue({ node_key: section.key, label: section.label });
-      const tone = leafTone(state, hue);
-      return (
-        <div key={`${state}-${section.key}`} className="cov-legend-cell">
+  const cells = LEGEND_STATES.flatMap((state) => {
+    const head = <div key={`${state}-label`} className="cov-legend-row-head">{STATE_LABELS[state]}</div>;
+
+    /* leafTone gives this state the same neutral slate for every section, so
+       four identical swatches would imply a distinction that isn't there.
+       One bar across the row says the true thing instead: an unmeasured
+       chapter hasn't earned a section colour yet. It keeps a box's height,
+       radius and rail so it still reads as the same material as the grid. */
+    if (state === "insufficient_evidence") {
+      const tone = leafTone(state, NEUTRAL_LEGEND_HUE);
+      return [
+        head,
+        <div
+          key={state}
+          className="cov-legend-cell is-span"
+          style={{ gridColumn: `span ${visibleSections.length}` }}
+        >
           <span
-            className="cov-legend-swatch"
+            className="cov-legend-swatch is-wide"
             style={{ "--fill": tone.fill, "--rail": tone.rail } as CSSProperties}
-            title={`${section.label}: ${STATE_LABELS[state]}`}
+            title={`Every section: ${STATE_LABELS[state]}`}
           />
-        </div>
-      );
-    }),
-  ]);
+        </div>,
+      ];
+    }
+
+    return [
+      head,
+      ...visibleSections.map((section) => {
+        const hue = sectionHue({ node_key: section.key, label: section.label });
+        const tone = leafTone(state, hue);
+        return (
+          <div key={`${state}-${section.key}`} className="cov-legend-cell">
+            <span
+              className="cov-legend-swatch"
+              style={{ "--fill": tone.fill, "--rail": tone.rail } as CSSProperties}
+              title={`${section.label}: ${STATE_LABELS[state]}`}
+            />
+          </div>
+        );
+      }),
+    ];
+  });
 
   /* The chips below are real .cov-box elements carrying the real modifier
      classes, so they render through the grid's own rules rather than a
