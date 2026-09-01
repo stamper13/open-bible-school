@@ -355,10 +355,29 @@ export const COVERAGE_GRID_STYLES_2 = `
           line-height: 1.2;
         }
         .cov-legend-cell { display: flex; justify-content: center; width: 28px; }
-        /* Spans the whole row for a state that is identical in every
-           section; the swatch stretches with it but keeps a box's height. */
-        .cov-legend-cell.is-span { width: auto; }
-        .cov-legend-swatch.is-wide { width: 100%; }
+        /* A state that is identical in every section gets one ordinary box
+           centred across the row, with an arrow reaching out to each edge to
+           say the value carries the whole way. The arrows flex, so the box
+           lands dead centre of however many columns are showing. */
+        .cov-legend-cell.is-span { width: auto; align-items: center; gap: 7px; }
+        .cov-legend-span-arrow {
+          position: relative; flex: 1 1 auto; min-width: 12px; height: 1px;
+          background: rgba(255,255,255,.3);
+        }
+        /* Border triangles rather than a rotated chevron: the apex of a
+           coloured border sits opposite its own side, which points the head
+           outward without any rotation to get backwards. */
+        .cov-legend-span-arrow::before {
+          content: ""; position: absolute; top: 50%; width: 0; height: 0;
+          transform: translateY(-50%);
+          border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent;
+        }
+        .cov-legend-span-arrow.is-left::before {
+          left: 0; border-right: 5px solid rgba(255,255,255,.42);
+        }
+        .cov-legend-span-arrow.is-right::before {
+          right: 0; border-left: 5px solid rgba(255,255,255,.42);
+        }
         /* Same geometry as .cov-box above (27px, 1.5px rail, 5px radius) so
            a swatch and the chapter box it explains are the same object at
            the same size — the 28px column exists to hold exactly this. */

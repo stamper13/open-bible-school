@@ -378,23 +378,30 @@ export function CoverageLegend({
 
     /* leafTone gives this state the same neutral slate for every section, so
        four identical swatches would imply a distinction that isn't there.
-       One bar across the row says the true thing instead: an unmeasured
-       chapter hasn't earned a section colour yet. It keeps a box's height,
-       radius and rail so it still reads as the same material as the grid. */
+       One box centred across the row says the true thing instead: an
+       unmeasured chapter hasn't earned a section colour yet. It stays a
+       normal box rather than stretching into a bar, so it is still the same
+       object at the same size as everything else in the legend, and the
+       arrows carry the "all of them" part. Centring lands it on the F/L
+       boundary with four columns showing. With one column there is nothing
+       to span, so the arrows are dropped and it is simply a box. */
     if (state === "insufficient_evidence") {
       const tone = leafTone(state, NEUTRAL_LEGEND_HUE);
+      const spans = visibleSections.length > 1;
       return [
         head,
         <div
           key={state}
-          className="cov-legend-cell is-span"
+          className={`cov-legend-cell ${spans ? "is-span" : ""}`}
           style={{ gridColumn: `span ${visibleSections.length}` }}
         >
+          {spans && <span className="cov-legend-span-arrow is-left" aria-hidden="true" />}
           <span
-            className="cov-legend-swatch is-wide"
+            className="cov-legend-swatch"
             style={{ "--fill": tone.fill, "--rail": tone.rail } as CSSProperties}
             title={`Every section: ${STATE_LABELS[state]}`}
           />
+          {spans && <span className="cov-legend-span-arrow is-right" aria-hidden="true" />}
         </div>,
       ];
     }
