@@ -157,26 +157,36 @@ export type LeafTone = {
  * slate outline: an unmeasured chapter hasn't earned a colour yet, and the
  * legend says so by showing that row identical across all four sections.
  *
- * The gap between sufficient (44%) and below baseline (12%) is wide on
- * purpose. It used to be 20% vs 12%, which was too close to call at 27px —
- * and worse, .cov-box dims by evidence confidence down to .58 opacity, so a
- * sufficient chapter with thin evidence landed on ~11.6% hue: the exact
- * shade of a full-evidence below-baseline chapter, meaning two opposite
- * verdicts rendered identically. 44% survives that dimming with room to
- * spare while staying light enough for the dark chapter numerals to read.
+ * The gap between sufficient (58%) and below baseline (22%) is wide on
+ * purpose, and both sit well clear of white. It began at 20% vs 12%, which
+ * was too close to call at 27px; 44% vs 12% separated them but left both
+ * pale enough that the difference still read as faint-versus-fainter.
+ *
+ * Sliding both down alone would not have helped — the RGB distance between
+ * two mixes is set by the difference in their percentages, so moving both
+ * by the same amount leaves them exactly as far apart as before. The gap
+ * itself widens here too, 32 points to 36, and the darker range makes each
+ * of those points more visible, since perceived lightness is roughly
+ * logarithmic and an equal step tells more away from white.
+ *
+ * The ceiling is the chapter numerals, #17213d at 8px. At 58% the worst
+ * case across all eight section hues is Apocalypse rose at 5.25:1, clear of
+ * the 4.5:1 WCAG minimum for small text. Going much darker starts spending
+ * that margin, so treat 58% as the top of the range rather than a number to
+ * nudge upward.
  */
 export function leafTone(state: FocusState, hue: string): LeafTone {
   if (state === "sufficient") {
     return {
       rail: hue,
-      fill: `color-mix(in srgb, ${hue} 44%, #ffffff)`,
+      fill: `color-mix(in srgb, ${hue} 58%, #ffffff)`,
       dashed: false,
     };
   }
   if (state === "below_baseline") {
     return {
       rail: `color-mix(in srgb, ${hue} 64%, #ffffff)`,
-      fill: `color-mix(in srgb, ${hue} 12%, #ffffff)`,
+      fill: `color-mix(in srgb, ${hue} 22%, #ffffff)`,
       dashed: false,
     };
   }
