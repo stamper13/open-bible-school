@@ -386,18 +386,29 @@ export const COVERAGE_GRID_STYLES_2 = `
           background: var(--fill); border: 1.5px solid var(--rail);
         }
         /* The chips carry what the matrix above can't, since none of it is a
-           colour: the recommended slice, the range around it, the dashed
-           rail. Each one is a real .cov-box wearing the real modifier class,
-           so they render through the grid's own rules — no legend-side copy
-           to fall out of step. The padding leaves room for is-focus's -4px
-           ring and is-focus-chapter's -7px sparkle orbit; pointer-events
-           keeps a chip from lifting on hover the way a real box does. */
-        .cov-legend-item {
-          display: inline-flex; align-items: center; gap: 14px;
-          padding: 3px 0 3px 8px;
+           colour: the recommendation, and the dashed rail. Each is a real
+           .cov-box wearing the real modifier class, so they render through
+           the grid's own rules — no legend-side copy to fall out of step.
+           pointer-events keeps a chip from lifting on hover the way a real
+           box does.
+
+           One grid for all the notes, not a flex row each: the chips differ
+           in width (the recommendation wears a card and a tray around its
+           box, the other is bare), so per-row layout left every label
+           starting at a different x. An auto column sizes itself to the
+           widest chip and centres the rest in it, which lines up the labels
+           and, because the recommendation's box is itself centred in its
+           card, the boxes too. */
+        .cov-legend-notes {
+          display: grid; grid-template-columns: auto 1fr;
+          gap: 11px 14px; align-items: center; justify-items: center;
+          padding-left: 4px;
+        }
+        .cov-legend-note {
+          justify-self: start;
           color: rgba(255,255,255,.74); font-size: 11px; font-weight: 800;
         }
-        .cov-legend-item.is-recommended { color: #cbd5e1; }
+        .cov-legend-note.is-recommended { color: #cbd5e1; }
         /* The chip's tray is a hole in the white card, so on the bare
            starfield it would vanish into the backdrop it is imitating. This
            gives it the scrap of card it needs to read as a window. */

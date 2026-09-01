@@ -471,9 +471,13 @@ export function CoverageLegend({
         ))}
         {cells}
       </div>
-      {focusState && (
-        <>
-          <span className="cov-legend-item is-recommended">
+      {/* One grid rather than a row per note, so the chip column sizes to the
+          widest chip and every label starts at the same x. The chips are
+          centred in that column, which also lines the small box up with the
+          box sitting inside the wider recommendation chip. */}
+      <div className="cov-legend-notes">
+        {focusState && (
+          <>
             {/* A tray, not a box: the recommendation is a property of the
                 learning range now, so the chip has to be the same shape as
                 the thing it explains. The box inside keeps the recommended
@@ -484,14 +488,12 @@ export function CoverageLegend({
                 <span className="cov-box" style={chipTone} />
               </span>
             </span>
-            Recommended reading
-          </span>
-        </>
-      )}
-      <span className="cov-legend-item">
+            <span className="cov-legend-note is-recommended">Recommended reading</span>
+          </>
+        )}
         <span className="cov-box evidence-low" style={chipTone} aria-hidden="true" />
-        Under 15 answers
-      </span>
+        <span className="cov-legend-note">Under 15 answers</span>
+      </div>
     </div>
   );
 }
