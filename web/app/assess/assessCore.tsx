@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type CSSProperties, type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { BOOK_NAMES } from "@/lib/bibleTaxonomy";
@@ -38,7 +38,6 @@ export function AssessNavBar({
   assessmentMode,
   isSignedIn,
   handleSignOut,
-  onExitToDashboard,
   setShowResults,
   attemptId,
 }: {
@@ -51,7 +50,6 @@ export function AssessNavBar({
   assessmentMode: AssessmentMode;
   isSignedIn: boolean;
   handleSignOut: () => Promise<void>;
-  onExitToDashboard: () => void;
   setShowResults: Dispatch<SetStateAction<boolean>>;
   attemptId: string | null;
 }) {
@@ -63,18 +61,7 @@ export function AssessNavBar({
         <div className="nav-center">
           <span className="nav-phase">{displayNavPhaseLabel}</span>
           <span className="nav-subphase">{displayNavSubLabel}</span>
-          {/* --progress feeds the conic-gradient ring the phone layout draws
-              in place of this bar; the width below still drives the desktop
-              one. role="img" plus the label means assistive tech reads the
-              whole state as one phrase rather than two loose numbers, on
-              either layout. */}
-          <div
-            className="nav-progress-row"
-            role="img"
-            aria-label={`${answeredCount} of ${displayProgressEnd} questions answered`}
-            title={`${answeredCount} of ${displayProgressEnd} questions answered`}
-            style={{ "--progress": displayProgressPct } as CSSProperties}
-          >
+          <div className="nav-progress-row">
             <span className="nav-count">{answeredCount}</span>
             <div className="progress-bar-track">
               <div className="progress-bar-fill" style={{ width: `${displayProgressPct}%` }} />
@@ -98,12 +85,12 @@ export function AssessNavBar({
               Sign in
             </button>
           ))}
-          {attemptId && answeredCount >= displayProgressEnd && (
+          {attemptId && answeredCount > 0 && (
             <Link className="nav-exit" href={`/results/${attemptId}`}>
               Review<span className="nav-exit-tail"> session</span>
             </Link>
           )}
-          <button className="nav-exit nav-action-button" type="button" onClick={onExitToDashboard}>Exit</button>
+          <Link className="nav-exit" href="/">Exit</Link>
         </div>
       </nav>
   );
@@ -399,12 +386,12 @@ export function FeedbackPanel({
   sectionSortTraditionNote,
   answeredCount,
   correctCount,
+  accuracy,
   otTargetCount,
   isTargetedOtAssessment,
   isScopeOtAssessment,
   otAssessment,
   attemptId,
-  onResultHandoff,
   transitionToDashboard,
 }: {
   assessmentMode: AssessmentMode;
@@ -416,12 +403,12 @@ export function FeedbackPanel({
   sectionSortTraditionNote: string;
   answeredCount: number;
   correctCount: number;
+  accuracy: number;
   otTargetCount: number;
   isTargetedOtAssessment: boolean;
   isScopeOtAssessment: boolean;
   otAssessment: OtAssessmentStartRow | null;
   attemptId: string | null;
-  onResultHandoff?: () => void;
   transitionToDashboard: () => void;
 }) {
   return (
@@ -454,6 +441,7 @@ export function FeedbackPanel({
                   <div className="score-row">
                     <div className="score-item"><strong>{answeredCount}</strong>answered</div>
                     <div className="score-item"><strong>{correctCount}</strong>correct</div>
+                    <div className="score-item"><strong>{accuracy}%</strong>accuracy</div>
                   </div>
                 )}
 
@@ -477,7 +465,7 @@ export function FeedbackPanel({
                         : "Your baseline score is ready."}
                     </span>
                     <span className="milestone-actions">
-                      {attemptId && <Link className="milestone-results" href={`/results/${attemptId}`} onClick={onResultHandoff}>See results →</Link>}
+                      {attemptId && <Link className="milestone-results" href={`/results/${attemptId}`}>See results →</Link>}
                       <button className="milestone-dashboard" type="button" onClick={transitionToDashboard}>Dashboard</button>
                     </span>
                   </div>
