@@ -474,7 +474,9 @@ export default function AssessPage() {
                 isSkipped={isSkipped}
                 isCorrect={isCorrect}
                 sectionSortFeedback={sectionSortFeedback}
-                nextQuestion={nextQuestion}
+                nextQuestion={assessmentMode === "OT" && answeredCount === otTargetCount
+                  ? async () => { setPhase("complete"); }
+                  : nextQuestion}
                 isLoadingNextQuestion={isLoadingNextQuestion}
                 sectionSortTraditionNote={sectionSortTraditionNote}
                 answeredCount={answeredCount}

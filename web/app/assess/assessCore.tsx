@@ -456,8 +456,14 @@ export function FeedbackPanel({
                           ? "Correct!"
                           : "Not quite — the correct answer is highlighted."}
                   </span>
+                  {/* On the last question this button ends the run rather than
+                      fetching another, so it stops saying "Next". */}
                   <button className="next-btn" type="button" onClick={nextQuestion} disabled={isLoadingNextQuestion}>
-                    {isLoadingNextQuestion ? "Plotting..." : "Next →"}
+                    {isLoadingNextQuestion
+                      ? "Plotting..."
+                      : assessmentMode === "OT" && answeredCount === otTargetCount
+                        ? "See results →"
+                        : "Next →"}
                   </button>
                 </div>
 
@@ -476,31 +482,11 @@ export function FeedbackPanel({
                   </div>
                 )}
 
-                {assessmentMode === "OT" && answeredCount === otTargetCount && (
-                  <div className="milestone-banner">
-                    <div className="milestone-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2l2.6 6.15L21 9l-4.9 4.3L17.4 21 12 17.6 6.6 21l1.3-7.7L3 9l6.4-.85z"/>
-                      </svg>
-                    </div>
-                    <span className="milestone-copy">
-                      <span className="milestone-kicker">
-                        {isTargetedOtAssessment
-                          ? isScopeOtAssessment ? "Test complete" : "Retest complete"
-                          : "Baseline complete"}
-                      </span>
-                      {isTargetedOtAssessment
-                        ? isScopeOtAssessment
-                          ? `${otAssessment?.label ?? "Targeted"} test complete. Your score has been updated.`
-                          : `${otAssessment?.label} retest complete. Your recommendation is being recalculated.`
-                        : "Your baseline score is ready."}
-                    </span>
-                    <span className="milestone-actions">
-                      {attemptId && <Link className="milestone-results" href={`/results/${attemptId}`}>See results →</Link>}
-                      <button className="milestone-dashboard" type="button" onClick={transitionToDashboard}>Dashboard</button>
-                    </span>
-                  </div>
-                )}
+                {/* The completion banner used to live here, below the
+                    answers, where a phone shoved it off the bottom of the
+                    screen. Ending the run now takes over the whole screen
+                    instead — see OtCompleteScreen, which the See results
+                    button above routes to. */}
               </>
   );
 }
