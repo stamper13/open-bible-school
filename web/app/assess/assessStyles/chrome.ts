@@ -125,49 +125,17 @@ export const ASSESS_CHROME_STYLES = `
         }
         .nav-subphase { font-size: 11px; font-weight: 600; color: rgba(255,255,255,.52); line-height: 1; }
         .nav-progress-row { display: flex; align-items: center; gap: 10px; }
-        /* The readout is a ring everywhere now.
-           It used to be a phase label, a sub-label and a 230px bar stacked
-           three deep in the middle of the bar — "Saved Baseline", then
-           "25 questions until your baseline score", then 0 ————— 25. The ring
-           says the same thing in 38px: the sweep is how far through, the
-           number inside is where you are, and the full phrase lives on the
-           title and aria-label rather than taking a row of its own.
-
-           The centre is punched out with a mask, not covered with a disc: the
-           nav is translucent over the starfield, so a solid patch would read
-           as a darker circle that shifts as the sky moves behind it. */
-        .nav-phase, .nav-subphase { display: none; }
-        .nav-progress-row {
-          position: relative;
-          flex: none;
-          width: 38px; height: 38px;
-          display: grid; place-items: center;
-          gap: 0;
+        .nav-count { font-size: 12.5px; color: rgba(255,255,255,.58); min-width: 44px; text-align: right; font-weight: 650; }
+        .progress-bar-track {
+          width: 230px; height: 5px; border-radius: 999px;
+          background: rgba(255,255,255,.12); overflow: hidden;
         }
-        .nav-progress-row::before {
-          content: "";
-          position: absolute; inset: 0; border-radius: 50%;
-          background: conic-gradient(
-            var(--accent) calc(var(--progress, 0) * 1%),
-            rgba(255, 255, 255, .16) 0
-          );
-          -webkit-mask: radial-gradient(circle, transparent 13px, #000 13.5px);
-                  mask: radial-gradient(circle, transparent 13px, #000 13.5px);
-          transition: background .5s cubic-bezier(.4,0,.2,1);
-        }
-        .nav-count {
-          position: relative;
-          flex: none; min-width: 0;
-          font-size: 12.5px; font-weight: 700;
-          color: rgba(255,255,255,.88); text-align: center;
-        }
-        .progress-bar-track, .nav-count-right { display: none; }
         .progress-bar-fill {
           height: 100%; border-radius: 999px; background: var(--accent);
+          transition: width .5s cubic-bezier(.4,0,.2,1);
         }
+        .nav-count-right { font-size: 12.5px; color: rgba(255,255,255,.58); min-width: 44px; font-weight: 650; }
         .nav-exit {
-          display: inline-flex; align-items: center; justify-content: center;
-          box-sizing: border-box; min-height: 32px; line-height: 1; text-align: center;
           font-size: 12.5px; font-weight: 650; color: rgba(255,255,255,.72); text-decoration: none;
           padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.18);
           background: rgba(255,255,255,.045);
@@ -181,7 +149,7 @@ export const ASSESS_CHROME_STYLES = `
           display: flex; align-items: center; gap: 8px;
         }
         .nav-action-button {
-          appearance: none; cursor: pointer; font-family: inherit;
+          cursor: pointer; font-family: inherit;
         }
 
         /* Scene */

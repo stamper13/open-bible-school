@@ -63,70 +63,73 @@ export const ASSESS_OVERLAY_STYLES = `        /* ===============================
         /* ============================================================
            Between-question loader (orbit spinner)
            ============================================================ */
-        .between-question-loader {
-          align-items: center; text-align: center;
-          background: none;
-          border-color: transparent;
-          backdrop-filter: none;
-          box-shadow: none;
-          padding: 0;
-          width: auto;
-          max-width: none;
-          animation: none;
-        }
-        .between-question-loader .startup-status { display: none; }
-
-        /* Orbit loader: one tilted ellipse, one sun, one planet.
-           The old one stacked a gradient disc, a dashed ring, a travelling
-           dot, a star and three sparks into 96px, which read as clutter.
-
-           Everything is tilted with rotation alone and never scaled. The first
-           attempt squashed a circle on Y to fake the ellipse, but that squash
-           also flattened the planet, and un-squashing it failed once the arm
-           rotated — the axis being corrected had turned with it, so the planet
-           smeared into a streak. Here the ring is simply a wide, short box
-           with a 50% radius, and the planet rides an elliptical motion path.
-           Rotation preserves circles, so the planet stays round all the way
-           round. */
         .orbit-loader {
-          position: relative; width: 54px; height: 54px; margin: 0 auto;
-        }
-        .orbit-loader-ring {
-          position: absolute; left: 0; top: 16px;
-          width: 54px; height: 22px;
-          border: 1.5px solid rgba(255, 255, 255, .18);
+          position: relative; width: 96px; height: 96px; margin: 0 auto 2px;
           border-radius: 50%;
-          transform: rotate(-18deg);
+          background:
+            radial-gradient(circle at 50% 50%, rgba(255,246,201,.96) 0 9px, rgba(212,160,23,.96) 10px 21px, transparent 22px),
+            radial-gradient(circle at 50% 50%, rgba(10,163,163,.08), transparent 62%);
+          box-shadow: 0 18px 42px rgba(27,36,66,.16), inset 0 0 34px rgba(10,163,163,.08);
+          isolation: isolate;
+        }
+        .orbit-loader::before,
+        .orbit-loader::after {
+          content: ""; position: absolute; border-radius: 50%;
+          pointer-events: none;
+        }
+        .orbit-loader::before {
+          inset: 18px; border: 1px dashed rgba(10,163,163,.42);
+          transform: rotate(-16deg) scaleX(1.36);
+        }
+        .orbit-loader::after {
+          width: 14px; height: 14px; left: 50%; top: 50%;
+          margin: -7px 0 0 -7px;
+          background: radial-gradient(circle at 35% 30%, #dbfffb, #0aa3a3 68%, #076d6d);
+          box-shadow: 0 0 18px rgba(10,163,163,.58);
+          animation: orbitLoaderTravel 1.45s linear infinite;
+          transform-origin: 7px 7px;
         }
         .orbit-loader-star {
-          position: absolute; left: 50%; top: 50%;
-          width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px;
-          border-radius: 50%;
-          background: radial-gradient(circle at 36% 32%, #fff7e0 0 3px, #f2c64f 4px 6px, #c1890f 100%);
-          box-shadow: 0 0 13px rgba(242, 198, 79, .5), 0 0 26px rgba(242, 198, 79, .18);
+          position: absolute; left: 50%; top: 50%; z-index: 1;
+          width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+          background:
+            radial-gradient(circle at 38% 32%, #fffdf0 0 8px, #f4c73b 9px 25px, #b27608 100%);
+          box-shadow: 0 0 26px rgba(212,160,23,.62), 0 0 52px rgba(212,160,23,.22);
         }
-        .orbit-loader-path {
-          position: absolute; inset: 0;
-          transform: rotate(-18deg);
+        .orbit-loader-spark {
+          position: absolute; border-radius: 50%; background: rgba(255,255,255,.82);
+          box-shadow: 0 0 10px rgba(255,255,255,.72);
         }
-        .orbit-loader-path i {
-          /* left/top pinned to the origin: offset-path translates from the
-             element's static position, so without these the orbit is shifted
-             by wherever the dot would otherwise have sat and the planet
-             circles outside its own ring. */
-          position: absolute; left: 0; top: 0;
-          width: 9px; height: 9px;
-          border-radius: 50%;
-          background: radial-gradient(circle at 34% 30%, #ddfbfa, #2fb8b8 72%);
-          box-shadow: 0 0 9px rgba(47, 184, 184, .65);
-          offset-path: path("M 1,27 a 26,11 0 1,0 52,0 a 26,11 0 1,0 -52,0");
-          offset-rotate: 0deg;
-          animation: obsOrbitTravel 1.7s linear infinite;
+        .orbit-loader-spark.one { width: 3px; height: 3px; left: 18px; top: 30px; animation: orbitSpark 1.8s ease-in-out infinite; }
+        .orbit-loader-spark.two { width: 2px; height: 2px; right: 20px; bottom: 28px; animation: orbitSpark 2.1s ease-in-out .4s infinite; }
+        .orbit-loader-spark.three { width: 2px; height: 2px; right: 28px; top: 19px; animation: orbitSpark 1.6s ease-in-out .7s infinite; }
+        @keyframes orbitLoaderTravel {
+          from { transform: rotate(0deg) translateX(42px) rotate(0deg); }
+          to { transform: rotate(360deg) translateX(42px) rotate(-360deg); }
         }
-        @keyframes obsOrbitTravel { to { offset-distance: 100%; } }
-        @media (prefers-reduced-motion: reduce) {
-          .orbit-loader-path i { animation: none; offset-distance: 22%; }
+        @keyframes orbitSpark {
+          0%, 100% { opacity: .25; transform: scale(.72); }
+          50% { opacity: 1; transform: scale(1.18); }
         }
+        .between-question-loader {
+          align-items: center; text-align: center;
+          /* Transparent dark glass instead of the near-opaque card
+             background — this loader sits over the starfield only for a
+             moment between questions, so let it show through rather than
+             blotting it out with a solid card. .card's own 20px
+             backdrop-filter blur was smearing the stars into an indistinct
+             haze even at low alpha, so this drops the blur way down and
+             lightens the tint further to actually read as glass. */
+          background:
+            radial-gradient(circle at 50% 22%, rgba(212,160,23,.14), transparent 34%),
+            radial-gradient(circle at 82% 70%, rgba(10,163,163,.12), transparent 34%),
+            rgba(11,15,30,.16);
+          border-color: rgba(255,255,255,.16);
+          backdrop-filter: blur(3px);
+          box-shadow: 0 20px 50px rgba(0,0,0,.28);
+        }
+        .between-question-loader .startup-title { color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.5); }
+        .between-question-loader .startup-note { color: rgba(255,255,255,.72); text-shadow: 0 2px 10px rgba(0,0,0,.4); }
         .startup-status {
           display: grid; gap: 7px; max-width: 440px;
         }

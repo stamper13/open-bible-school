@@ -68,53 +68,16 @@ export const ASSESS_SCREEN_STYLES = `        /* ================================
           0%, 100% { translate: 0 0; }
           50% { translate: 0 -8px; }
         }
-        /* The sky fact is scenery, not a dialog.
-           It used to arrive as a full modal: the screen dimmed and blurred
-           behind a 500px white card with a 27px serif title, for one
-           incidental sentence. Now it is a small dark panel that settles in
-           the sky near the star you tapped, and the assessment stays visible
-           behind it.
-
-           Compound selectors on purpose: .overlay-card sets the white card
-           background and padding, and the mobile block later re-pads
-           .overlay-card, so single-class rules here would lose on a phone. */
-        .fact-backdrop {
-          background: transparent;
-          backdrop-filter: none;
-          align-items: flex-start;
-          justify-content: flex-end;
-          /* Tucked just under the nav so it uses whatever sky there is. The
-             card is centred and can be tall, leaving only a thin strip, so
-             sitting lower pushed the panel straight over the question — the
-             one thing it must not cover. */
-          padding: clamp(94px, 13vh, 152px) clamp(14px, 4vw, 128px) 24px;
-        }
-        .overlay-card.fact-card {
-          width: auto;
-          max-width: min(272px, calc(100vw - 36px));
-          padding: 13px 15px 14px;
-          border-radius: 14px;
-          background: rgba(8, 12, 26, .84);
-          border: 1px solid rgba(255, 231, 169, .24);
-          box-shadow: 0 12px 36px rgba(0, 0, 0, .5);
-          backdrop-filter: blur(3px);
-        }
+        .fact-card { max-width: 500px; }
         .fact-kicker {
-          color: #e3c176; font-size: 9px; font-weight: 850;
-          text-transform: uppercase; letter-spacing: .1em; margin-bottom: 4px;
+          color: #9a6a09; font-size: 11px; font-weight: 850;
+          text-transform: uppercase; letter-spacing: .08em; margin-bottom: 7px;
         }
         .fact-title {
           font-family: var(--font-crimson), Georgia, serif;
-          color: #fff; font-size: 15.5px; font-weight: 650; margin-bottom: 4px;
-          line-height: 1.2;
+          color: var(--navy); font-size: 27px; font-weight: 700; margin-bottom: 8px;
         }
-        .fact-copy { color: rgba(255,255,255,.72); font-size: 12.5px; line-height: 1.5; }
-        .fact-card .overlay-close {
-          top: 6px; right: 6px; width: 22px; height: 22px;
-          background: rgba(255,255,255,.08); color: rgba(255,255,255,.6);
-        }
-        .fact-card .overlay-close:hover { background: rgba(255,255,255,.16); }
-        .fact-card .overlay-close svg { width: 11px; height: 11px; }
+        .fact-copy { color: var(--muted); font-size: 15px; line-height: 1.62; }
 
         @media (prefers-reduced-motion: reduce) {
           /* Keep every transition/animation functional but instant, so the
