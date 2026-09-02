@@ -141,9 +141,12 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
           .nav-subject { display: block; margin-right: auto; }
           .dashboard-subject-row,
           .page.is-new-assessment-landing .dashboard-subject-row { display: none; }
-          .nav-subject .subject-trigger {
-            padding: 7px 10px; font-size: 12px; gap: 6px;
-          }
+          /* It IS a .nav-btn now (see triggerClassName in nav.tsx), so it
+             inherits its neighbours' fill, border, size and hover at every
+             breakpoint. Only the padding differs: tighter on the left for the
+             colour dot, and tighter overall because the row has no width to
+             spare at 375px. */
+          .nav-subject-trigger { padding: 8px 12px 8px 11px; gap: 7px; }
           /* Anchored to the nav, not to the trigger. The trigger sits ~117px
              in, so a menu hung off its own left edge ran past the right edge
              of a 375px screen. Making the switcher static hands the menu's
@@ -161,9 +164,9 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
            still carries the subject colour and the button keeps an aria-label
            with the full name. */
         @media (max-width: 430px) {
-          .nav-subject .subject-trigger-label-full { display: none; }
-          .nav-subject .subject-trigger-label-short { display: inline; }
-          .nav-subject .subject-trigger { padding: 7px 9px; }
+          .nav-subject-trigger .subject-trigger-label-full { display: none; }
+          .nav-subject-trigger .subject-trigger-label-short { display: inline; }
+          .nav-subject-trigger { padding: 8px 11px 8px 10px; }
         }
 
         /* At 320px even the short name will not fit beside Menu and Sign in —
@@ -171,8 +174,8 @@ export const HOME_RESPONSIVE_STYLES = `        /* ==============================
            button keeps its aria-label, and the open menu names every subject
            in full. */
         @media (max-width: 360px) {
-          .nav-subject .subject-trigger-label-short { display: none; }
-          .nav-subject .subject-trigger { padding: 7px 8px; gap: 4px; }
+          .nav-subject-trigger .subject-trigger-label-short { display: none; }
+          .nav-subject-trigger { padding: 8px 10px; gap: 5px; }
           /* The subject control costs just enough width that "Sign in" broke
              onto two lines here. The BETA badge is the least load-bearing
              thing in the row, so it gives up its ~68px on the smallest

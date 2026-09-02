@@ -27,19 +27,25 @@ export function SubjectSwitcher({
   subjectMenuOpen,
   setSubjectMenuOpen,
   subjectMenuRef,
+  /** Replaces the trigger's own class rather than adding to it. In the header
+   *  the trigger should BE a .nav-btn, inheriting every breakpoint rule its
+   *  neighbours get; keeping .subject-trigger alongside would win on source
+   *  order and reintroduce the in-page pill's fill, weight and 44px height. */
+  triggerClassName = "subject-trigger",
 }: {
   activeDashboardTab: DashboardTab;
   setActiveDashboardTab: Dispatch<SetStateAction<DashboardTab>>;
   subjectMenuOpen: boolean;
   setSubjectMenuOpen: Dispatch<SetStateAction<boolean>>;
   subjectMenuRef: RefObject<HTMLDivElement | null>;
+  triggerClassName?: string;
 }) {
   const active = DASHBOARD_SUBJECTS.find(s => s.id === activeDashboardTab);
   return (
     <div className="subject-switcher" ref={subjectMenuRef}>
       <button
         type="button"
-        className="subject-trigger"
+        className={triggerClassName}
         onClick={() => setSubjectMenuOpen(open => !open)}
         aria-haspopup="menu"
         aria-label={`Subject: ${active?.label}`}
@@ -128,6 +134,7 @@ export function HomeNavBar({
             subjectMenuOpen={navSubjectMenuOpen}
             setSubjectMenuOpen={setNavSubjectMenuOpen}
             subjectMenuRef={navSubjectMenuRef}
+            triggerClassName="nav-btn nav-subject-trigger"
           />
         </div>
         <div className="nav-right">
