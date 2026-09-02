@@ -9,6 +9,34 @@ export const ASSESS_RESPONSIVE_STYLES = `        /* ============================
              This replaces the viewport pin as the way to find room, and
              unlike the pin it cannot trap anything: the page still scrolls. */
           .nav { position: static; }
+          /* The discovery star is scenery, and a phone has almost no sky to
+             put it in. At its desktop position, top 112px and 34px in from
+             the right, it landed inside the question card: the card runs from
+             97px down and spans all but a 24px strip either side, and the
+             band above it is already taken by the chips and the flag.
+
+             It moves into that right-hand strip, small. Being fixed it holds
+             its place while the card scrolls under it, and the strip is
+             outside the card at every scroll position, so it cannot come back
+             over the question. The box is 24px around a 14px star: exactly
+             the width of the strip, so even the invisible hit area never
+             crosses the card and cannot take a tap meant for it. */
+          .sky-discovery {
+            top: 96px; right: 0;
+            width: 24px; height: 24px;
+            background: none; box-shadow: none;
+          }
+          .sky-discovery::before {
+            content: ""; position: absolute; top: 50%; left: 50%;
+            width: 14px; height: 14px; margin: -7px 0 0 -7px;
+            border-radius: 999px;
+            background:
+              radial-gradient(circle at 34% 30%, rgba(255,255,255,.98) 0 8%, rgba(255,234,166,.96) 18%, rgba(212,160,23,.92) 44%, rgba(111,78,14,.88) 100%);
+            box-shadow: 0 0 7px rgba(255,226,153,.72), 0 0 16px rgba(212,160,23,.28);
+          }
+          .sky-discovery::after { inset: 4px; border-color: rgba(255,231,169,.28); }
+          .sky-discovery:hover,
+          .sky-discovery:focus-visible { box-shadow: none; }
           /* The question screen is a full-screen view, not a document, so on a
              phone it is sized to fit the viewport, but it is never pinned
              there — see the note below the header rule.
