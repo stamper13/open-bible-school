@@ -213,6 +213,14 @@ export const HOME_CHROME_STYLES = `
           /* Grows to take the slack, which is what pushes the footer down.
              Never shrinks, so short viewports still scroll normally. */
           flex: 1 0 auto;
+          /* width:100% is load-bearing, not decoration. .page is a flex item
+             of .home-shell now, and a flex item with auto margins on the
+             cross axis is not stretched — it is shrink-to-fit and centred
+             instead. So "margin: 0 auto", harmless while this was a block in
+             normal flow, silently turned the page into a max-content column:
+             434px inside a 375px phone, which pushed the document wider than
+             the viewport and left the header looking short against it. */
+          width: 100%;
           max-width: 1180px; margin: 0 auto; padding: 44px 24px 88px; position: relative; z-index: 1;
           /* backwards (not both): holds the "from" state during the .08s
              delay so there's no flash-before-fade-in, but — critically —
