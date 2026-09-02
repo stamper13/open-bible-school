@@ -2,13 +2,28 @@ export const ASSESS_RESPONSIVE_STYLES = `        /* ============================
            Responsive: narrow-viewport overrides
            ============================================================ */
         @media (max-width: 640px) {
-          /* The header scrolls away rather than holding the top of the screen.
-             It is 87px of a viewport that Safari's toolbars have already cut
-             to about 560px, and the question needs that more than a always
-             visible Exit does; scrolling back up brings it straight back.
-             This replaces the viewport pin as the way to find room, and
-             unlike the pin it cannot trap anything: the page still scrolls. */
-          .nav { position: static; }
+          /* The header slides out of view on a downward scroll and returns on
+             an upward one, handing its ~65px to the question — see
+             useHideNavOnScroll. Static was tried first and did too little:
+             this screen only has 22px of scroll travel at 375x667 and about
+             129px once Safari's toolbars are up, most of which Safari spends
+             collapsing its own chrome, so a header that merely scrolls away
+             never actually goes. Moving it does not depend on there being
+             travel to spare.
+
+             It stays sticky, so this only ever transforms it. The page keeps
+             its ordinary scroll and nothing can be left unreachable — which
+             is the whole difference from the viewport pin that had to be
+             reverted. */
+          .nav {
+            transition: transform .22s ease;
+            will-change: transform;
+          }
+          .nav.is-hidden { transform: translateY(-100%); }
+          @media (prefers-reduced-motion: reduce) {
+            /* Still hides — it just arrives there without the slide. */
+            .nav { transition: none; }
+          }
           /* The discovery star is scenery, and a phone has almost no sky to
              put it in. At its desktop position, top 112px and 34px in from
              the right, it landed inside the question card: the card runs from
