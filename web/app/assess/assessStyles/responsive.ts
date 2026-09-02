@@ -2,28 +2,33 @@ export const ASSESS_RESPONSIVE_STYLES = `        /* ============================
            Responsive: narrow-viewport overrides
            ============================================================ */
         @media (max-width: 640px) {
-          /* The header slides out of view on a downward scroll and returns on
-             an upward one, handing its ~65px to the question — see
-             useHideNavOnScroll. Static was tried first and did too little:
-             this screen only has 22px of scroll travel at 375x667 and about
-             129px once Safari's toolbars are up, most of which Safari spends
-             collapsing its own chrome, so a header that merely scrolls away
-             never actually goes. Moving it does not depend on there being
-             travel to spare.
+          /* The header collapses to a button, handing its ~65px to the
+             question, and a matching tab brings it back.
 
-             It stays sticky, so this only ever transforms it. The page keeps
-             its ordinary scroll and nothing can be left unreachable — which
-             is the whole difference from the viewport pin that had to be
-             reverted. */
-          .nav {
-            transition: transform .22s ease;
-            will-change: transform;
+             display:none, not a transform. The header is in normal flow, so
+             moving it would have left a 65px hole exactly where it used to
+             be and reclaimed nothing; taking it out of the layout is what
+             actually moves the question up. Nothing is pinned and the page
+             keeps its ordinary scroll either way, so neither state can leave
+             anything unreachable. */
+          .nav.is-hidden { display: none; }
+          .nav-collapse {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; flex: 0 0 auto; padding: 0;
+            border-radius: 999px; border: 1px solid rgba(255,255,255,.15);
+            background: transparent; color: rgba(255,255,255,.7); cursor: pointer;
           }
-          .nav.is-hidden { transform: translateY(-100%); }
-          @media (prefers-reduced-motion: reduce) {
-            /* Still hides — it just arrives there without the slide. */
-            .nav { transition: none; }
+          .nav-reveal {
+            position: fixed; z-index: 21;
+            top: 0; left: 50%; transform: translateX(-50%);
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 54px; height: 26px; padding: 0;
+            border: 1px solid rgba(255,255,255,.16); border-top: 0;
+            border-radius: 0 0 12px 12px;
+            background: rgba(11,15,30,.92); backdrop-filter: blur(12px);
+            color: rgba(255,255,255,.72); cursor: pointer;
           }
+          .nav-reveal:active { background: rgba(11,15,30,.98); }
           /* The discovery star is scenery, and a phone has almost no sky to
              put it in. At its desktop position, top 112px and 34px in from
              the right, it landed inside the question card: the card runs from

@@ -68,6 +68,8 @@ export const ASSESS_CHROME_STYLES = `
         /* ============================================================
            Nav bar (brand, phase/progress readout, sign in/out + exit)
            ============================================================ */
+        /* Phone-only controls; the desktop header is never collapsible. */
+        .nav-collapse, .nav-reveal { display: none; }
         .nav {
           position: sticky; top: 0; z-index: 20;
           display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 760px) minmax(0, 1fr);

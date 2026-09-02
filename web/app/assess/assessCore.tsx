@@ -1,13 +1,12 @@
 "use client";
 
-import { type Dispatch, type SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { BOOK_NAMES } from "@/lib/bibleTaxonomy";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { IDK_CHOICE_ID, SECTION_COLORS } from "./constants";
-import { useHideNavOnScroll } from "./useHideNavOnScroll";
 import { SectionSortDropZone, SectionSortLabelChip, SortableSequenceItem } from "./QuestionInteractionItems";
 import type {
   AssessmentMode,
@@ -53,10 +52,13 @@ export function AssessNavBar({
   setShowResults: Dispatch<SetStateAction<boolean>>;
   attemptId: string | null;
 }) {
-  const navRef = useRef<HTMLElement>(null);
-  useHideNavOnScroll(navRef);
-  return (
-      <nav ref={navRef} className={`nav ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
+  /* Collapsing the header is a button, not a scroll behaviour. Scrolling it
+     away needed scroll to move it through, and this screen has 22px of travel
+     at 375x667 — most of which Safari spends collapsing its own chrome, so it
+     never actually went. A button does not depend on there being room. */
+  const [navHidden, setNavHidden] = useState(false);
+  return (<>
+      <nav className={`nav ${navHidden ? "is-hidden" : ""} ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
         <BrandMark />
         <div className="nav-center">
           <span className="nav-phase">{displayNavPhaseLabel}</span>
@@ -91,9 +93,38 @@ export function AssessNavBar({
             </Link>
           )}
           <Link className="nav-exit" href="/">Exit</Link>
+          {/* Phone only, via CSS. The header is worth ~65px of a screen that
+              Safari has already cut to about 560px. */}
+          <button
+            type="button"
+            className="nav-collapse"
+            onClick={() => setNavHidden(true)}
+            aria-label="Hide the header"
+            title="Hide the header"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="18 15 12 9 6 15"/>
+            </svg>
+          </button>
         </div>
       </nav>
-  );
+      {/* Its counterpart. Sits outside the nav so it survives the nav being
+          taken out of the layout, and stays a fixed tab at the top of the
+          screen — the one way back. */}
+      {navHidden && (
+        <button
+          type="button"
+          className="nav-reveal"
+          onClick={() => setNavHidden(false)}
+          aria-label="Show the header"
+          title="Show the header"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+      )}
+  </>);
 }
 
 // ---------------------------------------------------------------------------
