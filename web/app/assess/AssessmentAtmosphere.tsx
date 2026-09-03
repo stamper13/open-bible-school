@@ -6,7 +6,6 @@ import { nebulaStageIndex } from "@/lib/skyStreak";
 import BlackHoleEvent from "./BlackHoleEvent";
 import { NEBULA_STAGE_NAMES } from "./constants";
 import { hashString, skyDiscoveryMilestone } from "./assessmentHelpers";
-import { BIBLE_SKY_FACTS } from "./skyFacts";
 import type { AssessmentMode, BibleSkyFact, BliEvidence, Phase } from "./types";
 
 type AssessmentAtmosphereProps = {
@@ -85,9 +84,15 @@ export function AssessmentAtmosphere({
           aria-label="Open a Bible fact"
           title="Open a Bible fact"
           onClick={() => {
-            const factIndex = hashString(`${attemptId ?? "assessment"}:${skyDiscovery}`) % BIBLE_SKY_FACTS.length;
-            setActiveBibleFact(BIBLE_SKY_FACTS[factIndex]);
-            setDismissedSkyDiscoveries(current => new Set(current).add(skyDiscovery));
+            void import("./skyFacts")
+              .then(({ BIBLE_SKY_FACTS }) => {
+                const factIndex = hashString(`${attemptId ?? "assessment"}:${skyDiscovery}`) % BIBLE_SKY_FACTS.length;
+                setActiveBibleFact(BIBLE_SKY_FACTS[factIndex]);
+                setDismissedSkyDiscoveries(current => new Set(current).add(skyDiscovery));
+              })
+              .catch(error => {
+                console.warn("Bible fact load failed:", error);
+              });
           }}
         />
       )}

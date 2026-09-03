@@ -107,6 +107,7 @@ import {
   DashboardHeader,
   DashboardTabsBar,
   FirstAssessmentCard,
+  FirstAssessmentFeatures,
   SaveResultsModal,
   ScoreStrip,
   ScorePanelTriggers,
@@ -830,10 +831,43 @@ export default function HomePage() {
     let cancelled = false;
     supabase.auth.getSession().then(async ({ data }) => {
       let session = data.session;
-      if (isAnonymousSession(session) && !sessionStorage.getItem(ANON_SESSION_ACTIVE_KEY)) {
+      const localAssessment = readSessionAssessmentData();
+      const readSessionStorage = (key: string) => {
+        try {
+          return sessionStorage.getItem(key);
+        } catch {
+          return null;
+        }
+      };
+      const readStoredAnonUserId = () => {
+        try {
+          return readSessionStorage(ANON_USER_ID_KEY) ?? localStorage.getItem(ANON_USER_ID_KEY);
+        } catch {
+          return null;
+        }
+      };
+      const storedAnonUserId = session?.user?.id
+        ? readStoredAnonUserId()
+        : null;
+      const anonymousUserId = session?.user?.id ?? null;
+      const hasMatchingAnonymousState = Boolean(anonymousUserId && storedAnonUserId === anonymousUserId);
+      if (
+        isAnonymousSession(session)
+        && readSessionStorage(ANON_SESSION_ACTIVE_KEY) !== "1"
+        && !hasMatchingAnonymousState
+        && !localAssessment
+      ) {
         await supabase.auth.signOut();
         clearAssessmentBrowserStorage();
         session = null;
+      } else if (isAnonymousSession(session) && hasMatchingAnonymousState) {
+        try {
+          sessionStorage.setItem(ANON_SESSION_ACTIVE_KEY, "1");
+          if (anonymousUserId) sessionStorage.setItem(ANON_USER_ID_KEY, anonymousUserId);
+        } catch {
+          // If storage is unavailable, the matching durable state already kept
+          // this anonymous assessment from being reaped.
+        }
       }
       if (cancelled) return;
       setDashboardUserId(session?.user?.id ?? null);
@@ -844,7 +878,6 @@ export default function HomePage() {
         sessionStorage.removeItem(SESSION_ANSWERED_KEY);
         sessionStorage.removeItem(SESSION_CORRECT_KEY);
       }
-      const localAssessment = readSessionAssessmentData();
       if (localAssessment) {
         setSessionAssessmentData(localAssessment);
         // Only call the dashboard hydrated here when there is no session whose
@@ -1079,6 +1112,7 @@ export default function HomePage() {
                 firstAssessmentChooserOpen={firstAssessmentChooserOpen}
                 setFirstAssessmentChooserOpen={setFirstAssessmentChooserOpen}
               />
+              <FirstAssessmentFeatures />
             </>
           ) : (
           <>

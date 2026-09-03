@@ -60,33 +60,6 @@ const MODULES: RoadmapModule[] = [
   },
 ];
 
-/**
- * Moved here from the retired /about page. These are arguments for what a
- * repeatable measure could be used for, which is Future Ideas material — the
- * rest of /about described what OBA already is, and the philosophy write-up
- * says that in the author's own words.
- */
-const USE_CASES = [
-  {
-    key: "untrained",
-    n: "01",
-    title: "Candidates the paperwork cannot vouch for",
-    copy: "Someone without a conventional transcript may still know Scripture well. A direct measure gives an examining body one more concrete point of evidence.",
-  },
-  {
-    key: "programs",
-    n: "02",
-    title: "Programs checking their own efficacy",
-    copy: "A program could use repeated measurement to see whether graduates retain the biblical content their training was meant to strengthen.",
-  },
-  {
-    key: "pastors",
-    n: "03",
-    title: "Pastors finding their blind spots",
-    copy: "A private map by section can show where knowledge has quietly thinned and where review would help most.",
-  },
-];
-
 const TIMELINE_ERAS = ["Apostolic", "Councils", "Reformation", "Present"];
 const GLYPHS = ["א", "Ω", "ש", "β", "ל", "λ"];
 const THEOLOGY_NODES = [
@@ -342,6 +315,8 @@ export default function CredentialPage() {
       <SiteNav
         links={["dashboard", "assess", "knowledge-map", "about", "bli", "reading-log"]}
         cta={{ href: "/assess", label: "Start Assessment" }}
+        mobileMenu
+        mobileMenuId="credential-mobile-nav"
       />
 
       <main className="page">
@@ -428,43 +403,6 @@ export default function CredentialPage() {
             Module {index + 1} of {total}: {activeModule.title}, {activeModule.status}.
           </p>
         </div>
-
-        <section className="cred-section">
-          <p className="section-label">Why measure at all</p>
-          <h2 className="section-heading">When study gets detached from the whole Bible</h2>
-          <div className="section-body">
-            <p>
-              Formal coursework is one example, but the same drift can happen with podcasts, books, lectures, and
-              other Christian study resources. Many resources are valuable because they go deep, but deep can also
-              become narrow: a person can spend a long time inside one debate, theme, author, or tradition while
-              losing track of the broad shape of Scripture.
-            </p>
-            <p>
-              That is not an argument against seminary, podcasts, theology books, or church-history resources. It is
-              an argument that resources and measurement answer different questions. Resources teach; a repeatable
-              measurement helps show what has actually remained across the whole biblical field and where review
-              would reconnect the parts.
-            </p>
-          </div>
-        </section>
-
-        <section className="cred-section">
-          <p className="section-label">What it would be for</p>
-          <h2 className="section-heading">Three things a direct measure makes possible</h2>
-          <div className="use-cases">
-            {USE_CASES.map(useCase => (
-              <article className="use-case" key={useCase.key}>
-                <span className="use-case-n">{useCase.n}</span>
-                <h3 className="use-case-title">{useCase.title}</h3>
-                <p className="use-case-copy">{useCase.copy}</p>
-              </article>
-            ))}
-          </div>
-          <p className="cred-note">
-            Verified assessment for church credentialing is a future idea, not a current feature. For now, the
-            priority is improving the beta question bank and the reliability of the map.
-          </p>
-        </section>
 
         <div className="contact-strip">
           <div>

@@ -4,12 +4,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
+import { persistAssessmentProgressSnapshot } from "@/lib/assessmentProgressStorage";
 import { supabase } from "@/lib/supabase/client";
 import {
   FOLLOWUP_ASSESSMENT_TARGET,
   NT_PILOT_ENABLED,
   TOTAL_INITIAL,
 } from "@/app/assess/constants";
+import {
+  LOCAL_ANSWERED_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
+  LOCAL_CORRECT_KEY,
+  NT_ATTEMPT_ID_KEY,
+  OT_ATTEMPT_ID_KEY,
+} from "@/lib/assessmentSessionKeys";
 import {
   ATTEMPT_HISTORY_LIMIT,
   deriveAttemptScoreState,
@@ -24,6 +32,7 @@ type ReviewFilter = "all" | "missed" | "skipped";
 type AttemptSummary = {
   attempt_id: string;
   testament: Testament;
+  target_question_count?: number | null;
   answered: number;
   correct: number;
   idk: number;
@@ -88,6 +97,50 @@ function formatDate(value: string | null) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function attemptCompletionTarget(summary: AttemptSummary | null) {
+  if (!summary) return TOTAL_INITIAL;
+  const target = Number(summary.target_question_count);
+  if (Number.isFinite(target) && target > 0) return Math.round(target);
+  if (summary.snapshot && summary.answered > 0) return Math.max(1, summary.answered);
+  return TOTAL_INITIAL;
+}
+
+function readLocalAttemptSummary(attemptId: string): AttemptSummary | null {
+  if (typeof window === "undefined") return null;
+
+  const readStorage = (storage: Storage, key: string) => {
+    try {
+      return storage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+  const storedAttemptId =
+    readStorage(localStorage, LOCAL_ATTEMPT_ID_KEY)
+    ?? readStorage(sessionStorage, OT_ATTEMPT_ID_KEY)
+    ?? readStorage(sessionStorage, NT_ATTEMPT_ID_KEY);
+  if (storedAttemptId !== attemptId) return null;
+
+  const answered = Number(readStorage(localStorage, LOCAL_ANSWERED_KEY) ?? 0);
+  const correct = Number(readStorage(localStorage, LOCAL_CORRECT_KEY) ?? 0);
+  if (!Number.isFinite(answered) || !Number.isFinite(correct) || answered <= 0) return null;
+
+  const safeCorrect = Math.max(0, Math.min(correct, answered));
+  return {
+    attempt_id: attemptId,
+    testament: "OT",
+    target_question_count: null,
+    answered,
+    correct: safeCorrect,
+    idk: 0,
+    accuracy: answered > 0 ? (safeCorrect / answered) * 100 : null,
+    started_at: null,
+    completed_at: null,
+    snapshot: null,
+    breakdown: [],
+  };
 }
 
 function titleCase(value: string) {
@@ -157,6 +210,8 @@ export default function AttemptResultsPage() {
   const [activeFilter, setActiveFilter] = useState<ReviewFilter>("all");
   const [expandedAnswerId, setExpandedAnswerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
   const [error, setError] = useState("");
   // Distinguishes what the user can actually do about the failure: sign in,
   // go back, or simply try again.
@@ -165,6 +220,7 @@ export default function AttemptResultsPage() {
   // BLI movement for this session. See lib/attemptScore.ts for why a baseline
   // cannot be recognised from score_change alone.
   const [scoreState, setScoreState] = useState<AttemptScoreState>(UNKNOWN_SCORE_STATE);
+  const [anonymousUserId, setAnonymousUserId] = useState<string | null>(null);
 
   // Standard site starfield: gradient + a soft teal nebula glow, both painted
   // into the canvas itself (matching /bli, /about, /credential, /assess) —
@@ -231,11 +287,34 @@ export default function AttemptResultsPage() {
 
     async function loadResults() {
       setLoading(true);
+      setReviewLoading(false);
+      setReviewError("");
       setError("");
       setErrorKind(null);
+      setSummary(null);
+      setReviewRows([]);
+      setScoreState(UNKNOWN_SCORE_STATE);
+      const optimisticSummary = readLocalAttemptSummary(currentAttemptId);
+      if (optimisticSummary && !cancelled) {
+        setSummary(optimisticSummary);
+        setLoading(false);
+      }
       const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData.session?.user.id;
+      const session = sessionData.session;
+      const userId = session?.user.id;
+      if (!cancelled) setAnonymousUserId(session?.user && !session.user.email ? session.user.id : null);
       if (!userId) {
+        const fallbackSummary = readLocalAttemptSummary(currentAttemptId);
+        if (fallbackSummary) {
+          if (!cancelled) {
+            setSummary(fallbackSummary);
+            setReviewRows([]);
+            setScoreState(UNKNOWN_SCORE_STATE);
+            setReviewLoading(false);
+            setLoading(false);
+          }
+          return;
+        }
         if (!cancelled) {
           setError("Your assessment session is no longer available. Sign in to view saved results.");
           setErrorKind("auth");
@@ -244,22 +323,16 @@ export default function AttemptResultsPage() {
         return;
       }
 
-      const [{ data: summaryData, error: summaryError }, { data: reviewData, error: reviewError }] = await Promise.all([
-        supabase.rpc("obs_get_attempt_summary", {
-          p_user_id: userId,
-          p_attempt_id: attemptId,
-        }),
-        supabase.rpc("obs_get_attempt_review", {
-          p_user_id: userId,
-          p_attempt_id: attemptId,
-        }),
-      ]);
+      const { data: summaryData, error: summaryError } = await supabase.rpc("obs_get_attempt_summary", {
+        p_user_id: userId,
+        p_attempt_id: currentAttemptId,
+      });
 
       if (cancelled) return;
-      if (summaryError || reviewError) {
+      if (summaryError) {
         // Keep the database detail in the console for diagnosis; show the user
         // something they can act on instead of a raw Postgres message.
-        console.error("Results load failed:", summaryError ?? reviewError);
+        console.error("Results summary load failed:", summaryError);
         setError("We could not load these results just now. This is usually a temporary connection problem.");
         setErrorKind("failed");
         setLoading(false);
@@ -274,26 +347,48 @@ export default function AttemptResultsPage() {
 
       const loadedSummary = summaryData as AttemptSummary;
       setSummary(loadedSummary);
-      setReviewRows((reviewData ?? []) as AttemptReviewRow[]);
+      persistAssessmentProgressSnapshot({
+        answered: loadedSummary.answered,
+        attemptId: loadedSummary.attempt_id,
+        correct: loadedSummary.correct,
+        durable: loadedSummary.testament === "OT",
+        anonymousUserId: session?.user && !session.user.email ? session.user.id : null,
+        testament: loadedSummary.testament,
+      });
+      setLoading(false);
 
       // The BLI delta needs the testament, so it can only be asked for once the
       // summary is back. Deliberately non-fatal: the rest of the page is already
       // usable, so a history failure falls back to showing the absolute BLI
       // rather than replacing working results with an error.
-      setScoreState(UNKNOWN_SCORE_STATE);
-      const { data: historyData, error: historyError } = await supabase.rpc("obs_get_progress_history", {
-        p_user_id: userId,
-        p_testament: loadedSummary.testament,
-        p_limit: ATTEMPT_HISTORY_LIMIT,
-      });
+      setReviewLoading(true);
+      const [
+        { data: reviewData, error: reviewLoadError },
+        { data: historyData, error: historyError },
+      ] = await Promise.all([
+        supabase.rpc("obs_get_attempt_review", {
+          p_user_id: userId,
+          p_attempt_id: currentAttemptId,
+        }),
+        supabase.rpc("obs_get_progress_history", {
+          p_user_id: userId,
+          p_testament: loadedSummary.testament,
+          p_limit: ATTEMPT_HISTORY_LIMIT,
+        }),
+      ]);
       if (cancelled) return;
+      if (reviewLoadError) {
+        console.error("Results review load failed:", reviewLoadError);
+        setReviewError("Detailed response review could not load just now. Your score above is still saved.");
+      } else {
+        setReviewRows((reviewData ?? []) as AttemptReviewRow[]);
+      }
       if (historyError) {
         console.error("Progress history load failed on results page:", historyError);
       } else {
         setScoreState(deriveAttemptScoreState((historyData ?? []) as ProgressHistoryRow[], currentAttemptId));
       }
-
-      setLoading(false);
+      setReviewLoading(false);
     }
 
     void loadResults();
@@ -313,15 +408,46 @@ export default function AttemptResultsPage() {
     [summary],
   );
 
+  const persistSummaryHandoff = () => {
+    if (!summary) return;
+    persistAssessmentProgressSnapshot({
+      answered: summary.answered,
+      attemptId: summary.attempt_id,
+      correct: summary.correct,
+      durable: summary.testament === "OT",
+      anonymousUserId,
+      testament: summary.testament,
+    });
+  };
+
   const continueAssessment = () => {
+    if (!summary) return;
+    persistSummaryHandoff();
+    if (!isComplete) {
+      try {
+        sessionStorage.setItem(summary.testament === "NT" ? NT_ATTEMPT_ID_KEY : OT_ATTEMPT_ID_KEY, summary.attempt_id);
+      } catch {
+        // If session storage is blocked, the assessment start path still asks
+        // the backend to resume the active attempt for this session.
+      }
+      window.location.href = summary.testament === "NT"
+        ? "/assess?testament=NT&scope=NT"
+        : "/assess";
+      return;
+    }
     if (summary?.testament === "NT") {
-      sessionStorage.removeItem("obs_nt_attempt_id");
+      sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
       window.location.href = NT_PILOT_ENABLED
         ? `/assess?testament=NT&scope=NT&target=${FOLLOWUP_ASSESSMENT_TARGET}`
         : "/assess?choose=1";
       return;
     }
-    window.location.href = `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}`;
+    window.location.href = `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}&fresh=1`;
+  };
+
+  const goToDashboard = () => {
+    persistSummaryHandoff();
+    window.location.href = "/";
   };
 
   const sessionAccuracy = summary
@@ -331,6 +457,7 @@ export default function AttemptResultsPage() {
     ? null
     : `${Math.round(Math.max(0, Math.min(100, sessionAccuracy)))}%`;
   const pageError = attemptId ? error : "This results link is incomplete.";
+  const completionTarget = attemptCompletionTarget(summary);
 
   const score = formatAttemptScore({
     state: scoreState,
@@ -340,14 +467,19 @@ export default function AttemptResultsPage() {
   });
   // NOTE: despite the name, obs_get_attempt_summary's `completed_at` is
   // max(answered_at) — the time of the most recent answer, not a real
-  // "attempt finished" flag. It's non-null after the very first question, so
-  // it can't be used to gate this page. The standard assessment is currently
-  // 25 questions, matching app/assess/constants.ts and the dashboard landing.
-  // Answered count is the only
-  // honest signal we have client-side that a real BLI result exists.
-  const ASSESSMENT_COMPLETE_THRESHOLD = TOTAL_INITIAL;
-  const isComplete = Boolean(summary && summary.answered >= ASSESSMENT_COMPLETE_THRESHOLD);
-  const questionsRemaining = summary ? Math.max(0, ASSESSMENT_COMPLETE_THRESHOLD - summary.answered) : 0;
+  // "attempt finished" flag. It's non-null after the very first question. The
+  // attempt target is the honest completion gate; when an older summary RPC
+  // has not returned it yet, a saved BLI snapshot is also proof that the
+  // backend produced a real result.
+  const isComplete = Boolean(summary && (summary.answered >= completionTarget || summary.snapshot));
+  const isLocalSummaryOnly = Boolean(
+    summary
+    && summary.snapshot === null
+    && summary.breakdown.length === 0
+    && reviewRows.length === 0
+    && !reviewLoading
+  );
+  const questionsRemaining = summary ? Math.max(0, completionTarget - summary.answered) : 0;
 
   return (
     <>
@@ -359,7 +491,7 @@ export default function AttemptResultsPage() {
           <Link className="results-nav-link" href="/">Dashboard</Link>
         </nav>
 
-        {loading && attemptId ? (
+        {loading && attemptId && !summary ? (
           <main className="results-state">
             <div className="state-panel">
               <div className="loader" />
@@ -395,7 +527,7 @@ export default function AttemptResultsPage() {
             <p className="results-kicker">{summary.testament === "NT" ? "New Testament assessment" : "Old Testament assessment"}</p>
             <h1 className="results-title">{isComplete ? "Your assessment results" : "Assessment in progress"}</h1>
             <p className="results-date">
-              {isComplete ? formatDate(summary.completed_at) : `${summary.answered} of ${ASSESSMENT_COMPLETE_THRESHOLD} answered so far`}
+              {isComplete ? formatDate(summary.completed_at) : `${summary.answered} of ${completionTarget} answered so far`}
             </p>
 
             <section className={`results-summary ${isComplete ? "" : "is-in-progress"}`} aria-label="Assessment summary">
@@ -416,15 +548,17 @@ export default function AttemptResultsPage() {
                 </h2>
                 <p className="summary-copy">
                   {isComplete
-                    ? "Review the session below when you want to study specific misses or revisit questions you skipped."
-                    : "Your score and section breakdown are only meaningful once the standard 25-question assessment is complete; finish it to see them."}
+                    ? isLocalSummaryOnly
+                      ? "Your score was restored from this device. Detailed per-question review needs the original assessment session."
+                      : "Review the session below when you want to study specific misses or revisit questions you skipped."
+                    : `Your score and section breakdown are only meaningful once this ${completionTarget}-question assessment is complete; finish it to see them.`}
                 </p>
                 <div className="metric-row">
                   <div className="metric"><strong>{summary.answered}</strong><span>Answered</span></div>
                   <div className="metric"><strong>{summary.correct}</strong><span>Correct</span></div>
                   <div className="metric"><strong>{summary.idk}</strong><span>Skipped</span></div>
                   {isComplete ? (
-                    <div className="metric"><strong>{Math.round(summary.accuracy ?? 0)}%</strong><span>Accuracy</span></div>
+                    <div className="metric"><strong>{completionTarget}</strong><span>Target</span></div>
                   ) : (
                     <div className="metric"><strong>{questionsRemaining}</strong><span>Remaining</span></div>
                   )}
@@ -443,16 +577,24 @@ export default function AttemptResultsPage() {
 
             <div className="results-actions">
               <button className="action-primary" type="button" onClick={continueAssessment}>
-                Continue with assessment
+                {isComplete ? "Continue with assessment" : "Finish assessment"}
               </button>
-              <Link className="action-secondary" href="/">See my dashboard</Link>
+              {isComplete && (
+                <button className="action-secondary" type="button" onClick={goToDashboard}>
+                  See my dashboard
+                </button>
+              )}
             </div>
 
             <section className="review-section" aria-labelledby="review-heading">
               <div className="review-head">
                 <div>
                   <h2 className="review-title" id="review-heading">Session review</h2>
-                  <p className="review-sub">{filteredRows.length} of {reviewRows.length} responses shown</p>
+                  <p className="review-sub">
+                    {reviewLoading
+                      ? "Loading response review"
+                      : `${filteredRows.length} of ${reviewRows.length} responses shown`}
+                  </p>
                 </div>
                 {/* Toggle buttons rather than an ARIA tablist: there is no
                     tabpanel to own, and these filter a list in place. */}
@@ -472,8 +614,16 @@ export default function AttemptResultsPage() {
               </div>
 
               <div className="review-list" role="status" aria-live="polite">
-                {filteredRows.length === 0 ? (
-                  <p className="empty-review">No responses match this filter.</p>
+                {reviewLoading ? (
+                  <p className="empty-review">Loading your question-by-question review...</p>
+                ) : reviewError ? (
+                  <p className="empty-review">{reviewError}</p>
+                ) : filteredRows.length === 0 ? (
+                  <p className="empty-review">
+                    {isLocalSummaryOnly
+                      ? "Detailed response review is unavailable because this page is showing the device-restored score."
+                      : "No responses match this filter."}
+                  </p>
                 ) : filteredRows.map(row => {
                   const state = row.is_idk ? "skipped" : row.is_correct ? "correct" : "missed";
                   const isOpen = expandedAnswerId === row.answer_id;

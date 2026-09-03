@@ -15,6 +15,18 @@ const row = (id: string, capturedAt: string, scoreChange: number | null): Progre
   score_change: scoreChange,
 });
 
+const scoreRow = (
+  id: string,
+  capturedAt: string,
+  displayBli: number,
+  scoreChange: number | null,
+): ProgressHistoryRow => ({
+  attempt_id: id,
+  captured_at: capturedAt,
+  display_bli: displayBli,
+  score_change: scoreChange,
+});
+
 const target = (scoreChange: number | null) => row(TARGET, "2026-08-22T04:00:00Z", scoreChange);
 const earlier = row("older", "2026-08-01T00:00:00Z", 3);
 
@@ -45,6 +57,14 @@ test("a baseline is still recognised when score_change comes back null", () => {
 test("gains and losses carry their signed delta through", () => {
   assert.equal(deriveAttemptScoreState([target(4), earlier], TARGET).change, 4);
   assert.equal(deriveAttemptScoreState([target(-12), earlier], TARGET).change, -12);
+});
+
+test("available BLI snapshots override an implausible absolute score_change", () => {
+  const rows = [
+    scoreRow(TARGET, "2026-08-22T04:00:00Z", 548, 548),
+    scoreRow("older", "2026-08-01T00:00:00Z", 545, 3),
+  ];
+  assert.deepEqual(deriveAttemptScoreState(rows, TARGET), { mode: "change", change: 3 });
 });
 
 // A full page of history proves nothing about what sits beyond its end, so the
@@ -108,13 +128,13 @@ test("an unknown state shows the score without claiming it is a baseline", () =>
   assert.equal(out.label, "Your BLI");
 });
 
-test("accuracy is the last resort when there is no BLI at all", () => {
+test("accuracy is not used as a headline score when there is no BLI", () => {
   const out = formatAttemptScore({
     state: { mode: "unknown", change: null },
     displayBli: null,
     bliLevel: null,
     accuracyDisplay: "90%",
   });
-  assert.equal(out.value, "90%");
-  assert.equal(out.label, "Session accuracy");
+  assert.equal(out.value, null);
+  assert.equal(out.label, "BLI pending");
 });

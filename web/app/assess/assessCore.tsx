@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { BOOK_NAMES } from "@/lib/bibleTaxonomy";
@@ -39,6 +39,7 @@ export function AssessNavBar({
   handleSignOut,
   setShowResults,
   attemptId,
+  onExitToDashboard,
 }: {
   isDashboardTransitioning: boolean;
   displayNavPhaseLabel: string;
@@ -51,6 +52,7 @@ export function AssessNavBar({
   handleSignOut: () => Promise<void>;
   setShowResults: Dispatch<SetStateAction<boolean>>;
   attemptId: string | null;
+  onExitToDashboard: () => void;
 }) {
   /* Collapsing the header is a button, not a scroll behaviour. Scrolling it
      away needed scroll to move it through, and this screen has 22px of travel
@@ -63,7 +65,12 @@ export function AssessNavBar({
         <div className="nav-center">
           <span className="nav-phase">{displayNavPhaseLabel}</span>
           <span className="nav-subphase">{displayNavSubLabel}</span>
-          <div className="nav-progress-row">
+          <div
+            className="nav-progress-row"
+            style={{ "--progress": displayProgressPct } as CSSProperties}
+            aria-label={displayNavSubLabel}
+            title={displayNavSubLabel}
+          >
             <span className="nav-count">{answeredCount}</span>
             <div className="progress-bar-track">
               <div className="progress-bar-fill" style={{ width: `${displayProgressPct}%` }} />
@@ -89,10 +96,12 @@ export function AssessNavBar({
           ))}
           {attemptId && answeredCount > 0 && (
             <Link className="nav-exit" href={`/results/${attemptId}`}>
-              Review<span className="nav-exit-tail"> session</span>
+              Review <span className="nav-exit-tail">session</span>
             </Link>
           )}
-          <Link className="nav-exit" href="/">Exit</Link>
+          <button className="nav-exit nav-action-button" type="button" onClick={onExitToDashboard}>
+            Exit
+          </button>
           {/* Phone only, via CSS. The header is worth ~65px of a screen that
               Safari has already cut to about 560px. */}
           <button
@@ -417,13 +426,7 @@ export function FeedbackPanel({
   sectionSortTraditionNote,
   answeredCount,
   correctCount,
-  accuracy,
   otTargetCount,
-  isTargetedOtAssessment,
-  isScopeOtAssessment,
-  otAssessment,
-  attemptId,
-  transitionToDashboard,
 }: {
   assessmentMode: AssessmentMode;
   isSkipped: boolean;
@@ -434,13 +437,7 @@ export function FeedbackPanel({
   sectionSortTraditionNote: string;
   answeredCount: number;
   correctCount: number;
-  accuracy: number;
   otTargetCount: number;
-  isTargetedOtAssessment: boolean;
-  isScopeOtAssessment: boolean;
-  otAssessment: OtAssessmentStartRow | null;
-  attemptId: string | null;
-  transitionToDashboard: () => void;
 }) {
   return (
               <>
@@ -461,7 +458,7 @@ export function FeedbackPanel({
                   <button className="next-btn" type="button" onClick={nextQuestion} disabled={isLoadingNextQuestion}>
                     {isLoadingNextQuestion
                       ? "Plotting..."
-                      : assessmentMode === "OT" && answeredCount === otTargetCount
+                      : assessmentMode === "OT" && answeredCount >= otTargetCount
                         ? "See results →"
                         : "Next →"}
                   </button>
@@ -478,7 +475,6 @@ export function FeedbackPanel({
                   <div className="score-row">
                     <div className="score-item"><strong>{answeredCount}</strong>answered</div>
                     <div className="score-item"><strong>{correctCount}</strong>correct</div>
-                    <div className="score-item"><strong>{accuracy}%</strong>accuracy</div>
                   </div>
                 )}
 

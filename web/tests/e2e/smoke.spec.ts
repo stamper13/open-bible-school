@@ -179,4 +179,21 @@ test.describe("mobile layout", () => {
     await expect(menu.getByRole("menuitem", { name: /Knowledge Map/i })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: /Reading Log/i })).toBeVisible();
   });
+
+  for (const path of ["/intro", "/philosophy", "/bli", "/credential", "/knowledge-map", "/reading-log"]) {
+    test(`${path} shared nav is collapsed behind the mobile menu`, async ({ page }) => {
+      await page.goto(path);
+      await expect(page.locator(".oba-site-nav .nav-link").first()).toBeHidden();
+      await expect(page.getByRole("button", { name: /Open menu/i })).toBeVisible();
+      await expect(page.getByRole("menu", { name: /Site/i })).toHaveCount(0);
+
+      await page.getByRole("button", { name: /Open menu/i }).click();
+
+      const menu = page.getByRole("menu", { name: /Site/i });
+      await expect(menu).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Assess", exact: true })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Knowledge Map", exact: true })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Reading Log", exact: true })).toBeVisible();
+    });
+  }
 });

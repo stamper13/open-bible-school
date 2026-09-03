@@ -255,8 +255,15 @@ const AssessStarfield = forwardRef<StarfieldHandle, AssessVariantProps>(function
         const vh = window.innerHeight;
         const toCX = (vx: number) => (vx + (w / DPR - vw) / 2) * DPR;
         const toCY = (vy: number) => (vy + (h / DPR - vh) / 2) * DPR;
-        const ax = toCX(vw - 110);
-        const ay = toCY(vh - 130);
+        /* The evidence nebula is anchored near the bottom-right corner and
+           grows with the answer count, reaching a 258px radius — most of a
+           phone screen. Narrow viewports get a smaller one, tucked closer to
+           the corner. baseR feeds the arms, the orbiting stars and the core,
+           so scaling it scales the whole thing. */
+        const compactSky = vw < 640;
+        const nebulaScale = compactSky ? 0.44 : 1;
+        const ax = toCX(vw - (compactSky ? 68 : 110));
+        const ay = toCY(vh - (compactSky ? 84 : 130));
         const evidenceStrengthNow = evidenceStrengthRef.current;
         const nAns = answeredCountRef.current;
         if (nAns > 0) {
@@ -274,7 +281,7 @@ const AssessStarfield = forwardRef<StarfieldHandle, AssessVariantProps>(function
           }
           const flareAge = frame - flareFrameRef.current;
           const flare = flareAge >= 0 && flareAge < 90 ? 1 - flareAge / 90 : 0;
-          const baseR = (52 + 206 * growth) * DPR * (1 + pulse * 0.14 + flare * 0.1);
+          const baseR = (52 + 206 * growth) * nebulaScale * DPR * (1 + pulse * 0.14 + flare * 0.1);
           const alpha = (0.16 + 0.72 * growth) * evidenceBoost * (1 + pulse * 0.9);
           const layerCount = stage === 0 ? 2 : stage === 1 ? 3 : stage === 2 ? 4 : 5;
           const hueDrift = stage >= 4 ? ((nAns - 200) / 800) * 42 : 0;

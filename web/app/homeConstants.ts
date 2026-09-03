@@ -10,6 +10,9 @@ import {
   SESSION_CORRECT_KEY,
   OT_ATTEMPT_ID_KEY,
   NT_ATTEMPT_ID_KEY,
+  LOCAL_ANSWERED_KEY,
+  LOCAL_CORRECT_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
 } from "@/lib/assessmentSessionKeys";
 import type { DashboardTab } from "./homeTypes";
 
@@ -20,6 +23,9 @@ export {
   SESSION_CORRECT_KEY,
   OT_ATTEMPT_ID_KEY,
   NT_ATTEMPT_ID_KEY,
+  LOCAL_ANSWERED_KEY,
+  LOCAL_CORRECT_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
 };
 
 // UI STATE ONLY. Marks that the signed-out learner closed the save-progress

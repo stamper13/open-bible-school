@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import { NT_PILOT_ENABLED, QUESTION_RATING_OPTIONS, REPORT_OPTIONS } from "./constants";
+import { FOLLOWUP_ASSESSMENT_TARGET, NT_PILOT_ENABLED, QUESTION_RATING_OPTIONS, REPORT_OPTIONS } from "./constants";
 import { clearAssessmentBrowserStorage, ntScopeFromKey } from "./assessmentHelpers";
 import type {
   AssessmentMode,
@@ -20,6 +20,18 @@ import type {
   QuestionQualityRating,
   ReportCategory,
 } from "./types";
+
+// ---------------------------------------------------------------------------
+
+export function AssessmentOrbitLoader() {
+  return (
+    <div className="orbit-loader" aria-hidden="true">
+      <span className="orbit-loader-ring" />
+      <span className="orbit-loader-path"><i /></span>
+      <span className="orbit-loader-star" />
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 
@@ -75,17 +87,10 @@ export function NtStartingScreen({
   ntError: string;
 }) {
   return (
-    <div className={`card center-card ${isLoadingNextQuestion ? "between-question-loader" : ""}`}>
+    <div className={`card center-card startup-card ${isLoadingNextQuestion ? "between-question-loader" : ""}`}>
       <span className="pilot-badge">NT BLI</span>
       <div className="card-heading">Preparing {ntScopeFromKey(ntRequestedScopeKey, ntBooks).label}</div>
-      {isLoadingNextQuestion && (
-        <div className="orbit-loader" aria-hidden="true">
-          <span className="orbit-loader-star" />
-          <span className="orbit-loader-spark one" />
-          <span className="orbit-loader-spark two" />
-          <span className="orbit-loader-spark three" />
-        </div>
-      )}
+      <AssessmentOrbitLoader />
       <div className="startup-status" aria-live="polite">
         <p className="startup-title">
           {isLoadingNextQuestion
@@ -107,7 +112,6 @@ export function NtStartingScreen({
         </p>
       </div>
       {ntError && <p className="pilot-note">{ntError}</p>}
-      {!isLoadingNextQuestion && <div className="spinner" />}
       <p className="pilot-note">New Testament results are tracked separately from Old Testament results.</p>
       <div className="startup-actions">
         {startupWaitLevel === 2 && (
@@ -131,17 +135,8 @@ export function OtStartingScreen({
   startupWaitLevel: 0 | 1 | 2;
 }) {
   return (
-    <div className={`card center-card ${isLoadingNextQuestion ? "between-question-loader" : ""}`}>
-      {isLoadingNextQuestion ? (
-        <div className="orbit-loader" aria-hidden="true">
-          <span className="orbit-loader-star" />
-          <span className="orbit-loader-spark one" />
-          <span className="orbit-loader-spark two" />
-          <span className="orbit-loader-spark three" />
-        </div>
-      ) : (
-        <div className="spinner" />
-      )}
+    <div className={`card center-card startup-card ${isLoadingNextQuestion ? "between-question-loader" : ""}`}>
+      <AssessmentOrbitLoader />
       <div className="startup-status" aria-live="polite">
         <p className="startup-title">
           {isLoadingNextQuestion
@@ -247,30 +242,29 @@ export function AssessmentErrorScreen({
 // ---------------------------------------------------------------------------
 
 export function NtCompleteScreen({
-  accuracy,
   correctCount,
   answeredCount,
   ntScope,
   attemptId,
+  onResultHandoff,
   startNtPilot,
   transitionToDashboard,
 }: {
-  accuracy: number;
   correctCount: number;
   answeredCount: number;
   ntScope: NtScopeOption;
   attemptId: string | null;
+  onResultHandoff?: () => void;
   startNtPilot: (scope: NtScopeOption) => void | Promise<void>;
   transitionToDashboard: () => void;
 }) {
   return (
     <div className="card center-card">
       <span className="pilot-badge">NT BLI</span>
-      <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
       <div className="card-heading">New Testament assessment complete</div>
       <p className="card-sub">You answered {correctCount} of {answeredCount} questions correctly in {ntScope.label}.</p>
       <p className="pilot-note">Your New Testament result is ready. Review the session for your score and answer history.</p>
-      {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
+      {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`} onClick={onResultHandoff}>Review session results</Link>}
       <button className="btn-primary" type="button" onClick={() => startNtPilot(ntScope)}>Retry same scope</button>
       <Link className="btn-secondary" href="/">Choose another New Testament area</Link>
       <button className="btn-secondary" type="button" onClick={transitionToDashboard}>Back to dashboard</button>
@@ -281,27 +275,26 @@ export function NtCompleteScreen({
 // ---------------------------------------------------------------------------
 
 export function OtCompleteScreen({
-  accuracy,
   isTargetedOtAssessment,
   otAssessment,
   isScopeOtAssessment,
   correctCount,
   answeredCount,
   attemptId,
+  onResultHandoff,
   transitionToDashboard,
 }: {
-  accuracy: number;
   isTargetedOtAssessment: boolean;
   otAssessment: OtAssessmentStartRow | null;
   isScopeOtAssessment: boolean;
   correctCount: number;
   answeredCount: number;
   attemptId: string | null;
+  onResultHandoff?: () => void;
   transitionToDashboard: () => void;
 }) {
   return (
     <div className="card center-card">
-      <div className="big-num">{accuracy}<span style={{ fontSize: 32 }}>%</span></div>
       <div className="card-heading">
         {isTargetedOtAssessment
           ? `${otAssessment?.label ?? "Targeted"} ${isScopeOtAssessment ? "test" : "retest"} complete`
@@ -314,10 +307,10 @@ export function OtCompleteScreen({
             : "Your new evidence has been added to your BLI. The dashboard will now recalculate this learning unit and your next recommendation."
           : `You answered ${correctCount} of ${answeredCount} questions correctly.`}
       </p>
-      {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`}>Review session results</Link>}
+      {attemptId && <Link className="btn-primary" href={`/results/${attemptId}`} onClick={onResultHandoff}>Review session results</Link>}
       <button className="btn-primary" type="button" onClick={transitionToDashboard}>View your dashboard</button>
       {!isTargetedOtAssessment && (
-        <Link className="btn-secondary" href="/assess">Keep going</Link>
+        <Link className="btn-secondary" href={`/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}&fresh=1`}>Keep going</Link>
       )}
     </div>
   );
@@ -451,7 +444,7 @@ export function BibleFactModal({
   activeBibleFact: BibleSkyFact;
 }) {
   return (
-    <div className="overlay-backdrop" onClick={e => e.target === e.currentTarget && setActiveBibleFact(null)}>
+    <div className="overlay-backdrop fact-backdrop" onClick={e => e.target === e.currentTarget && setActiveBibleFact(null)}>
       <div className="overlay-card fact-card">
         <button className="overlay-close" type="button" onClick={() => setActiveBibleFact(null)} aria-label="Close Bible fact">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -468,7 +461,6 @@ export function BibleFactModal({
 
 export function OtResultsOverlay({
   setShowResults,
-  accuracy,
   answeredCount,
   correctCount,
   nextMilestone,
@@ -481,7 +473,6 @@ export function OtResultsOverlay({
   handleMagicLink,
 }: {
   setShowResults: (open: boolean) => void;
-  accuracy: number;
   answeredCount: number;
   correctCount: number;
   nextMilestone: number;
@@ -500,11 +491,18 @@ export function OtResultsOverlay({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
 
-        <div className="overlay-score">{accuracy}<span style={{ fontSize: 28 }}>%</span></div>
-        <div className="overlay-label">BLI Score (preliminary)</div>
+        {/* No score figure here. This used to print raw accuracy —
+            correct/answered as a percentage — under the label "BLI Score
+            (preliminary)", which was wrong twice over: the client has no BLI
+            at this point (only an answered count and an evidence level), and
+            the BLI is a 0-800 scale, not a percentage. Printing one directly
+            contradicted /bli, which exists to explain why OBA does not grade
+            on percentages. The counts below are true and sufficient; the
+            score itself belongs on the results page, where it is real. */}
+        <div className="overlay-score">{answeredCount}</div>
+        <div className="overlay-label">answers recorded</div>
 
         <div className="overlay-stats">
-          <div className="overlay-stat"><strong>{answeredCount}</strong><span>answered</span></div>
           <div className="overlay-stat"><strong>{correctCount}</strong><span>correct</span></div>
           <div className="overlay-stat"><strong>{nextMilestone - answeredCount}</strong><span>to next update</span></div>
         </div>

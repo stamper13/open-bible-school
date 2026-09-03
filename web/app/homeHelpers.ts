@@ -40,6 +40,9 @@ import {
   SESSION_CORRECT_KEY,
   OT_ATTEMPT_ID_KEY,
   NT_ATTEMPT_ID_KEY,
+  LOCAL_ANSWERED_KEY,
+  LOCAL_CORRECT_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
 } from "@/lib/assessmentSessionKeys";
 import type {
   AnswerRow,
@@ -62,9 +65,9 @@ export function clearAssessmentBrowserStorage() {
   // a record behind would let the next person to sign in on this browser claim
   // the previous visitor's progress.
   clearPendingTransfer(localStorage);
-  localStorage.removeItem("obs_answered");
-  localStorage.removeItem("obs_correct");
-  localStorage.removeItem("obs_attempt_id");
+  localStorage.removeItem(LOCAL_ANSWERED_KEY);
+  localStorage.removeItem(LOCAL_CORRECT_KEY);
+  localStorage.removeItem(LOCAL_ATTEMPT_ID_KEY);
   localStorage.removeItem("obs_user_id");
   localStorage.removeItem(ANON_USER_ID_KEY);
   sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);
@@ -77,8 +80,21 @@ export function clearAssessmentBrowserStorage() {
 
 export function readSessionAssessmentData() {
   if (typeof window === "undefined") return null;
-  const answered = Number(sessionStorage.getItem(SESSION_ANSWERED_KEY) || 0);
-  const correct = Number(sessionStorage.getItem(SESSION_CORRECT_KEY) || 0);
+  const readStorageNumber = (storage: Storage, key: string) => {
+    try {
+      return Number(storage.getItem(key) || 0);
+    } catch {
+      return 0;
+    }
+  };
+  const sessionAnswered = readStorageNumber(sessionStorage, SESSION_ANSWERED_KEY);
+  const sessionCorrect = readStorageNumber(sessionStorage, SESSION_CORRECT_KEY);
+  const answered = sessionAnswered > 0
+    ? sessionAnswered
+    : readStorageNumber(localStorage, LOCAL_ANSWERED_KEY);
+  const correct = sessionAnswered > 0
+    ? sessionCorrect
+    : readStorageNumber(localStorage, LOCAL_CORRECT_KEY);
   if (!Number.isFinite(answered) || !Number.isFinite(correct) || answered <= 0) return null;
   return {
     answered,
@@ -191,12 +207,12 @@ export function assessmentHrefForScore(score: ScopeScore): string | null {
 
   if (score.kind === "canon") {
     const targetParam = score.answered > 0
-      ? `&target=${FOLLOWUP_ASSESSMENT_TARGET}`
+      ? `&target=${FOLLOWUP_ASSESSMENT_TARGET}&fresh=1`
       : "";
     return score.testament === "NT"
       ? `/assess?testament=NT&scope=NT${targetParam}`
       : score.answered > 0
-        ? `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}`
+        ? `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}&fresh=1`
         : "/assess";
   }
 
@@ -491,7 +507,7 @@ export function getRecommendedStudy(sectionScores: SectionScoreMap, hasAssessmen
     priority: score
       ? `${score.accuracy_pct}% accuracy · ${score.total} answers`
       : "Not enough answers yet",
-    actionHref: `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}`,
+    actionHref: `/assess?target=${FOLLOWUP_ASSESSMENT_TARGET}&fresh=1`,
     actionLabel: "Continue assessment",
   };
 }

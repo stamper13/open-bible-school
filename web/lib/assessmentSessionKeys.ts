@@ -11,3 +11,6 @@ export const SESSION_ANSWERED_KEY = "obs_session_answered";
 export const SESSION_CORRECT_KEY = "obs_session_correct";
 export const OT_ATTEMPT_ID_KEY = "obs_ot_attempt_id";
 export const NT_ATTEMPT_ID_KEY = "obs_nt_attempt_id";
+export const LOCAL_ANSWERED_KEY = "obs_answered";
+export const LOCAL_CORRECT_KEY = "obs_correct";
+export const LOCAL_ATTEMPT_ID_KEY = "obs_attempt_id";

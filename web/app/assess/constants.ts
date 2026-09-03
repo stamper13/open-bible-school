@@ -6,6 +6,9 @@ import {
   SESSION_CORRECT_KEY,
   OT_ATTEMPT_ID_KEY,
   NT_ATTEMPT_ID_KEY,
+  LOCAL_ANSWERED_KEY,
+  LOCAL_CORRECT_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
 } from "@/lib/assessmentSessionKeys";
 
 export {
@@ -15,6 +18,9 @@ export {
   SESSION_CORRECT_KEY,
   OT_ATTEMPT_ID_KEY,
   NT_ATTEMPT_ID_KEY,
+  LOCAL_ANSWERED_KEY,
+  LOCAL_CORRECT_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
 };
 
 export const SECTION_COLORS: Record<string, string> = {

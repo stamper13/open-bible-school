@@ -21,7 +21,7 @@ export function FirstAssessmentCard({
   // testament chooser below so the card never sprouts two panels at once.
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
 
-  return (<>
+  return (
               <section className="first-assessment-card" aria-label="Start your first assessment">
                 <div className="first-assessment-orbit" aria-hidden="true">
                   <span className="first-assessment-sun" />
@@ -119,7 +119,11 @@ export function FirstAssessmentCard({
                   )}
                 </div>
               </section>
+  );
+}
 
+export function FirstAssessmentFeatures() {
+  return (
               <section className="oba-feature-grid" aria-label="Open Bible Assessment features">
                 <article className="oba-feature-card" style={{ "--feature-hue": "#0aa3a3" } as CSSProperties}>
                   <div className="oba-feature-graphic is-signal" aria-hidden="true">
@@ -163,7 +167,7 @@ export function FirstAssessmentCard({
                   </p>
                 </article>
               </section>
-  </>);
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   EVIDENCE_VISUAL_STRENGTH,
   NT_PILOT_TARGET,
   TOTAL_INITIAL,
 } from "./constants";
+import { persistAssessmentProgressSnapshot } from "@/lib/assessmentProgressStorage";
 import type {
   AssessmentMode,
   BibleSkyFact,
@@ -192,6 +193,26 @@ export default function AssessPage() {
   // counter resets each session, so the nebula uses whichever is larger.
   const nebulaAnswered = Math.max(scoreEvidence?.n_responses ?? 0, answeredCount);
   const evidenceStrength = scoreEvidence ? EVIDENCE_VISUAL_STRENGTH[scoreEvidence.evidence_level] : 0;
+  const persistAssessmentHandoff = useCallback(() => {
+    persistAssessmentProgressSnapshot({
+      answered: answeredCount,
+      attemptId,
+      correct: correctCount,
+      durable: assessmentMode === "OT",
+      anonymousUserId: isSignedIn ? null : userId,
+      testament: assessmentMode === "NT" ? "NT" : "OT",
+    });
+  }, [answeredCount, assessmentMode, attemptId, correctCount, isSignedIn, userId]);
+
+  const handleDashboardTransition = useCallback(() => {
+    persistAssessmentHandoff();
+    transitionToDashboard();
+  }, [persistAssessmentHandoff, transitionToDashboard]);
+
+  const handleExitToDashboard = useCallback(() => {
+    persistAssessmentHandoff();
+    window.location.href = "/";
+  }, [persistAssessmentHandoff]);
 
   const { startNtPilot } = useAssessmentStartup({
     assessmentMode,
@@ -263,6 +284,7 @@ export default function AssessPage() {
     finishAnswerSubmission,
     isLoadingQuestionRef,
     isQuestionInteractionLocked,
+    isSignedIn,
     isSubmittingAnswerRef,
     loadNtQuestion,
     loadQuestion,
@@ -311,7 +333,6 @@ export default function AssessPage() {
 
   // Answer-choice display + nav phase/progress derived values
   const {
-    accuracy,
     choiceLabel,
     displayNavPhaseLabel,
     displayNavSubLabel,
@@ -382,6 +403,7 @@ export default function AssessPage() {
         handleSignOut={handleSignOut}
         setShowResults={setShowResults}
         attemptId={attemptId}
+        onExitToDashboard={handleExitToDashboard}
       />
 
       <div className={`scene ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
@@ -474,20 +496,14 @@ export default function AssessPage() {
                 isSkipped={isSkipped}
                 isCorrect={isCorrect}
                 sectionSortFeedback={sectionSortFeedback}
-                nextQuestion={assessmentMode === "OT" && answeredCount === otTargetCount
+                nextQuestion={assessmentMode === "OT" && answeredCount >= otTargetCount
                   ? async () => { setPhase("complete"); }
                   : nextQuestion}
                 isLoadingNextQuestion={isLoadingNextQuestion}
                 sectionSortTraditionNote={sectionSortTraditionNote}
                 answeredCount={answeredCount}
                 correctCount={correctCount}
-                accuracy={accuracy}
                 otTargetCount={otTargetCount}
-                isTargetedOtAssessment={isTargetedOtAssessment}
-                isScopeOtAssessment={isScopeOtAssessment}
-                otAssessment={otAssessment}
-                attemptId={attemptId}
-                transitionToDashboard={transitionToDashboard}
               />
             )}
           </div>
@@ -495,26 +511,26 @@ export default function AssessPage() {
 
         {phase === "complete" && assessmentMode === "NT" && (
           <NtCompleteScreen
-            accuracy={accuracy}
             correctCount={correctCount}
             answeredCount={answeredCount}
             ntScope={ntScope}
             attemptId={attemptId}
+            onResultHandoff={persistAssessmentHandoff}
             startNtPilot={startNtPilot}
-            transitionToDashboard={transitionToDashboard}
+            transitionToDashboard={handleDashboardTransition}
           />
         )}
 
         {phase === "complete" && assessmentMode === "OT" && (
           <OtCompleteScreen
-            accuracy={accuracy}
             isTargetedOtAssessment={isTargetedOtAssessment}
             otAssessment={otAssessment}
             isScopeOtAssessment={isScopeOtAssessment}
             correctCount={correctCount}
             answeredCount={answeredCount}
             attemptId={attemptId}
-            transitionToDashboard={transitionToDashboard}
+            onResultHandoff={persistAssessmentHandoff}
+            transitionToDashboard={handleDashboardTransition}
           />
         )}
       </div>
@@ -551,7 +567,6 @@ export default function AssessPage() {
       {assessmentMode === "OT" && showResults && (
         <OtResultsOverlay
           setShowResults={setShowResults}
-          accuracy={accuracy}
           answeredCount={answeredCount}
           correctCount={correctCount}
           nextMilestone={nextMilestone}

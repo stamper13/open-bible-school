@@ -5,7 +5,7 @@ import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { type Testament as BibleTestament } from "@/lib/bibleTaxonomy";
 import type { BliContractScores } from "@/lib/bliContract";
-import { NT_PILOT_ENABLED } from "../assess/constants";
+import { FOLLOWUP_ASSESSMENT_TARGET, NT_PILOT_ENABLED } from "../assess/constants";
 import { DASHBOARD_SUBJECTS } from "../homeConstants";
 import type { AssessmentSnapshot, DashboardTab } from "../homeTypes";
 
@@ -377,8 +377,13 @@ export function DashboardHeader({
               const isOT = suiteTestament === "OT";
               const hasData = isOT ? Boolean(visibleAssessmentData) : Boolean(testamentScores?.nt_questions_answered);
               // The toggle already picked the testament, so both routes go
-              // straight to that assessment — no "which testament?" interstitial.
-              const ctaHref = isOT ? "/assess" : "/assess?testament=NT&scope=NT";
+              // straight to that assessment. First assessments use the full
+              // baseline target; later "continue" runs use the shorter score
+              // update target instead of silently starting another baseline.
+              const followupTargetParam = `target=${FOLLOWUP_ASSESSMENT_TARGET}&fresh=1`;
+              const ctaHref = isOT
+                ? hasData ? `/assess?${followupTargetParam}` : "/assess"
+                : `/assess?testament=NT&scope=NT${hasData ? `&${followupTargetParam}` : ""}`;
               const ntDisabled = !isOT && !NT_PILOT_ENABLED;
               return (
                 <div className="header-assess" style={{ "--suite-hue": isOT ? "#d4a017" : "#7c3aed" } as CSSProperties}>

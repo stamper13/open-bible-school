@@ -33,6 +33,7 @@ import type {
 
 const OT_NEXT_QUESTION_RPC = "obs_get_next_ot_assessment_question";
 const NT_NEXT_QUESTION_RPC = "obs_get_next_nt_assessment_question";
+const NEXT_QUESTION_TIMEOUT_RETRY_DELAYS_MS = [300, 900, 1800] as const;
 
 type AssessmentQuestionLoaderOptions = {
   resetQuestionReport: () => void;
@@ -279,10 +280,12 @@ export function useAssessmentQuestionLoader({
     setDebugErrorMsg("");
     setIsLoadingNextQuestion(true);
     let last: QuestionRpcResult<Question> = { data: null, error: null };
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt <= NEXT_QUESTION_TIMEOUT_RETRY_DELAYS_MS.length; attempt += 1) {
       last = await fetchNextQuestion<Question>(OT_NEXT_QUESTION_RPC, aid);
       if (!isStatementTimeoutError(last.error)) break;
-      await new Promise(resolve => setTimeout(resolve, 250));
+      const retryDelay = NEXT_QUESTION_TIMEOUT_RETRY_DELAYS_MS[attempt];
+      if (retryDelay === undefined) break;
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
     await handleOtQuestionResult(aid, last.data, last.error);
   }, [handleOtQuestionResult, setDebugErrorMsg, setIsLoadingNextQuestion]);
@@ -414,14 +417,22 @@ export function useAssessmentQuestionLoader({
       ntQuestionPrefetchRef, aid, afterAnsweredCount,
     );
     if (!result) return false;
+    if (isStatementTimeoutError(result.error)) return false;
     handleNtQuestionResult(aid, scope, result.data, result.error);
     return true;
   }, [handleNtQuestionResult]);
 
   const loadNtQuestion = useCallback(async (aid: string, scope: NtScopeOption) => {
     setIsLoadingNextQuestion(true);
-    const { data, error } = await fetchNextQuestion<NtAssessmentQuestionRow>(NT_NEXT_QUESTION_RPC, aid);
-    handleNtQuestionResult(aid, scope, data, error);
+    let last: QuestionRpcResult<NtAssessmentQuestionRow> = { data: null, error: null };
+    for (let attempt = 0; attempt <= NEXT_QUESTION_TIMEOUT_RETRY_DELAYS_MS.length; attempt += 1) {
+      last = await fetchNextQuestion<NtAssessmentQuestionRow>(NT_NEXT_QUESTION_RPC, aid);
+      if (!isStatementTimeoutError(last.error)) break;
+      const retryDelay = NEXT_QUESTION_TIMEOUT_RETRY_DELAYS_MS[attempt];
+      if (retryDelay === undefined) break;
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+    handleNtQuestionResult(aid, scope, last.data, last.error);
   }, [handleNtQuestionResult, setIsLoadingNextQuestion]);
 
   return {

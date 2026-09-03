@@ -8,6 +8,9 @@ import {
   OT_ATTEMPT_ID_KEY,
   SESSION_ANSWERED_KEY,
   SESSION_CORRECT_KEY,
+  LOCAL_ANSWERED_KEY,
+  LOCAL_CORRECT_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
 } from "./constants";
 import type {
   Choice,
@@ -382,9 +385,9 @@ export function ntScopeFromKey(scopeKey: string, books: NtBookMetadata[]): NtSco
 }
 
 export function clearAssessmentBrowserStorage() {
-  localStorage.removeItem("obs_answered");
-  localStorage.removeItem("obs_correct");
-  localStorage.removeItem("obs_attempt_id");
+  localStorage.removeItem(LOCAL_ANSWERED_KEY);
+  localStorage.removeItem(LOCAL_CORRECT_KEY);
+  localStorage.removeItem(LOCAL_ATTEMPT_ID_KEY);
   localStorage.removeItem("obs_user_id");
   localStorage.removeItem(ANON_USER_ID_KEY);
   sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);

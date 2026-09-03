@@ -19,12 +19,15 @@ type PrefetchRef<TRow> = { current: QuestionPrefetch<TRow> | null };
 
 export type QuestionRpcResult<TRow> = { data: TRow[] | null; error: RpcErrorLike };
 
+const NEXT_QUESTION_REQUEST_TIMEOUT_MS = 15_000;
+
 /**
  * Postgres killed the query for taking too long. Worth retrying: the next
  * attempt usually lands once the planner has a warm cache.
  */
 export function isStatementTimeoutError(err: RpcErrorLike) {
   return rpcErrorCodeText(err) === "57014"
+    || rpcErrorCodeText(err) === "CLIENT_TIMEOUT"
     || /statement timeout/i.test(rpcErrorMessageText(err));
 }
 
@@ -33,8 +36,28 @@ export async function fetchNextQuestion<TRow>(
   rpcName: string,
   attemptId: string,
 ): Promise<QuestionRpcResult<TRow>> {
-  const { data, error } = await supabase.rpc(rpcName, { p_attempt_id: attemptId });
-  return { data: (data ?? null) as TRow[] | null, error };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NEXT_QUESTION_REQUEST_TIMEOUT_MS);
+
+  try {
+    const { data, error } = await supabase
+      .rpc(rpcName, { p_attempt_id: attemptId })
+      .abortSignal(controller.signal);
+    return { data: (data ?? null) as TRow[] | null, error };
+  } catch (error: unknown) {
+    const message = error instanceof Error
+      ? error.message
+      : "Question request timed out";
+    return {
+      data: null,
+      error: {
+        code: "CLIENT_TIMEOUT",
+        message: `${rpcName} did not respond within ${NEXT_QUESTION_REQUEST_TIMEOUT_MS / 1000} seconds. ${message}`,
+      },
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**

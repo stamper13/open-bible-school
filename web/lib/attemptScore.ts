@@ -15,6 +15,7 @@ export const ATTEMPT_HISTORY_LIMIT = 50;
 export type ProgressHistoryRow = {
   attempt_id: string;
   captured_at: string;
+  display_bli?: number | null;
   score_change: number | null;
 };
 
@@ -53,12 +54,25 @@ export function deriveAttemptScoreState(
     return { mode: "baseline", change: null };
   }
 
+  const previousPoint = rows
+    .filter(row => new Date(row.captured_at).getTime() < pointAt)
+    .sort((left, right) => new Date(right.captured_at).getTime() - new Date(left.captured_at).getTime())[0];
+  const computedChange = numericDelta(point.display_bli, previousPoint?.display_bli);
+  const rpcChange = point.score_change === null || point.score_change === undefined
+    ? null
+    : Number(point.score_change);
+
   return {
     mode: "change",
-    change: point.score_change === null || point.score_change === undefined
-      ? null
-      : Number(point.score_change),
+    change: computedChange ?? (Number.isFinite(rpcChange) ? rpcChange : null),
   };
+}
+
+function numericDelta(current: number | null | undefined, previous: number | null | undefined) {
+  const currentNumber = Number(current);
+  const previousNumber = Number(previous);
+  if (!Number.isFinite(currentNumber) || !Number.isFinite(previousNumber)) return null;
+  return currentNumber - previousNumber;
 }
 
 export type AttemptScoreDisplay = {
@@ -119,5 +133,5 @@ export function formatAttemptScore({
     };
   }
 
-  return { value: accuracyDisplay, label: "Session accuracy", trendClass: "", context: null };
+  return { value: null, label: accuracyDisplay ? "BLI pending" : "BLI unavailable", trendClass: "", context: null };
 }

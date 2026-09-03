@@ -1,4 +1,5 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef } from "react";
+import { persistAssessmentProgressSnapshot } from "@/lib/assessmentProgressStorage";
 import { supabase } from "@/lib/supabase/client";
 import {
   NT_ATTEMPT_ID_KEY,
@@ -153,7 +154,7 @@ export function useAssessmentStartup({
 
     try {
       const uid = await ensureAssessmentSession();
-      await loadScoreEvidence(uid, "NT");
+      void loadScoreEvidence(uid, "NT");
       const { data, error } = await supabase.rpc("obs_start_nt_assessment", {
         p_section: scope.kind === "section" ? (scope.rpcValue ?? scope.value) : null,
         p_book_code: scope.kind === "book" ? scope.value : null,
@@ -214,7 +215,7 @@ export function useAssessmentStartup({
       }
       try {
         const uid = await ensureAssessmentSession();
-        await loadScoreEvidence(uid, "NT");
+        void loadScoreEvidence(uid, "NT");
         const { data, error } = await supabase.rpc("obs_get_nt_assessment_status", {
           p_attempt_id: storedAttemptId,
         });
@@ -278,7 +279,7 @@ export function useAssessmentStartup({
       try {
         setDebugErrorMsg("");
         const uid = await ensureAssessmentSession();
-        await loadScoreEvidence(uid, "OT");
+        void loadScoreEvidence(uid, "OT");
 
         const { data, error } = otRequest.scopeKey
           ? await supabase.rpc("obs_start_or_resume_ot_scope_assessment", {
@@ -308,9 +309,14 @@ export function useAssessmentStartup({
         setCorrectCount(Number(attempt.correct_count || 0));
         otQuestionPrefetchRef.current = null;
         sessionStorage.setItem(OT_ATTEMPT_ID_KEY, attempt.attempt_id);
+        persistAssessmentProgressSnapshot({
+          answered: Number(attempt.answered_count || 0),
+          attemptId: attempt.attempt_id,
+          correct: Number(attempt.correct_count || 0),
+          testament: "OT",
+        });
 
-        const isTargetedResume = attempt.assessment_kind === "ot_focused" || Boolean(otRequest.scopeKey);
-        if (attempt.target_reached && isTargetedResume) {
+        if (attempt.target_reached) {
           setPhase("complete");
           return;
         }

@@ -224,7 +224,7 @@ export const SCENES: Scene[] = [
     // heading of its own: the cover just asked it.
     id: "title",
     text:
-      "Open Bible Assessment (OBA) is a free tool that asks Bible questions to help you see what parts of Scripture you know well and what parts your knowledge could improve.",
+      "Open Bible Assessment (OBA) is a free tool that asks Bible questions to help you see what parts of Scripture you know well and where your knowledge could improve.",
     zoom: 0.86,
     focus: null,
     mode: "nebula",

@@ -1,11 +1,11 @@
 import { type RefObject, useCallback } from "react";
 import type { StarfieldHandle } from "@/components/Starfield";
+import { persistAssessmentProgressSnapshot } from "@/lib/assessmentProgressStorage";
 import { supabase } from "@/lib/supabase/client";
 import {
   IDK_CHOICE_ID,
-  SESSION_ANSWERED_KEY,
-  SESSION_CORRECT_KEY,
 } from "./constants";
+import { isStatementTimeoutError } from "./questionPrefetch";
 import {
   HEBREW_BIBLE_DIVISION_NOTE,
   clearAssessmentBrowserStorage,
@@ -31,6 +31,22 @@ import type {
 
 type CurrentRef<T> = { current: T };
 
+const ANSWER_RPC_TIMEOUT_RETRY_DELAYS_MS = [350, 1000] as const;
+
+async function retryStatementTimeout<T>(
+  call: () => Promise<{ data: T | null; error: RpcErrorLike }>,
+) {
+  let last: { data: T | null; error: RpcErrorLike } = { data: null, error: null };
+  for (let attempt = 0; attempt <= ANSWER_RPC_TIMEOUT_RETRY_DELAYS_MS.length; attempt += 1) {
+    last = await call();
+    if (!isStatementTimeoutError(last.error)) return last;
+    const retryDelay = ANSWER_RPC_TIMEOUT_RETRY_DELAYS_MS[attempt];
+    if (retryDelay === undefined) break;
+    await new Promise(resolve => setTimeout(resolve, retryDelay));
+  }
+  return last;
+}
+
 type AssessmentAnswerFlowOptions = {
   activeQuestionIdRef: CurrentRef<string | null>;
   answeredCount: number;
@@ -44,6 +60,7 @@ type AssessmentAnswerFlowOptions = {
   finishAnswerSubmission: () => void;
   isLoadingQuestionRef: CurrentRef<boolean>;
   isQuestionInteractionLocked: () => boolean;
+  isSignedIn: boolean;
   isSubmittingAnswerRef: CurrentRef<boolean>;
   loadNtQuestion: (attemptId: string, scope: NtScopeOption) => Promise<void>;
   loadQuestion: (attemptId: string) => Promise<void>;
@@ -97,6 +114,7 @@ export function useAssessmentAnswerFlow({
   finishAnswerSubmission,
   isLoadingQuestionRef,
   isQuestionInteractionLocked,
+  isSignedIn,
   isSubmittingAnswerRef,
   loadNtQuestion,
   loadQuestion,
@@ -193,13 +211,14 @@ export function useAssessmentAnswerFlow({
       ...context,
       skipped_after_submit_failure: true,
     };
-    const { data: skippedData, error: skipError } = await supabase.rpc("obs_skip_broken_assessment_question", {
-      p_attempt_id: attemptId,
-      p_generated_question_id: submittedQuestionId,
-      p_error_code: rpcErrorCodeText(error),
-      p_error_message: error ? answerSubmissionErrorText(error) : "No result returned from answer submission",
-      p_context: skipContext,
-    });
+    const { data: skippedData, error: skipError } = await retryStatementTimeout(async () =>
+      supabase.rpc("obs_skip_broken_assessment_question", {
+        p_attempt_id: attemptId,
+        p_generated_question_id: submittedQuestionId,
+        p_error_code: rpcErrorCodeText(error),
+        p_error_message: error ? answerSubmissionErrorText(error) : "No result returned from answer submission",
+        p_context: skipContext,
+      }));
 
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
 
@@ -220,8 +239,14 @@ export function useAssessmentAnswerFlow({
     setCorrectCount(newCorrect);
     if (assessmentMode === "NT") setNtTargetCount(newTarget);
     else setOtTargetCount(newTarget);
-    sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
-    sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
+    persistAssessmentProgressSnapshot({
+      answered: newAnswered,
+      attemptId,
+      correct: newCorrect,
+      durable: assessmentMode === "OT",
+      anonymousUserId: isSignedIn ? null : userId,
+      testament: assessmentMode === "NT" ? "NT" : "OT",
+    });
     if (userId) void loadScoreEvidence(userId, assessmentMode === "NT" ? "NT" : "OT");
 
     finishAnswerSubmission();
@@ -256,6 +281,7 @@ export function useAssessmentAnswerFlow({
     otAssessment,
     otRequest,
     otTargetCount,
+    isSignedIn,
     pendingQuestionNoticeRef,
     setAnsweredCount,
     setCorrectCount,
@@ -280,13 +306,14 @@ export function useAssessmentAnswerFlow({
         : question.choices.find(choice => choice.id === choiceId)?.text ?? null;
     startAnswerSubmission(choiceId);
 
-    const { data, error } = await supabase.rpc("obs_submit_ot_assessment_response_v2", {
-      p_attempt_id: attemptId,
-      p_generated_question_id: submittedQuestionId,
-      p_response: choiceId,
-      p_selected_choice_text: selectedChoiceText,
-      p_displayed_choices: displayedChoices,
-    });
+    const { data, error } = await retryStatementTimeout(async () =>
+      supabase.rpc("obs_submit_ot_assessment_response_v2", {
+        p_attempt_id: attemptId,
+        p_generated_question_id: submittedQuestionId,
+        p_response: choiceId,
+        p_selected_choice_text: selectedChoiceText,
+        p_displayed_choices: displayedChoices,
+      }));
 
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
 
@@ -344,8 +371,13 @@ export function useAssessmentAnswerFlow({
     setAnsweredCount(newAnswered);
     setCorrectCount(newCorrect);
     setOtTargetCount(newTarget);
-    sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
-    sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
+    persistAssessmentProgressSnapshot({
+      answered: newAnswered,
+      attemptId,
+      correct: newCorrect,
+      anonymousUserId: isSignedIn ? null : userId,
+      testament: "OT",
+    });
     void loadScoreEvidence(userId, "OT");
     if (newAnswered < newTarget) prefetchOtQuestion(attemptId, newAnswered);
     else otQuestionPrefetchRef.current = null;
@@ -359,6 +391,7 @@ export function useAssessmentAnswerFlow({
     failAnswerSubmission,
     isChangedRetryRejection,
     isQuestionInteractionLocked,
+    isSignedIn,
     loadScoreEvidence,
     otQuestionPrefetchRef,
     otTargetCount,
@@ -383,11 +416,12 @@ export function useAssessmentAnswerFlow({
     const submittedQuestionId = question.out_generated_question_id;
     startAnswerSubmission(choiceId);
 
-    const { data, error } = await supabase.rpc("obs_submit_nt_assessment_answer", {
-      p_attempt_id: attemptId,
-      p_generated_question_id: submittedQuestionId,
-      p_selected_choice_id: choiceId,
-    });
+    const { data, error } = await retryStatementTimeout(async () =>
+      supabase.rpc("obs_submit_nt_assessment_answer", {
+        p_attempt_id: attemptId,
+        p_generated_question_id: submittedQuestionId,
+        p_selected_choice_id: choiceId,
+      }));
 
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
 
@@ -436,6 +470,14 @@ export function useAssessmentAnswerFlow({
     setAnsweredCount(newAnswered);
     setCorrectCount(newCorrect);
     setNtTargetCount(newTarget);
+    persistAssessmentProgressSnapshot({
+      answered: newAnswered,
+      attemptId,
+      correct: newCorrect,
+      durable: false,
+      anonymousUserId: isSignedIn ? null : userId,
+      testament: "NT",
+    });
     if (userId) void loadScoreEvidence(userId, "NT");
     if (newAnswered < newTarget) prefetchNtQuestion(attemptId, newAnswered);
     else ntQuestionPrefetchRef.current = null;
@@ -449,6 +491,7 @@ export function useAssessmentAnswerFlow({
     failAnswerSubmission,
     isChangedRetryRejection,
     isQuestionInteractionLocked,
+    isSignedIn,
     loadScoreEvidence,
     ntQuestionPrefetchRef,
     ntTargetCount,
@@ -478,11 +521,12 @@ export function useAssessmentAnswerFlow({
 
     startAnswerSubmission(submissionMode === "skip" ? IDK_CHOICE_ID : "__SECTION_SORT__");
 
-    const { data, error } = await supabase.rpc("obs_submit_section_sort_answers", {
-      p_attempt_id: attemptId,
-      p_screen_question_id: submittedQuestionId,
-      p_assignments: assignments,
-    });
+    const { data, error } = await retryStatementTimeout(async () =>
+      supabase.rpc("obs_submit_section_sort_answers", {
+        p_attempt_id: attemptId,
+        p_screen_question_id: submittedQuestionId,
+        p_assignments: assignments,
+      }));
 
     if (activeQuestionIdRef.current !== submittedQuestionId) return;
 
@@ -540,8 +584,14 @@ export function useAssessmentAnswerFlow({
     setCorrectCount(newCorrect);
     if (assessmentMode === "NT") setNtTargetCount(newTarget);
     else setOtTargetCount(newTarget);
-    sessionStorage.setItem(SESSION_ANSWERED_KEY, String(newAnswered));
-    sessionStorage.setItem(SESSION_CORRECT_KEY, String(newCorrect));
+    persistAssessmentProgressSnapshot({
+      answered: newAnswered,
+      attemptId,
+      correct: newCorrect,
+      durable: assessmentMode === "OT",
+      anonymousUserId: isSignedIn ? null : userId,
+      testament: assessmentMode === "NT" ? "NT" : "OT",
+    });
     if (userId) void loadScoreEvidence(userId, assessmentMode === "NT" ? "NT" : "OT");
     if (newAnswered < newTarget) {
       if (assessmentMode === "NT") prefetchNtQuestion(attemptId, newAnswered);
@@ -561,6 +611,7 @@ export function useAssessmentAnswerFlow({
     correctCount,
     failAnswerSubmission,
     isQuestionInteractionLocked,
+    isSignedIn,
     loadScoreEvidence,
     ntQuestionPrefetchRef,
     ntTargetCount,
@@ -597,8 +648,7 @@ export function useAssessmentAnswerFlow({
       return;
     }
 
-    const isTargetedOt = otAssessment?.assessment_kind === "ot_focused" || Boolean(otRequest.scopeKey);
-    if (answeredCount >= otTargetCount && isTargetedOt) {
+    if (answeredCount >= otTargetCount) {
       setPhase("complete");
       return;
     }
@@ -619,8 +669,6 @@ export function useAssessmentAnswerFlow({
     loadQuestion,
     ntScope,
     ntTargetCount,
-    otAssessment,
-    otRequest,
     otTargetCount,
     phase,
     setPhase,
@@ -633,4 +681,3 @@ export function useAssessmentAnswerFlow({
     submitSectionSort,
   };
 }
-

@@ -198,6 +198,8 @@ export default function ReadingLogPage() {
       <SiteNav
         links={["dashboard", "knowledge-map", "assess", "reading-log", "about", "bli", "credential"]}
         active="reading-log"
+        mobileMenu
+        mobileMenuId="reading-log-mobile-nav"
         variant="block"
       />
 

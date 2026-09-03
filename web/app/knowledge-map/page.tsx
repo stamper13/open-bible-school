@@ -224,6 +224,8 @@ export default function KnowledgeMapPage() {
       <SiteNav
         links={["dashboard", "knowledge-map", "assess", "about", "bli", "credential", "reading-log"]}
         active="knowledge-map"
+        mobileMenu
+        mobileMenuId="knowledge-map-mobile-nav"
         variant="block"
       />
 

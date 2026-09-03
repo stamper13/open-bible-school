@@ -74,58 +74,58 @@ export const ASSESS_OVERLAY_STYLES = `        /* ===============================
           max-width: none;
           animation: none;
         }
-        .between-question-loader .startup-status { display: none; }
+        .between-question-loader .startup-status,
+        .between-question-loader .pilot-badge,
+        .between-question-loader .card-heading,
+        .between-question-loader .pilot-note,
+        .between-question-loader .startup-actions {
+          display: none;
+        }
 
-        /* Orbit loader: one tilted ellipse, one sun, one planet.
-           The old one stacked a gradient disc, a dashed ring, a travelling
-           dot, a star and three sparks into 96px, which read as clutter.
-
-           Everything is tilted with rotation alone and never scaled. The first
-           attempt squashed a circle on Y to fake the ellipse, but that squash
-           also flattened the planet, and un-squashing it failed once the arm
-           rotated — the axis being corrected had turned with it, so the planet
-           smeared into a streak. Here the ring is simply a wide, short box
-           with a 50% radius, and the planet rides an elliptical motion path.
-           Rotation preserves circles, so the planet stays round all the way
-           round. */
+        /* Reuses the dashboard-loading orbit motif inside the assessment.
+           Between questions, the card chrome is removed and only this orbit
+           remains against the starfield. */
         .orbit-loader {
-          position: relative; width: 54px; height: 54px; margin: 0 auto;
+          position: relative;
+          width: 58px; height: 58px; margin: 0 auto;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,.18);
+          box-shadow: 0 0 28px rgba(10,163,163,.16), inset 0 0 22px rgba(255,255,255,.04);
+          animation: obsOrbitShellSpin 2.8s linear infinite;
         }
         .orbit-loader-ring {
-          position: absolute; left: 0; top: 16px;
-          width: 54px; height: 22px;
-          border: 1.5px solid rgba(255, 255, 255, .18);
-          border-radius: 50%;
-          transform: rotate(-18deg);
+          position: absolute; inset: 9px;
+          border: 1px dashed rgba(10,163,163,.34);
+          border-radius: 999px;
+          transform: rotate(-22deg) scaleX(1.18);
         }
         .orbit-loader-star {
           position: absolute; left: 50%; top: 50%;
-          width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px;
+          width: 16px; height: 16px; margin: -8px 0 0 -8px;
           border-radius: 50%;
-          background: radial-gradient(circle at 36% 32%, #fff7e0 0 3px, #f2c64f 4px 6px, #c1890f 100%);
-          box-shadow: 0 0 13px rgba(242, 198, 79, .5), 0 0 26px rgba(242, 198, 79, .18);
+          background: radial-gradient(circle at 35% 30%, #fff6c9, #d4a017 58%, #8c640a);
+          box-shadow: 0 0 18px rgba(212,160,23,.48), 0 0 30px rgba(212,160,23,.16);
         }
         .orbit-loader-path {
           position: absolute; inset: 0;
-          transform: rotate(-18deg);
         }
         .orbit-loader-path i {
-          /* left/top pinned to the origin: offset-path translates from the
-             element's static position, so without these the orbit is shifted
-             by wherever the dot would otherwise have sat and the planet
-             circles outside its own ring. */
-          position: absolute; left: 0; top: 0;
-          width: 9px; height: 9px;
+          position: absolute; right: 2px; top: 24px;
+          width: 10px; height: 10px;
           border-radius: 50%;
-          background: radial-gradient(circle at 34% 30%, #ddfbfa, #2fb8b8 72%);
-          box-shadow: 0 0 9px rgba(47, 184, 184, .65);
-          offset-path: path("M 1,27 a 26,11 0 1,0 52,0 a 26,11 0 1,0 -52,0");
-          offset-rotate: 0deg;
-          animation: obsOrbitTravel 1.7s linear infinite;
+          background: radial-gradient(circle at 35% 30%, #dbfffb, #0aa3a3);
+          box-shadow: 0 0 14px rgba(10,163,163,.58);
         }
-        @keyframes obsOrbitTravel { to { offset-distance: 100%; } }
+        .startup-card:not(.between-question-loader) .orbit-loader {
+          border-color: rgba(27,36,66,.12);
+          box-shadow: 0 0 24px rgba(10,163,163,.12), inset 0 0 20px rgba(27,36,66,.035);
+        }
+        .startup-card:not(.between-question-loader) .orbit-loader-ring {
+          border-color: rgba(10,163,163,.28);
+        }
+        @keyframes obsOrbitShellSpin { to { transform: rotate(1turn); } }
         @media (prefers-reduced-motion: reduce) {
-          .orbit-loader-path i { animation: none; offset-distance: 22%; }
+          .orbit-loader { animation: none; }
         }
         .startup-status {
           display: grid; gap: 7px; max-width: 440px;

@@ -5,6 +5,17 @@ import Link from "next/link";
 import Nebula from "@/components/nebula/Nebula";
 import { supabase } from "@/lib/supabase/client";
 import { claimPendingTransfer, clearPendingTransfer } from "@/lib/auth/anonymousTransfer";
+import {
+  ANON_SESSION_ACTIVE_KEY,
+  ANON_USER_ID_KEY,
+  LOCAL_ANSWERED_KEY,
+  LOCAL_ATTEMPT_ID_KEY,
+  LOCAL_CORRECT_KEY,
+  NT_ATTEMPT_ID_KEY,
+  OT_ATTEMPT_ID_KEY,
+  SESSION_ANSWERED_KEY,
+  SESSION_CORRECT_KEY,
+} from "@/lib/assessmentSessionKeys";
 import { useRouter } from "next/navigation";
 
 type Status =
@@ -24,15 +35,17 @@ export default function AuthCallback() {
 
   const clearGuestStorage = useCallback(() => {
     clearPendingTransfer(localStorage);
-    localStorage.removeItem("obs_anon_user_id");
-    localStorage.removeItem("obs_answered");
-    localStorage.removeItem("obs_correct");
-    localStorage.removeItem("obs_attempt_id");
+    localStorage.removeItem(ANON_USER_ID_KEY);
+    localStorage.removeItem(LOCAL_ANSWERED_KEY);
+    localStorage.removeItem(LOCAL_CORRECT_KEY);
+    localStorage.removeItem(LOCAL_ATTEMPT_ID_KEY);
     localStorage.removeItem("obs_user_id");
-    sessionStorage.removeItem("obs_anon_session_active");
-    sessionStorage.removeItem("obs_anon_user_id");
-    sessionStorage.removeItem("obs_session_answered");
-    sessionStorage.removeItem("obs_session_correct");
+    sessionStorage.removeItem(ANON_SESSION_ACTIVE_KEY);
+    sessionStorage.removeItem(ANON_USER_ID_KEY);
+    sessionStorage.removeItem(SESSION_ANSWERED_KEY);
+    sessionStorage.removeItem(SESSION_CORRECT_KEY);
+    sessionStorage.removeItem(OT_ATTEMPT_ID_KEY);
+    sessionStorage.removeItem(NT_ATTEMPT_ID_KEY);
   }, []);
 
   useEffect(() => {
