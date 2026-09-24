@@ -154,6 +154,11 @@ export function useAssessmentStartup({
 
     try {
       const uid = await ensureAssessmentSession();
+      const { data: ntAccess, error: ntAccessError } = await supabase.rpc("obs_nt_access_allowed");
+      if (ntAccessError) throw ntAccessError;
+      if (ntAccess !== true) {
+        throw new Error("The New Testament pilot is currently limited to the approved account.");
+      }
       void loadScoreEvidence(uid, "NT");
       const { data, error } = await supabase.rpc("obs_start_nt_assessment", {
         p_section: scope.kind === "section" ? (scope.rpcValue ?? scope.value) : null,

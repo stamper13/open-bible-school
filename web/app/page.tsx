@@ -1084,6 +1084,7 @@ export default function HomePage() {
             visibleAssessmentData={visibleAssessmentData}
             suiteTestament={suiteTestament}
             setSuiteTestament={setSuiteTestament}
+            userEmail={userEmail}
           />
         )}
 

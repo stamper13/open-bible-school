@@ -5,7 +5,7 @@ import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { type Testament as BibleTestament } from "@/lib/bibleTaxonomy";
 import type { BliContractScores } from "@/lib/bliContract";
-import { FOLLOWUP_ASSESSMENT_TARGET, NT_PILOT_ENABLED } from "../assess/constants";
+import { FOLLOWUP_ASSESSMENT_TARGET, isNtPilotEmail, NT_PILOT_ENABLED } from "../assess/constants";
 import { DASHBOARD_SUBJECTS } from "../homeConstants";
 import type { AssessmentSnapshot, DashboardTab } from "../homeTypes";
 
@@ -332,6 +332,7 @@ export function DashboardHeader({
   visibleAssessmentData,
   suiteTestament,
   setSuiteTestament,
+  userEmail,
 }: {
   activeDashboardTab: DashboardTab;
   setActiveDashboardTab: Dispatch<SetStateAction<DashboardTab>>;
@@ -343,6 +344,7 @@ export function DashboardHeader({
   visibleAssessmentData: AssessmentSnapshot | null;
   suiteTestament: BibleTestament;
   setSuiteTestament: Dispatch<SetStateAction<BibleTestament>>;
+  userEmail: string | null;
 }) {
   // The New Testament suite is not open yet. The tab used to be `disabled`
   // and labelled "NT soon", which meant a click did nothing at all and the
@@ -384,7 +386,8 @@ export function DashboardHeader({
               const ctaHref = isOT
                 ? hasData ? `/assess?${followupTargetParam}` : "/assess"
                 : `/assess?testament=NT&scope=NT${hasData ? `&${followupTargetParam}` : ""}`;
-              const ntDisabled = !isOT && !NT_PILOT_ENABLED;
+              const ntPilotForUser = NT_PILOT_ENABLED && isNtPilotEmail(userEmail);
+              const ntDisabled = !isOT && !ntPilotForUser;
               return (
                 <div className="header-assess" style={{ "--suite-hue": isOT ? "#d4a017" : "#7c3aed" } as CSSProperties}>
                   <div className="std-assess-toggle" role="tablist" aria-label="Testament">
@@ -402,10 +405,10 @@ export function DashboardHeader({
                     </button>
                     <button
                       type="button" role="tab" aria-selected={!isOT}
-                      aria-disabled={!NT_PILOT_ENABLED}
-                      className={`std-assess-toggle-btn ${!isOT ? "is-active" : ""}${NT_PILOT_ENABLED ? "" : " is-soon"}`}
+                      aria-disabled={!ntPilotForUser}
+                      className={`std-assess-toggle-btn ${!isOT ? "is-active" : ""}${ntPilotForUser ? "" : " is-soon"}`}
                       onClick={() => {
-                        if (!NT_PILOT_ENABLED) { setNtNotice(true); return; }
+                        if (!ntPilotForUser) { setNtNotice(true); return; }
                         setSuiteTestament("NT");
                       }}
                     >
@@ -415,8 +418,8 @@ export function DashboardHeader({
                       </svg>
                       New Testament
                     </button>
-                    {ntNotice && !NT_PILOT_ENABLED && (
-                      <span className="std-nt-soon" role="status">Coming soon</span>
+                    {ntNotice && !ntPilotForUser && (
+                      <span className="std-nt-soon" role="status">Private pilot</span>
                     )}
                   </div>
                   <div className="std-assess-actions">
