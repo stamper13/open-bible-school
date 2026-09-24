@@ -38,9 +38,9 @@ export const INITIAL_ASSESSMENT_TARGET = 25;
 export const FOLLOWUP_ASSESSMENT_TARGET = 15;
 export const TOTAL_INITIAL = INITIAL_ASSESSMENT_TARGET;
 export const NT_PILOT_TARGET = INITIAL_ASSESSMENT_TARGET;
-// The pilot is intentionally enabled in the build, but the dashboard and
-// database enforce the private-account allowlist while NT remains in pilot.
-export const NT_PILOT_ENABLED = process.env.NEXT_PUBLIC_NT_PILOT_ENABLED !== "false";
+// The pilot is intentionally enabled in the build; the dashboard and database
+// enforce the private-account allowlist while NT remains in pilot.
+export const NT_PILOT_ENABLED = true;
 export const NT_PILOT_ALLOWED_EMAIL = "adstamper35@gmail.com";
 
 export function isNtPilotEmail(email: string | null | undefined): boolean {
