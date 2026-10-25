@@ -57,28 +57,25 @@ test.describe("public routes render", () => {
 });
 
 test.describe("assessment entry points", () => {
-  test("selector exposes both Old and New Testament", async ({ page }) => {
-    await page.goto("/assess?choose=1");
-    await expect(page.getByRole("button", { name: /Old Testament Assessment/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /New Testament Assessment/i })).toBeVisible();
+  test("signed-out home chooser hides the private New Testament pilot", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /Take assessment/i }).click();
+    await expect(page.getByRole("link", { name: /Old Testament/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /New Testament/i })).toHaveCount(0);
   });
 
-  test("New Testament entry matches the current launch state", async ({ page }) => {
+  test("signed-out selector hides the private New Testament pilot", async ({ page }) => {
     await page.goto("/assess?choose=1");
-    const ntButton = page.getByRole("button", { name: /New Testament Assessment/i });
-    await expect(ntButton).toBeVisible();
+    await expect(page.getByRole("button", { name: /Old Testament Assessment/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /New Testament Assessment/i })).toHaveCount(0);
+  });
 
-    if (await ntButton.isEnabled()) {
-      await ntButton.click();
-      // The broad path carries scope=NT. An obsolete pilot chooser would send the
-      // user back to ?choose=1 instead.
-      await page.waitForURL(/testament=NT/);
-      expect(page.url()).toContain("scope=NT");
-      expect(page.url()).not.toContain("choose=1");
-    } else {
-      await expect(ntButton).toContainText(/Coming soon/i);
-      await expect(ntButton).not.toContainText(/V7 router/i);
-    }
+  test("signed-out direct NT route returns to the safe selector", async ({ page }) => {
+    await page.goto("/assess?testament=NT&scope=NT");
+    await expect(page.getByRole("button", { name: /Old Testament Assessment/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /New Testament Assessment/i })).toHaveCount(0);
+    await expect(page.getByText(/Something went wrong/i)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/assess\?choose=1/);
   });
 });
 

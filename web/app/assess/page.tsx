@@ -42,6 +42,7 @@ import { useAssessmentAuthActions } from "./useAssessmentAuthActions";
 import { useAssessmentQuestionLoader } from "./useAssessmentQuestionLoader";
 import { useAssessmentStartup } from "./useAssessmentStartup";
 import { useAssessmentSession } from "./useAssessmentSession";
+import { useNtPilotAccess } from "./useNtPilotAccess";
 import { useDashboardTransition } from "./useDashboardTransition";
 import { useNtBookMetadata } from "./useNtBookMetadata";
 import { useSectionSortQuestionInteraction, useSequenceQuestionInteraction } from "./useQuestionInteractions";
@@ -84,6 +85,10 @@ export default function AssessPage() {
     setUserId,
     userId,
   } = useAssessmentSession();
+  const {
+    allowed: ntPilotAllowed,
+    resolved: ntPilotAccessResolved,
+  } = useNtPilotAccess();
   const {
     isSubmittingReport,
     openQuestionReport,
@@ -221,6 +226,8 @@ export default function AssessPage() {
     loadQuestion,
     loadScoreEvidence,
     modeReady,
+    ntPilotAccessResolved,
+    ntPilotAllowed,
     ntBooks,
     ntMetadataLoaded,
     ntQuestionPrefetchRef,
@@ -408,7 +415,7 @@ export default function AssessPage() {
 
       <div className={`scene ${isDashboardTransitioning ? "dashboard-transition" : ""}`}>
         {assessmentMode === "select" && (
-          <ModeSelectScreen />
+          <ModeSelectScreen showNtAssessment={ntPilotAllowed} />
         )}
 
         {assessmentMode === "NT" && phase === "starting" && (

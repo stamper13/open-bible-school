@@ -31,6 +31,7 @@ import { useProgressChart } from "./useProgressChart";
 import { useProgressHistory } from "./useProgressHistory";
 import { HOME_PAGE_STYLES } from "./homeStyles";
 import {
+  isNtPilotEmail,
   NT_PILOT_ENABLED,
   TOTAL_INITIAL,
 } from "./assess/constants";
@@ -180,6 +181,13 @@ export default function HomePage() {
   // coverage map, knowledge profile breakdown) — there is no second,
   // independent testament switch anywhere further down the page.
   const [suiteTestament, setSuiteTestament] = useState<BibleTestament>("OT");
+  const ntPilotForUser = NT_PILOT_ENABLED && isNtPilotEmail(userEmail);
+
+  useEffect(() => {
+    if (!ntPilotForUser && suiteTestament === "NT") {
+      setSuiteTestament("OT");
+    }
+  }, [ntPilotForUser, suiteTestament]);
   const profileTestament = suiteTestament;
   const {
     showBliTooltip,
@@ -1112,6 +1120,7 @@ export default function HomePage() {
                 inProgressTestament={inProgressTestament}
                 firstAssessmentChooserOpen={firstAssessmentChooserOpen}
                 setFirstAssessmentChooserOpen={setFirstAssessmentChooserOpen}
+                userEmail={userEmail}
               />
               <FirstAssessmentFeatures />
             </>

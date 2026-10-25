@@ -10,6 +10,7 @@ import {
   LOCAL_CORRECT_KEY,
   LOCAL_ATTEMPT_ID_KEY,
 } from "@/lib/assessmentSessionKeys";
+import { NT_PILOT_ALLOWED_EMAIL, isNtPilotEmail } from "./ntPilotPolicy";
 
 export {
   ANON_SESSION_ACTIVE_KEY,
@@ -21,6 +22,8 @@ export {
   LOCAL_ANSWERED_KEY,
   LOCAL_CORRECT_KEY,
   LOCAL_ATTEMPT_ID_KEY,
+  NT_PILOT_ALLOWED_EMAIL,
+  isNtPilotEmail,
 };
 
 export const SECTION_COLORS: Record<string, string> = {
@@ -41,11 +44,6 @@ export const NT_PILOT_TARGET = INITIAL_ASSESSMENT_TARGET;
 // The pilot is intentionally enabled in the build; the dashboard and database
 // enforce the private-account allowlist while NT remains in pilot.
 export const NT_PILOT_ENABLED = true;
-export const NT_PILOT_ALLOWED_EMAIL = "adstamper35@gmail.com";
-
-export function isNtPilotEmail(email: string | null | undefined): boolean {
-  return email?.trim().toLowerCase() === NT_PILOT_ALLOWED_EMAIL;
-}
 
 export const NT_SECTION_LABELS: Record<NtSectionKey, string> = {
   GOSPELS_ACTS: "Gospels and Acts",

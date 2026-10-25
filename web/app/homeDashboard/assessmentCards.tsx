@@ -2,7 +2,7 @@
 
 import { useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
-import { NT_PILOT_ENABLED } from "../assess/constants";
+import { isNtPilotEmail, NT_PILOT_ENABLED } from "../assess/constants";
 import type { DashboardTab } from "../homeTypes";
 
 // ---------------------------------------------------------------------------
@@ -11,15 +11,21 @@ export function FirstAssessmentCard({
   inProgressTestament,
   firstAssessmentChooserOpen,
   setFirstAssessmentChooserOpen,
+  userEmail,
 }: {
   inProgressTestament: "OT" | "NT" | null;
   firstAssessmentChooserOpen: boolean;
   setFirstAssessmentChooserOpen: Dispatch<SetStateAction<boolean>>;
+  userEmail: string | null;
 }) {
   // Local to this card: nothing outside it needs to know whether the
   // "Learn more" chooser is open. It is kept mutually exclusive with the
   // testament chooser below so the card never sprouts two panels at once.
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
+  const ntPilotForUser = NT_PILOT_ENABLED && isNtPilotEmail(userEmail);
+  const visibleInProgressTestament = inProgressTestament === "NT" && !ntPilotForUser
+    ? null
+    : inProgressTestament;
 
   return (
               <section className="first-assessment-card" aria-label="Start your first assessment">
@@ -32,24 +38,14 @@ export function FirstAssessmentCard({
                   <p className="first-assessment-kicker">Start here</p>
                   <h1>Take your first Bible assessment</h1>
                   <div className="first-assessment-actions">
-                    {inProgressTestament ? (
-                      inProgressTestament === "NT" && !NT_PILOT_ENABLED ? (
-                        <button
-                          type="button"
-                          className="first-assessment-primary is-disabled"
-                          disabled
-                        >
-                          NT coming soon
-                        </button>
-                      ) : (
+                    {visibleInProgressTestament ? (
                         <Link
                           className="first-assessment-primary"
-                          href={inProgressTestament === "OT" ? "/assess" : "/assess?testament=NT&scope=NT"}
+                          href={visibleInProgressTestament === "OT" ? "/assess" : "/assess?testament=NT&scope=NT"}
                         >
                           Continue assessment
                           <span aria-hidden="true">→</span>
                         </Link>
-                      )
                     ) : (
                       <button
                         type="button"
@@ -94,7 +90,7 @@ export function FirstAssessmentCard({
                       </Link>
                     </div>
                   )}
-                  {!inProgressTestament && firstAssessmentChooserOpen && (
+                  {!visibleInProgressTestament && firstAssessmentChooserOpen && (
                     <div
                       id="first-assessment-choice-panel"
                       className="first-assessment-choice-panel"
@@ -104,16 +100,11 @@ export function FirstAssessmentCard({
                         <strong>Old Testament</strong>
                         <span>Start with Genesis through Malachi.</span>
                       </Link>
-                      {NT_PILOT_ENABLED ? (
+                      {ntPilotForUser && (
                         <Link className="first-assessment-choice" href="/assess?testament=NT&scope=NT">
                           <strong>New Testament</strong>
                           <span>Assess Matthew through Revelation separately.</span>
                         </Link>
-                      ) : (
-                        <span className="first-assessment-choice is-disabled" aria-disabled="true">
-                          <strong>New Testament</strong>
-                          <span>Coming soon.</span>
-                        </span>
                       )}
                     </div>
                   )}

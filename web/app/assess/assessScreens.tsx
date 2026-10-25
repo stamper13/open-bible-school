@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import { FOLLOWUP_ASSESSMENT_TARGET, NT_PILOT_ENABLED, QUESTION_RATING_OPTIONS, REPORT_OPTIONS } from "./constants";
+import { FOLLOWUP_ASSESSMENT_TARGET, QUESTION_RATING_OPTIONS, REPORT_OPTIONS } from "./constants";
 import { clearAssessmentBrowserStorage, ntScopeFromKey } from "./assessmentHelpers";
 import type {
   AssessmentMode,
@@ -35,7 +35,7 @@ export function AssessmentOrbitLoader() {
 
 // ---------------------------------------------------------------------------
 
-export function ModeSelectScreen() {
+export function ModeSelectScreen({ showNtAssessment }: { showNtAssessment: boolean }) {
   return (
     <div className="card center-card">
       <p className="pilot-badge">Assessment</p>
@@ -48,24 +48,23 @@ export function ModeSelectScreen() {
           </div>
           <p className="testament-desc">Start with questions from Genesis through Malachi.</p>
         </button>
-        <button
-          className="testament-card"
-          type="button"
-          disabled={!NT_PILOT_ENABLED}
-          onClick={() => {
-            if (NT_PILOT_ENABLED) window.location.href = "/assess?testament=NT&scope=NT";
-          }}
-        >
-          <div className="testament-top">
-            <strong className="testament-title">New Testament Assessment</strong>
-            <span className="pilot-badge">{NT_PILOT_ENABLED ? "NT BLI" : "Coming soon"}</span>
-          </div>
-          <p className="testament-desc">
-            {NT_PILOT_ENABLED
-              ? "Questions from Matthew through Revelation, scored separately from the Old Testament."
-              : "Coming soon."}
-          </p>
-        </button>
+        {showNtAssessment && (
+          <button
+            className="testament-card"
+            type="button"
+            onClick={() => {
+              window.location.href = "/assess?testament=NT&scope=NT";
+            }}
+          >
+            <div className="testament-top">
+              <strong className="testament-title">New Testament Assessment</strong>
+              <span className="pilot-badge">NT BLI</span>
+            </div>
+            <p className="testament-desc">
+              Questions from Matthew through Revelation, scored separately from the Old Testament.
+            </p>
+          </button>
+        )}
       </div>
     </div>
   );

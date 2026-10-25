@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from "react";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 import { type Testament as BibleTestament } from "@/lib/bibleTaxonomy";
@@ -346,12 +346,7 @@ export function DashboardHeader({
   setSuiteTestament: Dispatch<SetStateAction<BibleTestament>>;
   userEmail: string | null;
 }) {
-  // The New Testament suite is not open yet. The tab used to be `disabled`
-  // and labelled "NT soon", which meant a click did nothing at all and the
-  // "Coming soon" CTA beside it was unreachable — you could only reach that
-  // state by already being on NT, which the disabled tab prevented. The tab
-  // now says what it is and answers when pressed.
-  const [ntNotice, setNtNotice] = useState(false);
+  const ntPilotForUser = NT_PILOT_ENABLED && isNtPilotEmail(userEmail);
   return (<>
           <header className="page-header">
             <div>
@@ -376,7 +371,7 @@ export function DashboardHeader({
               </p>
             </div>
             {activeDashboardTab === "bli" && dashboardHydrated && (() => {
-              const isOT = suiteTestament === "OT";
+              const isOT = suiteTestament === "OT" || !ntPilotForUser;
               const hasData = isOT ? Boolean(visibleAssessmentData) : Boolean(testamentScores?.nt_questions_answered);
               // The toggle already picked the testament, so both routes go
               // straight to that assessment. First assessments use the full
@@ -386,16 +381,14 @@ export function DashboardHeader({
               const ctaHref = isOT
                 ? hasData ? `/assess?${followupTargetParam}` : "/assess"
                 : `/assess?testament=NT&scope=NT${hasData ? `&${followupTargetParam}` : ""}`;
-              const ntPilotForUser = NT_PILOT_ENABLED && isNtPilotEmail(userEmail);
-              const ntDisabled = !isOT && !ntPilotForUser;
               return (
                 <div className="header-assess" style={{ "--suite-hue": isOT ? "#d4a017" : "#7c3aed" } as CSSProperties}>
-                  <div className="std-assess-toggle" role="tablist" aria-label="Testament">
+                  {ntPilotForUser && <div className="std-assess-toggle" role="tablist" aria-label="Testament">
                     <span className="std-assess-toggle-thumb" style={{ transform: isOT ? "translateX(0%)" : "translateX(100%)" }} />
                     <button
                       type="button" role="tab" aria-selected={isOT}
                       className={`std-assess-toggle-btn ${isOT ? "is-active" : ""}`}
-                      onClick={() => { setNtNotice(false); setSuiteTestament("OT"); }}
+                      onClick={() => setSuiteTestament("OT")}
                     >
                       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <rect x="3" y="4" width="7" height="16" rx="2"/>
@@ -405,12 +398,8 @@ export function DashboardHeader({
                     </button>
                     <button
                       type="button" role="tab" aria-selected={!isOT}
-                      aria-disabled={!ntPilotForUser}
-                      className={`std-assess-toggle-btn ${!isOT ? "is-active" : ""}${ntPilotForUser ? "" : " is-soon"}`}
-                      onClick={() => {
-                        if (!ntPilotForUser) { setNtNotice(true); return; }
-                        setSuiteTestament("NT");
-                      }}
+                      className={`std-assess-toggle-btn ${!isOT ? "is-active" : ""}`}
+                      onClick={() => setSuiteTestament("NT")}
                     >
                       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <line x1="12" y1="3" x2="12" y2="21"/>
@@ -418,19 +407,12 @@ export function DashboardHeader({
                       </svg>
                       New Testament
                     </button>
-                    {ntNotice && !ntPilotForUser && (
-                      <span className="std-nt-soon" role="status">Private pilot</span>
-                    )}
-                  </div>
+                  </div>}
                   <div className="std-assess-actions">
-                    {ntDisabled ? (
-                      <span className="std-assess-cta is-disabled" aria-disabled="true">Coming soon</span>
-                    ) : (
-                      <Link className="std-assess-cta" href={ctaHref}>
-                        {hasData ? "Continue assessment" : "Start assessment"}
-                        <span aria-hidden="true">→</span>
-                      </Link>
-                    )}
+                    <Link className="std-assess-cta" href={ctaHref}>
+                      {hasData ? "Continue assessment" : "Start assessment"}
+                      <span aria-hidden="true">→</span>
+                    </Link>
                   </div>
                 </div>
               );

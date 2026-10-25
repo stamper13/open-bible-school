@@ -35,6 +35,8 @@ type AssessmentStartupOptions = {
   loadQuestion: (attemptId: string) => Promise<void>;
   loadScoreEvidence: (userId: string, scope: Testament) => Promise<void>;
   modeReady: boolean;
+  ntPilotAccessResolved: boolean;
+  ntPilotAllowed: boolean;
   ntBooks: NtBookMetadata[];
   ntMetadataLoaded: boolean;
   ntQuestionPrefetchRef: ResettableRef;
@@ -74,6 +76,8 @@ export function useAssessmentStartup({
   loadQuestion,
   loadScoreEvidence,
   modeReady,
+  ntPilotAccessResolved,
+  ntPilotAllowed,
   ntBooks,
   ntMetadataLoaded,
   ntQuestionPrefetchRef,
@@ -109,6 +113,8 @@ export function useAssessmentStartup({
 
   useEffect(() => {
     const route = parseInitialAssessmentRoute(window.location.search, TOTAL_INITIAL, NT_PILOT_TARGET);
+    const requestedNt = route.assessmentMode === "NT";
+    if (requestedNt && !ntPilotAccessResolved) return;
     if (route.sanitizedSearch !== null) {
       window.history.replaceState(
         null,
@@ -116,7 +122,12 @@ export function useAssessmentStartup({
         `${window.location.pathname}${route.sanitizedSearch ? `?${route.sanitizedSearch}` : ""}${window.location.hash}`,
       );
     }
-    setAssessmentMode(route.assessmentMode === "NT" && !NT_PILOT_ENABLED ? "select" : route.assessmentMode);
+    if (requestedNt && (!NT_PILOT_ENABLED || !ntPilotAllowed)) {
+      window.history.replaceState(null, "", `${window.location.pathname}?choose=1${window.location.hash}`);
+      setAssessmentMode("select");
+    } else {
+      setAssessmentMode(route.assessmentMode);
+    }
     setPhase(route.phase);
     setNtRequestedScopeKey(route.ntRequestedScopeKey);
     setNtRequestedTargetCount(route.ntRequestedTargetCount);
@@ -129,6 +140,8 @@ export function useAssessmentStartup({
     setNtRequestedTargetCount,
     setOtRequest,
     setPhase,
+    ntPilotAccessResolved,
+    ntPilotAllowed,
   ]);
 
   const startNtPilot = useCallback(async (
@@ -137,6 +150,10 @@ export function useAssessmentStartup({
   ) => {
     if (!NT_PILOT_ENABLED) {
       setNtError("The New Testament assessment is not enabled right now.");
+      return;
+    }
+    if (!ntPilotAllowed) {
+      setNtError("The New Testament pilot is currently limited to the approved account.");
       return;
     }
     setNtError("");
@@ -186,6 +203,7 @@ export function useAssessmentStartup({
     loadNtQuestion,
     loadScoreEvidence,
     ntQuestionPrefetchRef,
+    ntPilotAllowed,
     ntRequestedTargetCount,
     ntScope,
     setAnsweredCount,
